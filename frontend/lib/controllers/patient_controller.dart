@@ -1,0 +1,237 @@
+import 'package:get/get.dart';
+import 'package:farah_sys_final/models/patient_model.dart';
+import 'package:farah_sys_final/services/patient_service.dart';
+import 'package:farah_sys_final/services/doctor_service.dart';
+import 'package:farah_sys_final/core/network/api_exception.dart';
+import 'package:farah_sys_final/controllers/auth_controller.dart';
+
+class PatientController extends GetxController {
+  final _patientService = PatientService();
+  final _doctorService = DoctorService();
+
+  final RxList<PatientModel> patients = <PatientModel>[].obs;
+  final RxBool isLoading = false.obs;
+  final Rx<PatientModel?> selectedPatient = Rx<PatientModel?>(null);
+  final Rx<PatientModel?> myProfile = Rx<PatientModel?>(null);
+  final Rx<Map<String, dynamic>?> myDoctor = Rx<Map<String, dynamic>?>(null);
+  final RxList<Map<String, dynamic>> myDoctors = <Map<String, dynamic>>[].obs;
+
+  // جلب قائمة المرضى (للطبيب أو موظف الاستقبال)
+  Future<void> loadPatients({int skip = 0, int limit = 50}) async {
+    try {
+      isLoading.value = true;
+      print('📋 [PatientController] Loading patients...');
+
+      // تحديد نوع المستخدم الحالي
+      final authController = Get.find<AuthController>();
+      final userType = authController.currentUser.value?.userType;
+      print('📋 [PatientController] Current user type: $userType');
+
+      if (userType == 'receptionist') {
+        // موظف الاستقبال: يجلب جميع المرضى من /reception/patients
+        print('📋 [PatientController] Loading all patients (receptionist)...');
+        final patientsList = await _patientService.getAllPatients(
+          skip: skip,
+          limit: limit,
+        );
+        patients.value = patientsList;
+        print(
+          '✅ [PatientController] Loaded ${patientsList.length} patients (receptionist)',
+        );
+      } else {
+        // الطبيب (أو أي نوع آخر): يجلب مرضاه فقط من /doctor/patients
+        print('📋 [PatientController] Loading doctor patients...');
+        final patientsList = await _doctorService.getMyPatients(
+          skip: skip,
+          limit: limit,
+        );
+        patients.value = patientsList;
+        print(
+          '✅ [PatientController] Loaded ${patientsList.length} patients (doctor)',
+        );
+
+        if (patientsList.isEmpty) {
+          print('⚠️ [PatientController] No patients found for this doctor!');
+          print(
+            '   💡 Make sure patients are assigned to this doctor in the backend.',
+          );
+          print(
+            '   💡 Patients need primary_doctor_id or secondary_doctor_id set.',
+          );
+        }
+      }
+    } on ApiException catch (e) {
+      print('❌ [PatientController] ApiException: ${e.message}');
+      Get.snackbar('خطأ', e.message);
+    } catch (e) {
+      print('❌ [PatientController] Error: $e');
+      Get.snackbar('خطأ', 'حدث خطأ أثناء تحميل المرضى');
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // جلب بيانات المريض الحالي (للمريض)
+  Future<void> loadMyProfile({bool showError = false}) async {
+    try {
+      isLoading.value = true;
+      final profile = await _patientService.getMyProfile();
+      myProfile.value = profile;
+      final authController = Get.find<AuthController>();
+      authController.patientProfileId.value = profile.id;
+    } on ApiException catch (e) {
+      print('❌ [PatientController] Error loading profile: ${e.message}');
+      if (showError) {
+        // تأجيل عرض snackbar حتى بعد اكتمال البناء
+        Future.microtask(() {
+          Get.snackbar('خطأ', e.message);
+        });
+      }
+    } catch (e) {
+      print('❌ [PatientController] Error loading profile: $e');
+      if (showError) {
+        // تأجيل عرض snackbar حتى بعد اكتمال البناء
+        Future.microtask(() {
+          Get.snackbar('خطأ', 'حدث خطأ أثناء تحميل البيانات');
+        });
+      }
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // تحديد نوع العلاج (للطبيب)
+  Future<void> setTreatmentType({
+    required String patientId,
+    required String treatmentType,
+  }) async {
+    try {
+      isLoading.value = true;
+      final updatedPatient = await _doctorService.setTreatmentType(
+        patientId: patientId,
+        treatmentType: treatmentType,
+      );
+
+      // تحديث القائمة
+      final index = patients.indexWhere((p) => p.id == patientId);
+      if (index != -1) {
+        patients[index] = updatedPatient;
+      }
+
+      Get.snackbar('نجح', 'تم تحديث نوع العلاج');
+    } on ApiException catch (e) {
+      Get.snackbar('خطأ', e.message);
+    } catch (e) {
+      Get.snackbar('خطأ', 'حدث خطأ أثناء تحديث نوع العلاج');
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  PatientModel? getPatientById(String patientId) {
+    try {
+      return patients.firstWhere((p) => p.id == patientId);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  List<PatientModel> searchPatients(String query) {
+    if (query.isEmpty) return patients;
+
+    return patients.where((patient) {
+      return patient.name.toLowerCase().contains(query.toLowerCase()) ||
+          patient.phoneNumber.contains(query);
+    }).toList();
+  }
+
+  void selectPatient(PatientModel? patient) {
+    selectedPatient.value = patient;
+  }
+
+  // التحقق من وجود طبيب مرتبط بالمريض
+  Future<bool> checkDoctorAssignment() async {
+    try {
+      final profile = await _patientService.getMyProfile();
+      myProfile.value = profile;
+      // التحقق من وجود primary_doctor_id
+      return profile.doctorIds.isNotEmpty;
+    } catch (e) {
+      print('❌ [PatientController] Error checking doctor assignment: $e');
+      return false;
+    }
+  }
+
+  // جلب معلومات الطبيب المرتبط بالمريض
+  Future<void> updateMyProfile({
+    String? name,
+    String? gender,
+    int? age,
+    String? city,
+  }) async {
+    try {
+      isLoading.value = true;
+      final updatedProfile = await _patientService.updateMyProfile(
+        name: name,
+        gender: gender,
+        age: age,
+        city: city,
+      );
+      myProfile.value = updatedProfile;
+      
+      // تحديث بيانات المستخدم أيضاً عبر إعادة جلب البيانات من السيرفر
+      final authController = Get.find<AuthController>();
+      await authController.checkLoggedInUser();
+      
+      // إعادة تحميل الملف الشخصي لضمان التحديث
+      await loadMyProfile();
+    } catch (e) {
+      print('❌ [PatientController] Error updating profile: $e');
+      rethrow;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  Future<void> loadMyDoctor() async {
+    try {
+      isLoading.value = true;
+      final doctorInfo = await _patientService.getMyDoctor();
+      myDoctor.value = doctorInfo;
+    } on ApiException catch (e) {
+      print('❌ [PatientController] Error loading doctor: ${e.message}');
+      // لا نعرض snackbar لأنه قد لا يكون هناك طبيب مرتبط
+      myDoctor.value = null;
+    } catch (e) {
+      print('❌ [PatientController] Error loading doctor: $e');
+      myDoctor.value = null;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // جلب قائمة الأطباء المرتبطين بالمريض
+  Future<void> loadMyDoctors() async {
+    try {
+      isLoading.value = true;
+      final doctorsList = await _patientService.getMyDoctors();
+      myDoctors.value = doctorsList;
+      // أيضاً تحديث myDoctor للأول (للتوافق مع الكود القديم)
+      if (doctorsList.isNotEmpty) {
+        myDoctor.value = doctorsList[0];
+      } else {
+        myDoctor.value = null;
+      }
+    } on ApiException catch (e) {
+      print('❌ [PatientController] Error loading doctors: ${e.message}');
+      myDoctors.value = [];
+      myDoctor.value = null;
+    } catch (e) {
+      print('❌ [PatientController] Error loading doctors: $e');
+      myDoctors.value = [];
+      myDoctor.value = null;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+}

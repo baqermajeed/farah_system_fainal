@@ -1,0 +1,29 @@
+{
+    "project_info": {
+      "project_number": "966472488782",
+      "project_id": "farah-notification",
+      "storage_bucket": "farah-notification.firebasestorage.app"
+    },
+    "client": [
+      {
+        "client_info": {
+          "mobilesdk_app_id": "1:966472488782:android:d29cb6fc1b18230cdaf01f",
+          "android_client_info": {
+            "package_name": "com.fatahnotification"
+          }
+        },
+        "oauth_client": [],
+        "api_key": [
+          {
+            "current_key": "AIzaSyCT9x4yatR7RXAtao3a1EBo4FXGGmRoTKM"
+          }
+        ],
+        "services": {
+          "appinvite_service": {
+            "other_platform_oauth_client": []
+          }
+        }
+      }
+    ],
+    "configuration_version": "1"
+  }

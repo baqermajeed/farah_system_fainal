@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(flutter pub get:*)",
+      "Bash(flutter pub run build_runner build:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
