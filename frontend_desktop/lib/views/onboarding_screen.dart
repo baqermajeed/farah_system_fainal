@@ -85,7 +85,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     child: Text(
                       AppStrings.skip,
                       style: TextStyle(
-                        fontFamily: 'Expo Arabic',
                         color: AppColors.textSecondary,
                         fontSize: 16.sp,
                         fontWeight: FontWeight.w600,
@@ -163,7 +162,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     label: Text(
                       AppStrings.back,
                       style: TextStyle(
-                        fontFamily: 'Expo Arabic',
                         fontSize: 18.sp,
                         fontWeight: FontWeight.w700,
                         color: _currentIndex == 0
@@ -200,7 +198,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                 Text(
                                   AppStrings.start,
                                   style: TextStyle(
-                                    fontFamily: 'Expo Arabic',
                                     fontSize: 18.sp,
                                     fontWeight: FontWeight.w700,
                                     color: AppColors.onboardingButton,
@@ -226,7 +223,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                 AppStrings.next,
                                 
                                 style: TextStyle(
-                                  fontFamily: 'Expo Arabic',
                                   fontSize: 18.sp,
                                   fontWeight: FontWeight.w700,
                                   color: AppColors.onboardingButton,
@@ -346,7 +342,6 @@ class _OnboardingSlide extends StatelessWidget {
                   title,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontFamily: 'Expo Arabic',
                     fontSize: 26.sp,
                     fontWeight: FontWeight.w800,
                     color: AppColors.onboardingTitle,
@@ -361,7 +356,6 @@ class _OnboardingSlide extends StatelessWidget {
                   description,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontFamily: 'Expo Arabic',
                     fontSize: 18.sp,
                     height: 1.6,
                     color: AppColors.textSecondary,

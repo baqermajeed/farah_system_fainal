@@ -79,7 +79,6 @@ class _UserSelectionScreenState extends State<UserSelectionScreen> {
                     Text(
                       AppStrings.selectUserType,
                       style: TextStyle(
-                        fontFamily: 'Expo Arabic',
                         fontSize: 20.sp,
                         fontWeight: FontWeight.w600,
                         color: AppColors.textSecondary,
@@ -117,60 +116,61 @@ class _UserSelectionScreenState extends State<UserSelectionScreen> {
               // Next button
               Padding(
                 padding: EdgeInsets.only(bottom: 32.h),
-                child: GestureDetector(
-                  onTap: selectedUserType == null
-                      ? null
-                      : () {
-                          if (selectedUserType == 'doctor') {
-                            Get.toNamed(AppRoutes.doctorLogin);
-                          } else if (selectedUserType == 'receptionist') {
-                            Get.toNamed(AppRoutes.receptionLogin);
-                          }
-                        },
-                  child: Opacity(
-                    opacity: selectedUserType == null ? 0.5 : 1.0,
-                    child: Container(
-                      width: double.infinity,
-                      height: 56.h,
-                      decoration: BoxDecoration(
-                        color: AppColors.secondary,
-                        borderRadius: BorderRadius.circular(16.r),
-                      ),
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          // Centered text
-                          Text(
-                            AppStrings.next,
-                            style: TextStyle(
-                              fontFamily: 'Expo Arabic',
-                              fontSize: 18.sp,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.white,
-                            ),
-                          ),
-                          // Arrow icon on the left
-                          Positioned(
-                            left: 8.w,
-                            child: Container(
-                              width: 40.w,
-                              height: 40.h,
-                              decoration: BoxDecoration(
-                                color: AppColors.primaryLight.withValues(
-                                  alpha: 0.8,
-                                ),
-                                borderRadius: BorderRadius.circular(8.r),
-                              ),
-                              child: Center(
-                                child: Icon(
-                                  Icons.arrow_forward,
-                                  color: AppColors.white,
-                                  size: 20.sp,
-                                ),
+                child: Center(
+                  child: GestureDetector(
+                    onTap: selectedUserType == null
+                        ? null
+                        : () {
+                            if (selectedUserType == 'doctor') {
+                              Get.toNamed(AppRoutes.doctorLogin);
+                            } else if (selectedUserType == 'receptionist') {
+                              Get.toNamed(AppRoutes.receptionLogin);
+                            }
+                          },
+                    child: Opacity(
+                      opacity: selectedUserType == null ? 0.5 : 1.0,
+                      child: Container(
+                        width: 300.w, // match the buttons above
+                        height: 56.h,
+                        decoration: BoxDecoration(
+                          color: AppColors.secondary,
+                          borderRadius: BorderRadius.circular(16.r),
+                        ),
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            // Centered text
+                            Text(
+                              AppStrings.next,
+                              style: TextStyle(
+                                fontSize: 18.sp,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.white,
                               ),
                             ),
-                          ),
-                        ],
+                            // Arrow icon on the left
+                            Positioned(
+                              left: 8.w,
+                              child: Container(
+                                width: 40.w,
+                                height: 40.h,
+                                decoration: BoxDecoration(
+                                  color: AppColors.primaryLight.withValues(
+                                    alpha: 0.8,
+                                  ),
+                                  borderRadius: BorderRadius.circular(8.r),
+                                ),
+                                child: Center(
+                                  child: Icon(
+                                    Icons.arrow_forward,
+                                    color: AppColors.white,
+                                    size: 20.sp,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -204,7 +204,6 @@ class _UserSelectionScreenState extends State<UserSelectionScreen> {
           label,
           textAlign: TextAlign.center,
           style: TextStyle(
-            fontFamily: 'Expo Arabic',
             fontSize: 18.sp,
             fontWeight: FontWeight.w600,
             color: isSelected

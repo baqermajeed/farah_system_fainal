@@ -16,6 +16,7 @@ import 'package:frontend_desktop/views/reception_home_screen.dart';
 import 'package:frontend_desktop/views/working_hours_page.dart';
 import 'package:frontend_desktop/views/appointments_screen.dart';
 import 'package:frontend_desktop/controllers/auth_controller.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 void main() async {
@@ -46,7 +47,10 @@ class MyApp extends StatelessWidget {
           theme: ThemeData(
             primaryColor: AppColors.primary,
             scaffoldBackgroundColor: AppColors.background,
-            fontFamily: 'Expo Arabic',
+            // Global font: Cairo (Google Fonts)
+            fontFamily: GoogleFonts.cairo().fontFamily,
+            textTheme: GoogleFonts.cairoTextTheme(),
+            primaryTextTheme: GoogleFonts.cairoTextTheme(),
             colorScheme: ColorScheme.fromSeed(
               seedColor: AppColors.primary,
               primary: AppColors.primary,

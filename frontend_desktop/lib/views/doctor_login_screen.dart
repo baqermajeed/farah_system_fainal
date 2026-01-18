@@ -116,7 +116,6 @@ class _DoctorLoginScreenState extends State<DoctorLoginScreen> {
                     Text(
                       AppStrings.login,
                       style: TextStyle(
-                        fontFamily: 'Expo Arabic',
                         fontSize: 22.sp,
                         fontWeight: FontWeight.bold,
                         color: AppColors.textPrimary,
@@ -124,60 +123,71 @@ class _DoctorLoginScreenState extends State<DoctorLoginScreen> {
                     ),
                     SizedBox(height: 24.h),
                     // Username field
-                    CustomTextField(
-                      labelText: AppStrings.doctorName,
-                      hintText: 'baqer121',
-                      controller: _usernameController,
+                    Center(
+                      child: SizedBox(
+                        width: 300.w,
+                        child: CustomTextField(
+                          labelText: AppStrings.doctorName,
+                          hintText: 'baqer121',
+                          controller: _usernameController,
+                        ),
+                      ),
                     ),
                     SizedBox(height: 16.h),
                     // Password field
-                    CustomTextField(
-                      labelText: AppStrings.password,
-                      hintText: '••••••••',
-                      controller: _passwordController,
-                      obscureText: true,
+                    Center(
+                      child: SizedBox(
+                        width: 300.w,
+                        child: CustomTextField(
+                          labelText: AppStrings.password,
+                          hintText: '••••••••',
+                          controller: _passwordController,
+                          obscureText: true,
+                        ),
+                      ),
                     ),
                     SizedBox(height: 24.h),
                     // Login button
                     Obx(
-                      () => Container(
-                        width: double.infinity,
-                        height: 50.h,
-                        decoration: BoxDecoration(
-                          color: _authController.isLoading.value
-                              ? AppColors.textHint
-                              : AppColors.secondary,
-                          borderRadius: BorderRadius.circular(16.r),
-                        ),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: _authController.isLoading.value
-                                ? null
-                                : _handleLogin,
+                      () => Center(
+                        child: Container(
+                          width: 300.w,
+                          height: 50.h,
+                          decoration: BoxDecoration(
+                            color: _authController.isLoading.value
+                                ? AppColors.textHint
+                                : AppColors.secondary,
                             borderRadius: BorderRadius.circular(16.r),
-                            child: Center(
-                              child: _authController.isLoading.value
-                                  ? SizedBox(
-                                      width: 20.w,
-                                      height: 20.h,
-                                      child: const CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        valueColor:
-                                            AlwaysStoppedAnimation<Color>(
-                                              AppColors.white,
-                                            ),
+                          ),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: _authController.isLoading.value
+                                  ? null
+                                  : _handleLogin,
+                              borderRadius: BorderRadius.circular(16.r),
+                              child: Center(
+                                child: _authController.isLoading.value
+                                    ? SizedBox(
+                                        width: 20.w,
+                                        height: 20.h,
+                                        child: const CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                            AppColors.white,
+                                          ),
+                                        ),
+                                      )
+                                    : Text(
+                                        AppStrings.login,
+                                        style: TextStyle(
+                                          fontSize: 16.sp,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.white,
+                                        ),
                                       ),
-                                    )
-                                  : Text(
-                                      AppStrings.login,
-                                      style: TextStyle(
-                                        fontFamily: 'Expo Arabic',
-                                        fontSize: 16.sp,
-                                        fontWeight: FontWeight.w600,
-                                        color: AppColors.white,
-                                      ),
-                                    ),
+                              ),
                             ),
                           ),
                         ),

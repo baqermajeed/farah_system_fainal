@@ -563,7 +563,6 @@ class _AddPatientScreenState extends State<AddPatientScreen> {
                                   : Text(
                                       AppStrings.addButton,
                                       style: TextStyle(
-                                        fontFamily: 'Expo Arabic',
                                         fontSize: 16.sp,
                                         fontWeight: FontWeight.w600,
                                         color: AppColors.white,

@@ -173,7 +173,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
 
   Widget _buildTopBar() {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 40.w, vertical: 20.h),
+      padding: EdgeInsets.only(left: 0, right: 40.w, top: 20.h, bottom: 20.h),
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
@@ -184,136 +184,132 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
           ),
         ],
       ),
-      child: Column(
+      child: Stack(
         children: [
-          // First Row: Logo, Center Title, Profile
-          Row(
+          // Main content column
+          Column(
             children: [
-              // Logo in top left
-              Image.asset(
-                'assets/images/logo.png',
-                width: 50.w,
-                height: 50.h,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    width: 50.w,
-                    height: 50.h,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.blue,
+              // First Row: Center Title, Profile (without logo)
+              Row(
+                children: [
+                  SizedBox(width: 200.w), // Space for logo
+                  const Spacer(),
+
+                  // Center Title
+                  Text(
+                    'الصفحة الرئيسية',
+                    style: TextStyle(
+                      fontSize: 24.sp,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primary,
                     ),
-                    child: const Icon(
-                      Icons.local_hospital,
-                      color: Colors.white,
-                    ),
-                  );
-                },
-              ),
+                  ),
 
-              const Spacer(),
+                  const Spacer(),
 
-              // Center Title
-              Text(
-                'الصفحة الرئيسية',
-                style: TextStyle(
-                  fontSize: 24.sp,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primary,
-                ),
-              ),
-
-              const Spacer(),
-
-              // Right Side - Profile Section
-              GestureDetector(
-                onTap: () {
-                  Get.toNamed(AppRoutes.doctorProfile);
-                },
-                child: Row(
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      mainAxisAlignment: MainAxisAlignment.center,
+                  // Right Side - Profile Section
+                  GestureDetector(
+                    onTap: () {
+                      Get.toNamed(AppRoutes.doctorProfile);
+                    },
+                    child: Row(
                       children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Obx(() {
+                              final user = _authController.currentUser.value;
+                              final userName = user?.name ?? 'مهند المالكي';
+                              return Text(
+                                'د. $userName',
+                                style: TextStyle(
+                                  fontSize: 16.sp,
+                                  fontWeight: FontWeight.bold,
+                                  color: const Color(0xFF1A1A1A),
+                                ),
+                              );
+                            }),
+                          ],
+                        ),
+                        SizedBox(width: 12.w),
                         Obx(() {
                           final user = _authController.currentUser.value;
-                          return Text(
-                            user?.name ?? 'د. مهند المالكي',
-                            style: TextStyle(
-                              fontSize: 16.sp,
-                              fontWeight: FontWeight.bold,
-                              color: const Color(0xFF1A1A1A),
+                          final imageUrl = user?.imageUrl;
+                          final validImageUrl = ImageUtils.convertToValidUrl(
+                            imageUrl,
+                          );
+
+                          return Container(
+                            width: 70.w, // 30 * 2 + 5 * 2 = 70
+                            height: 70.h,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: const Color(0xFF649FCC),
+                                width: 2,
+                              ),
+                            ),
+                            child: CircleAvatar(
+                              radius: 30.r,
+                              backgroundColor: AppColors.primaryLight,
+                              child:
+                                  validImageUrl != null &&
+                                      ImageUtils.isValidImageUrl(validImageUrl)
+                                  ? ClipOval(
+                                      child: CachedNetworkImage(
+                                        imageUrl: validImageUrl,
+                                        fit: BoxFit.cover,
+                                        width: 60.w,
+                                        height: 60.h,
+                                        fadeInDuration: Duration.zero,
+                                        fadeOutDuration: Duration.zero,
+                                        placeholder: (context, url) => Container(
+                                          color: AppColors.primaryLight,
+                                          child: Icon(
+                                            Icons.person,
+                                            color: AppColors.primary,
+                                            size: 30.sp,
+                                          ),
+                                        ),
+                                        errorWidget: (context, url, error) {
+                                          final name =
+                                              user?.name ?? 'مهند المالكي';
+                                          return Container(
+                                            color: AppColors.primaryLight,
+                                            child: Text(
+                                              name.isNotEmpty ? name[0] : 'د',
+                                              style: TextStyle(
+                                                color: AppColors.primary,
+                                                fontSize: 22.sp,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    )
+                                  : Text(
+                                      user?.name.isNotEmpty == true
+                                          ? user!.name[0]
+                                          : 'د',
+                                      style: TextStyle(
+                                        color: AppColors.primary,
+                                        fontSize: 22.sp,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
                             ),
                           );
                         }),
                       ],
                     ),
-                    SizedBox(width: 12.w),
-                    Obx(() {
-                      final user = _authController.currentUser.value;
-                      final imageUrl = user?.imageUrl;
-                      final validImageUrl = ImageUtils.convertToValidUrl(
-                        imageUrl,
-                      );
-
-                      return CircleAvatar(
-                        radius: 30.r,
-                        backgroundColor: AppColors.primaryLight,
-                        child:
-                            validImageUrl != null &&
-                                ImageUtils.isValidImageUrl(validImageUrl)
-                            ? ClipOval(
-                                child: CachedNetworkImage(
-                                  imageUrl: validImageUrl,
-                                  fit: BoxFit.cover,
-                                  width: 60.w,
-                                  height: 60.h,
-                                  fadeInDuration: Duration.zero,
-                                  fadeOutDuration: Duration.zero,
-                                  placeholder: (context, url) => Container(
-                                    color: AppColors.primaryLight,
-                                    child: Icon(
-                                      Icons.person,
-                                      color: AppColors.primary,
-                                      size: 30.sp,
-                                    ),
-                                  ),
-                                  errorWidget: (context, url, error) {
-                                    final name =
-                                        user?.name ?? 'د. مهند المالكي';
-                                    return Container(
-                                      color: AppColors.primaryLight,
-                                      child: Text(
-                                        name.isNotEmpty ? name[0] : 'د',
-                                        style: TextStyle(
-                                          color: AppColors.primary,
-                                          fontSize: 22.sp,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              )
-                            : Text(
-                                user?.name.isNotEmpty == true
-                                    ? user!.name[0]
-                                    : 'د',
-                                style: TextStyle(
-                                  color: AppColors.primary,
-                                  fontSize: 22.sp,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                      );
-                    }),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
-          ),
 
-          SizedBox(height: 20.h),
+              SizedBox(height: 20.h),
 
           // Second Row: Icons and Search Bar
           Row(
@@ -375,6 +371,32 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                 ),
               ),
             ],
+          ),
+        ],
+        ),
+          // Logo positioned absolutely in top left
+          Positioned(
+            left: 0,
+            top: 0,
+            child: Image.asset(
+              'assets/images/tooth-whitening.png',
+              width: 120.w,
+              height: 200.h,
+              errorBuilder: (context, error, stackTrace) {
+                return Container(
+                  width: 200.w,
+                  height: 200.h,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.blue,
+                  ),
+                  child: const Icon(
+                    Icons.local_hospital,
+                    color: Colors.white,
+                  ),
+                );
+              },
+            ),
           ),
         ],
       ),
@@ -495,7 +517,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
           // Tabs
           Container(
             decoration: BoxDecoration(
-              color: AppColors.white,
+              color: const Color(0xFFF4FEFF),
               borderRadius: BorderRadius.circular(16.r),
               border: Border.all(color: Colors.grey.withOpacity(0.2), width: 1),
             ),
@@ -595,7 +617,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
 
       return Container(
         decoration: BoxDecoration(
-          color: AppColors.white,
+          color: const Color(0xFFF4FEFF),
           borderRadius: BorderRadius.circular(12.r),
         ),
         child: Column(
@@ -1106,242 +1128,193 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                       ),
                       child: Row(
                         children: [
-                          // Patient Image
+                          // QR Code (on the left)
+                          Row(
+                            children: [
+                              // QR Code (clickable)
+                              GestureDetector(
+                                onTap: () {
+                                  _showQrCodeDialog(
+                                    context,
+                                    patient.id,
+                                  );
+                                },
+                                child: Container(
+                                  width: 120.w,
+                                  height: 120.w,
+                                  padding: EdgeInsets.all(8.w),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(8.r),
+                                  ),
+                                  child: QrImageView(
+                                    data: patient.id,
+                                    version: QrVersions.auto,
+                                    size: 104.w,
+                                    backgroundColor: Colors.white,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(width: 8.w),
+                              // Edit treatment type button
+                              GestureDetector(
+                                onTap: () {
+                                  _showTreatmentTypeDialog(
+                                    context,
+                                    patient,
+                                  );
+                                },
+                                child: Container(
+                                  width: 40.w,
+                                  height: 40.w,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primaryLight,
+                                    borderRadius: BorderRadius.circular(8.r),
+                                  ),
+                                  child: Icon(
+                                    Icons.edit,
+                                    color: AppColors.primary,
+                                    size: 20.sp,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          Spacer(),
+                          // Patient Details (Text only) - same height as image
                           Container(
-                            width: 110.w,
-                            height: 156.h,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(8.r),
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(8.r),
-                              child: patient.imageUrl != null
-                                  ? Image.network(
-                                      patient.imageUrl!,
-                                      width: 110.w,
-                                      height: 156.h,
-                                      fit: BoxFit.cover,
-                                      errorBuilder:
-                                          (context, error, stackTrace) {
-                                            return Container(
-                                              color: AppColors.primaryLight,
-                                              child: Center(
-                                                child: Text(
-                                                  patient.name.isNotEmpty
-                                                      ? patient.name[0]
-                                                      : '?',
-                                                  style: TextStyle(
-                                                    color: AppColors.primary,
-                                                    fontSize: 40.sp,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                ),
-                                              ),
-                                            );
-                                          },
-                                    )
-                                  : Container(
-                                      color: AppColors.primaryLight,
-                                      child: Center(
-                                        child: Text(
-                                          patient.name.isNotEmpty
-                                              ? patient.name[0]
-                                              : '?',
-                                          style: TextStyle(
-                                            color: AppColors.primary,
-                                            fontSize: 40.sp,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
+                            height: 145.h,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                // Name at the top
+                                Text(
+                                  'الاسم : ${patient.name}',
+                                  style: TextStyle(
+                                    fontSize: 14.sp,
+                                    fontWeight: FontWeight.w700,
+                                    color: const Color(0xFF649FCC),
+                                  ),
+                                  textAlign: TextAlign.right,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  'العمر : ${patient.age} سنة',
+                                  style: TextStyle(
+                                    fontSize: 12.sp,
+                                    fontWeight: FontWeight.w600,
+                                    color: const Color(0xFF505558),
+                                  ),
+                                  textAlign: TextAlign.right,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  'الجنس: ${patient.gender == 'male'
+                                      ? 'ذكر'
+                                      : patient.gender == 'female'
+                                      ? 'أنثى'
+                                      : patient.gender}',
+                                  style: TextStyle(
+                                    fontSize: 12.sp,
+                                    fontWeight: FontWeight.w600,
+                                    color: const Color(0xFF505558),
+                                  ),
+                                  textAlign: TextAlign.right,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  'رقم الهاتف : ${patient.phoneNumber}',
+                                  style: TextStyle(
+                                    fontSize: 12.sp,
+                                    fontWeight: FontWeight.w600,
+                                    color: const Color(0xFF505558),
+                                  ),
+                                  textAlign: TextAlign.right,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  'المدينة : ${patient.city}',
+                                  style: TextStyle(
+                                    fontSize: 12.sp,
+                                    fontWeight: FontWeight.w600,
+                                    color: const Color(0xFF505558),
+                                  ),
+                                  textAlign: TextAlign.right,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                // Last item at the bottom
+                                Text(
+                                  'نوع العلاج : ${patient.treatmentHistory != null && patient.treatmentHistory!.isNotEmpty ? patient.treatmentHistory!.last : 'لا يوجد'}',
+                                  style: TextStyle(
+                                    fontSize: 12.sp,
+                                    fontWeight: FontWeight.w600,
+                                    color: const Color(0xFF505558),
+                                  ),
+                                  textAlign: TextAlign.right,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
                             ),
                           ),
-                          SizedBox(width: 12.w),
-                          // Patient Details and QR Code
-                          Expanded(
-                            child: Padding(
-                              padding: EdgeInsets.only(
-                                left: 0.w,
-                                top: 6.h,
-                                bottom: 6.h,
+                          SizedBox(width: 20.w),
+                          // Patient Image (on the right - at the start from the right)
+                          Padding(
+                            padding: EdgeInsets.only(right: 4.w, top: 4.h, bottom: 4.h),
+                            child: Container(
+                              width: 110.w,
+                              height: 156.h,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8.r),
                               ),
-                              child: Column(
-                                children: [
-                                  // Name at the top
-                                  Align(
-                                    alignment: Alignment.centerRight,
-                                    child: Text(
-                                      'الاسم : ${patient.name}',
-                                      style: TextStyle(
-                                        fontSize: 14.sp,
-                                        fontWeight: FontWeight.w700,
-                                        color: const Color(0xFF649FCC),
-                                      ),
-                                      textAlign: TextAlign.right,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  SizedBox(height: 4.h),
-                                  // Row with details and QR code
-                                  Row(
-                                    children: [
-                                      // Patient Details column
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.end,
-                                          children: [
-                                            Align(
-                                              alignment: Alignment.centerRight,
-                                              child: Text(
-                                                'العمر : ${patient.age} سنة',
-                                                style: TextStyle(
-                                                  fontSize: 12.sp,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: const Color(
-                                                    0xFF505558,
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8.r),
+                                child: patient.imageUrl != null
+                                    ? Image.network(
+                                        patient.imageUrl!,
+                                        width: 110.w,
+                                        height: 156.h,
+                                        fit: BoxFit.cover,
+                                        errorBuilder:
+                                            (context, error, stackTrace) {
+                                              return Container(
+                                                color: AppColors.primaryLight,
+                                                child: Center(
+                                                  child: Text(
+                                                    patient.name.isNotEmpty
+                                                        ? patient.name[0]
+                                                        : '?',
+                                                    style: TextStyle(
+                                                      color: AppColors.primary,
+                                                      fontSize: 40.sp,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
                                                   ),
                                                 ),
-                                                textAlign: TextAlign.right,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
+                                              );
+                                            },
+                                      )
+                                    : Container(
+                                        color: AppColors.primaryLight,
+                                        child: Center(
+                                          child: Text(
+                                            patient.name.isNotEmpty
+                                                ? patient.name[0]
+                                                : '?',
+                                            style: TextStyle(
+                                              color: AppColors.primary,
+                                              fontSize: 40.sp,
+                                              fontWeight: FontWeight.bold,
                                             ),
-                                            SizedBox(height: 4.h),
-                                            Align(
-                                              alignment: Alignment.centerRight,
-                                              child: Text(
-                                                'الجنس: ${patient.gender == 'male'
-                                                    ? 'ذكر'
-                                                    : patient.gender == 'female'
-                                                    ? 'أنثى'
-                                                    : patient.gender}',
-                                                style: TextStyle(
-                                                  fontSize: 12.sp,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: const Color(
-                                                    0xFF505558,
-                                                  ),
-                                                ),
-                                                textAlign: TextAlign.right,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ),
-                                            SizedBox(height: 4.h),
-                                            Align(
-                                              alignment: Alignment.centerRight,
-                                              child: Text(
-                                                'رقم الهاتف : ${patient.phoneNumber}',
-                                                style: TextStyle(
-                                                  fontSize: 12.sp,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: const Color(
-                                                    0xFF505558,
-                                                  ),
-                                                ),
-                                                textAlign: TextAlign.right,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ),
-                                            SizedBox(height: 4.h),
-                                            Align(
-                                              alignment: Alignment.centerRight,
-                                              child: Text(
-                                                'المدينة : ${patient.city}',
-                                                style: TextStyle(
-                                                  fontSize: 12.sp,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: const Color(
-                                                    0xFF505558,
-                                                  ),
-                                                ),
-                                                textAlign: TextAlign.right,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ),
-                                            SizedBox(height: 4.h),
-                                            Align(
-                                              alignment: Alignment.centerRight,
-                                              child: Text(
-                                                'نوع العلاج : ${patient.treatmentHistory != null && patient.treatmentHistory!.isNotEmpty ? patient.treatmentHistory!.last : 'لا يوجد'}',
-                                                style: TextStyle(
-                                                  fontSize: 12.sp,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: const Color(
-                                                    0xFF505558,
-                                                  ),
-                                                ),
-                                                textAlign: TextAlign.right,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ),
-                                          ],
+                                          ),
                                         ),
                                       ),
-                                      SizedBox(width: 12.w),
-                                      // QR Code column
-                                      Column(
-                                        children: [
-                                          // QR Code (clickable)
-                                          GestureDetector(
-                                            onTap: () {
-                                              _showQrCodeDialog(
-                                                context,
-                                                patient.id,
-                                              );
-                                            },
-                                            child: Container(
-                                              width: 70.w,
-                                              height: 70.w,
-                                              padding: EdgeInsets.all(8.w),
-                                              decoration: BoxDecoration(
-                                                color: Colors.white,
-                                                borderRadius:
-                                                    BorderRadius.circular(8.r),
-                                              ),
-                                              child: QrImageView(
-                                                data: patient.id,
-                                                version: QrVersions.auto,
-                                                size: 54.w,
-                                                backgroundColor: Colors.white,
-                                              ),
-                                            ),
-                                          ),
-                                          SizedBox(height: 8.h),
-                                          // Edit treatment type button
-                                          GestureDetector(
-                                            onTap: () {
-                                              _showTreatmentTypeDialog(
-                                                context,
-                                                patient,
-                                              );
-                                            },
-                                            child: Container(
-                                              width: 40.w,
-                                              height: 40.w,
-                                              decoration: BoxDecoration(
-                                                color: AppColors.primaryLight,
-                                                borderRadius:
-                                                    BorderRadius.circular(8.r),
-                                              ),
-                                              child: Icon(
-                                                Icons.edit,
-                                                color: AppColors.primary,
-                                                size: 20.sp,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ],
                               ),
                             ),
                           ),
@@ -1356,11 +1329,11 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                     sliver: SliverPersistentHeader(
                       pinned: true,
                       delegate: _SliverTabBarDelegate(
-                        height: 48.h,
+                        height: 40.h,
                         child: Container(
-                          height: 48.h,
+                          height: 40.h,
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: const Color(0xFFF4FEFF),
                             borderRadius: BorderRadius.circular(16.r),
                             border: Border.all(
                               color: Colors.grey.withOpacity(0.2),
@@ -1393,9 +1366,9 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                               fontWeight: FontWeight.w600,
                             ),
                             tabs: const [
-                              Tab(text: 'السجلات'),
+                              Tab(text: 'معرض الصور'),
                               Tab(text: 'المواعيد'),
-                              Tab(text: 'المعرض'),
+                              Tab(text: 'السجلات'),
                             ],
                           ),
                         ),
@@ -1411,9 +1384,9 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                     child: TabBarView(
                       controller: _tabController,
                       children: [
-                        _buildRecordsTab(patient),
-                        _buildAppointmentsTab(patient),
                         _buildGalleryTab(patient),
+                        _buildAppointmentsTab(patient),
+                        _buildRecordsTab(patient),
                       ],
                     ),
                   ),
@@ -2491,124 +2464,32 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
 
   Widget _buildRightSidebarNavigation() {
     return Container(
-      width: 120.w,
+      width: 110.w,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            const Color(0xFF1E3A5F), // Dark blue
-            const Color(0xFF2C5282), // Medium blue
-          ],
-        ),
+        color: const Color(0xFF649FCC),
       ),
       child: Column(
         children: [
-          SizedBox(height: 40.h),
+          SizedBox(height: 50.h),
           // Logo Section
-          Column(
-            children: [
-              // Logo Circle with Tooth Logo Image
-              Container(
-                width: 80.w,
-                height: 80.h,
-                decoration: BoxDecoration(
-                  color: AppColors.primary,
-                  shape: BoxShape.circle,
-                ),
-                child: ClipOval(
-                  child: Image.asset(
-                    'assets/images/logo.png',
-                    width: 80.w,
-                    height: 80.h,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          // White Tooth
-                          Icon(
-                            Icons.medical_services,
-                            color: Colors.white,
-                            size: 40.sp,
-                          ),
-                          // Stars around
-                          Positioned(
-                            top: 10.h,
-                            left: 10.w,
-                            child: Icon(
-                              Icons.star,
-                              color: Colors.white,
-                              size: 12.sp,
-                            ),
-                          ),
-                          Positioned(
-                            top: 10.h,
-                            right: 10.w,
-                            child: Icon(
-                              Icons.star,
-                              color: Colors.white,
-                              size: 12.sp,
-                            ),
-                          ),
-                          Positioned(
-                            bottom: 15.h,
-                            left: 15.w,
-                            child: Icon(
-                              Icons.star,
-                              color: Colors.white,
-                              size: 10.sp,
-                            ),
-                          ),
-                          Positioned(
-                            bottom: 15.h,
-                            right: 15.w,
-                            child: Icon(
-                              Icons.star,
-                              color: Colors.white,
-                              size: 10.sp,
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-              ),
-              SizedBox(height: 15.h),
-              // FARAH Text
-              Text(
-                'FARAH',
-                style: TextStyle(
-                  fontSize: 20.sp,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                  letterSpacing: 2,
-                ),
-              ),
-              SizedBox(height: 5.h),
-              Text(
-                'Dental Clinic',
-                style: TextStyle(
-                  fontSize: 12.sp,
-                  color: Colors.white70,
-                  letterSpacing: 1,
-                ),
-              ),
-            ],
+          Image.asset(
+            'assets/images/logo.png',
+            width: 140.w,
+            height: 140.h,
+            fit: BoxFit.contain,
           ),
 
-          SizedBox(height: 40.h),
+          
 
           // Vertical Text
           Expanded(
             child: RotatedBox(
-              quarterTurns: 1,
+              quarterTurns: 3,
               child: Center(
                 child: Text(
                   'مركز فرح التخصصي لطب الاسنان',
                   style: TextStyle(
-                    fontSize: 16.sp,
+                    fontSize: 26.sp,
                     color: Colors.white,
                     fontWeight: FontWeight.w500,
                   ),
@@ -2617,17 +2498,16 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
             ),
           ),
 
-          SizedBox(height: 40.h),
+          SizedBox(height: 25.h),
 
           // Bottom Icons
           Column(
             children: [
               // Tooth Logo at bottom
               Image.asset(
-                'assets/images/tooth_logo.png',
-                width: 40.w,
-                height: 40.h,
-                color: Colors.white,
+                'assets/images/happy 2.png',
+                width: 80.w,
+                height: 80.h,
                 errorBuilder: (context, error, stackTrace) {
                   return Icon(
                     Icons.medical_services_outlined,
@@ -2636,21 +2516,12 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                   );
                 },
               ),
-              SizedBox(height: 20.h),
-              IconButton(
-                icon: Icon(
-                  Icons.arrow_forward_ios,
-                  color: Colors.white,
-                  size: 20.sp,
-                ),
-                onPressed: () {
-                  _authController.logout();
-                },
-              ),
+              
+             
             ],
           ),
 
-          SizedBox(height: 40.h),
+          SizedBox(height: 100.h),
         ],
       ),
     );

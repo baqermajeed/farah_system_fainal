@@ -498,7 +498,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
           // Tabs
           Container(
             decoration: BoxDecoration(
-              color: AppColors.white,
+              color: const Color(0xFFF4FEFF),
               borderRadius: BorderRadius.circular(16.r),
               border: Border.all(color: Colors.grey.withOpacity(0.2), width: 1),
             ),
@@ -598,7 +598,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
 
       return Container(
         decoration: BoxDecoration(
-          color: AppColors.white,
+          color: const Color(0xFFF4FEFF),
           borderRadius: BorderRadius.circular(12.r),
         ),
         child: Column(
@@ -1363,7 +1363,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                         child: Container(
                           height: 48.h,
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: const Color(0xFFF4FEFF),
                             borderRadius: BorderRadius.circular(16.r),
                             border: Border.all(
                               color: Colors.grey.withOpacity(0.2),
@@ -2496,14 +2496,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
     return Container(
       width: 120.w,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            const Color(0xFF1E3A5F), // Dark blue
-            const Color(0xFF2C5282), // Medium blue
-          ],
-        ),
+        color: const Color(0xFF649FCC),
       ),
       child: Column(
         children: [
