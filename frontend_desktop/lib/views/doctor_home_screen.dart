@@ -28,6 +28,7 @@ import 'package:frontend_desktop/models/appointment_model.dart';
 import 'package:frontend_desktop/models/implant_stage_model.dart';
 import 'package:frontend_desktop/core/utils/image_utils.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 // Delegate for sticky TabBar
 class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
@@ -441,7 +442,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                     ),
                     child: Center(
                       child: Text(
-                        isAppointmentsView ? 'سجل المواعيد' : 'ملف المريض',
+                        isAppointmentsView ? 'ســـــجل المواعيـــــد' : 'ملـــــف الـــــمريض',
                         style: TextStyle(
                           fontSize: 22.sp,
                           fontWeight: FontWeight.bold,
@@ -529,7 +530,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                   ),
                   child: Center(
                     child: Text(
-                      'جميع المرضى',
+                      'جميـــــع المرضـــــى',
                       style: TextStyle(
                         fontSize: 22.sp,
                         fontWeight: FontWeight.bold,
@@ -996,7 +997,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
             child: Row(
               children: [
                 Text(
-                  'جميع المرضى',
+                  'جميـــــع المرضـــــى',
                   style: TextStyle(
                     fontSize: 22.sp,
                     fontWeight: FontWeight.bold,
@@ -1107,7 +1108,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                             ),
                             TextSpan(
                               text: patient.name,
-                              style: TextStyle(
+                              style: GoogleFonts.cairo(
                                 color: AppColors.primary,
                                 fontSize: 14.sp,
                                 fontWeight: FontWeight.w600,
@@ -1336,7 +1337,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                 // Name at the top
                                 Text(
                                   'الاسم : ${patient.name}',
-                                  style: TextStyle(
+                                  style: GoogleFonts.cairo(
                                     fontSize: 14.sp,
                                     fontWeight: FontWeight.w700,
                                     color: const Color(0xFF649FCC),
@@ -5964,8 +5965,11 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
 
                 await _authController.checkLoggedInUser(navigate: false);
 
-                if (context.mounted) {
-                  Navigator.of(context).pop();
+                // Close dialog first
+                Navigator.of(dialogContext).pop();
+                
+                // Show success message after closing
+                Future.delayed(const Duration(milliseconds: 100), () {
                   Get.snackbar(
                     'نجح',
                     'تم حفظ التغييرات بنجاح',
@@ -5973,8 +5977,12 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                     backgroundColor: AppColors.success,
                     colorText: AppColors.white,
                   );
-                }
+                });
               } catch (e) {
+                // Don't close dialog on error, just show error message
+                setDialogState(() {
+                  _isLoading = false;
+                });
                 Get.snackbar(
                   'خطأ',
                   'فشل حفظ التغييرات: ${e.toString()}',
@@ -5982,12 +5990,6 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                   backgroundColor: AppColors.error,
                   colorText: AppColors.white,
                 );
-              } finally {
-                if (context.mounted) {
-                  setDialogState(() {
-                    _isLoading = false;
-                  });
-                }
               }
             }
             

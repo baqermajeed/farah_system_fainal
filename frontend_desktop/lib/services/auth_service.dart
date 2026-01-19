@@ -193,8 +193,12 @@ class AuthService {
   }
 
   // Helper to get headers with token
-  Future<Map<String, String>> _getHeaders({bool includeAuth = false}) async {
+  Future<Map<String, String>> _getHeaders({bool includeAuth = false, bool includeContentType = false}) async {
     final headers = {'Accept': 'application/json'};
+
+    if (includeContentType) {
+      headers['Content-Type'] = 'application/json';
+    }
 
     if (includeAuth) {
       final token = await _api.getToken();
@@ -277,12 +281,23 @@ class AuthService {
       print('👤 =======================================');
 
       final payload = {'name': name, 'phone': phone};
+      final headersMap = await _getHeaders(includeAuth: true, includeContentType: true);
+      final body = jsonEncode(payload);
+      
+      // Convert Map to proper headers format
+      final headers = Map<String, String>.from(headersMap);
+      
+      print('👤 Headers: $headers');
+      print('👤 Body: $body');
+      print('👤 Body type: ${body.runtimeType}');
+      print('👤 Body length: ${body.length}');
 
       final response = await http
           .put(
             uri,
-            headers: await _getHeaders(includeAuth: true),
-            body: jsonEncode(payload),
+            headers: headers,
+            body: body,
+            encoding: utf8,
           )
           .timeout(
             const Duration(seconds: 15),
