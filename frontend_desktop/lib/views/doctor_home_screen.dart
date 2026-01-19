@@ -420,37 +420,50 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
           Expanded(
             child: Column(
               children: [
-                // Header Row
-                Container(
-                  width: double.infinity,
-                  height: 50.h,
-                  decoration: BoxDecoration(
-                    // No fill, only bottom stroke and corner radius
-                    color: Colors.transparent,
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(20.r),
-                    ),
-                    border: const Border(
-                      bottom: BorderSide(
-                        color: Color(0xFF649FCC),
-                        width: 1,
+                // Header Row (title changes based on current view)
+                Obx(() {
+                  final isAppointmentsView = _showAppointments.value;
+                  return Container(
+                    width: double.infinity,
+                    height: 50.h,
+                    decoration: BoxDecoration(
+                      // No fill, only bottom stroke and corner radius
+                      color: Colors.transparent,
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(20.r),
+                      ),
+                      border: const Border(
+                        bottom: BorderSide(
+                          color: Color(0xFF649FCC),
+                          width: 1,
+                        ),
                       ),
                     ),
-                  ),
-                  child: Center(
-                    child: Text(
-                      'ملف المريض',
-                      style: TextStyle(
-                        fontSize: 22.sp,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.primary,
+                    child: Center(
+                      child: Text(
+                        isAppointmentsView ? 'سجل المواعيد' : 'ملف المريض',
+                        style: TextStyle(
+                          fontSize: 22.sp,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.primary,
+                        ),
                       ),
                     ),
-                  ),
-                ),
-                // Patient File Content
+                  );
+                }),
+                // Main Content: patient file or appointments table
                 Expanded(
                   child: Obx(() {
+                    if (_showAppointments.value) {
+                      // Show appointments history/table in place of patient file
+                      return ClipRRect(
+                        borderRadius: BorderRadius.only(
+                          bottomLeft: Radius.circular(20.r),
+                        ),
+                        child: _buildAppointmentsTable(),
+                      );
+                    }
+
                     final selectedPatient =
                         _patientController.selectedPatient.value;
                     if (selectedPatient != null) {
@@ -940,6 +953,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                               onTap: () {
                                 if (patient != null) {
                                   _patientController.selectPatient(patient);
+                                  _showAppointments.value = false;
                                 }
                               },
                               child: Container(
@@ -1057,6 +1071,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
       return GestureDetector(
         onTap: () {
           _patientController.selectPatient(patient);
+          _showAppointments.value = false;
         },
         child: Container(
           margin: EdgeInsets.only(bottom: 12.h),
