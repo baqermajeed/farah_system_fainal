@@ -9,7 +9,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:frontend_desktop/core/constants/app_colors.dart';
 import 'package:frontend_desktop/core/constants/app_strings.dart';
-import 'package:frontend_desktop/core/routes/app_routes.dart';
 import 'package:frontend_desktop/core/widgets/custom_text_field.dart';
 import 'package:frontend_desktop/core/widgets/gender_selector.dart';
 import 'package:frontend_desktop/core/utils/operation_dialog.dart';
@@ -23,6 +22,7 @@ import 'package:frontend_desktop/controllers/working_hours_controller.dart';
 import 'package:frontend_desktop/controllers/implant_stage_controller.dart';
 import 'package:frontend_desktop/services/working_hours_service.dart';
 import 'package:frontend_desktop/services/doctor_service.dart';
+import 'package:frontend_desktop/services/auth_service.dart';
 import 'package:frontend_desktop/models/patient_model.dart';
 import 'package:frontend_desktop/models/appointment_model.dart';
 import 'package:frontend_desktop/models/implant_stage_model.dart';
@@ -326,7 +326,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
 
                   return GestureDetector(
                     onTap: () {
-                      Get.toNamed(AppRoutes.doctorProfile);
+                      _showDoctorProfileDialog(context);
                     },
                     child: Container(
                       width: 70.w,
@@ -667,40 +667,39 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Title
-          Text(
-            'جدول المواعيد',
-            style: TextStyle(
-              fontSize: 22.sp,
-              fontWeight: FontWeight.bold,
-              color: AppColors.primary,
-            ),
-          ),
-          SizedBox(height: 20.h),
+         
           // Tabs
           Container(
+            height: 37.h,
             decoration: BoxDecoration(
               color: const Color(0xFFF4FEFF),
-              borderRadius: BorderRadius.circular(16.r),
-              border: Border.all(color: Colors.grey.withOpacity(0.2), width: 1),
+              borderRadius: BorderRadius.circular(10.r),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x29649FCC), // 16% opacity of #649FCC
+                  blurRadius: 8,
+                  offset: Offset(0, 2),
+                ),
+              ],
             ),
             child: TabBar(
               controller: _appointmentsTabController,
+              padding: EdgeInsets.zero,
               indicator: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(16.r),
-                border: Border.all(color: AppColors.white, width: 2),
+                color: AppColors.primary.withOpacity(0.7),
+                borderRadius: BorderRadius.circular(10.r),
               ),
               indicatorSize: TabBarIndicatorSize.tab,
               dividerColor: Colors.transparent,
               labelColor: AppColors.white,
               unselectedLabelColor: AppColors.textSecondary,
               labelStyle: TextStyle(
-                fontSize: 14.sp,
+                fontSize: 16.sp,
                 fontWeight: FontWeight.bold,
               ),
               unselectedLabelStyle: TextStyle(
-                fontSize: 14.sp,
-                fontWeight: FontWeight.normal,
+                fontSize: 16.sp,
+                fontWeight: FontWeight.bold,
               ),
               tabs: const [
                 Tab(text: 'اليوم'),
@@ -779,73 +778,72 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
 
       return Container(
         decoration: BoxDecoration(
-          color: const Color(0xFFF4FEFF),
-          borderRadius: BorderRadius.circular(12.r),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16.r),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x29649FCC), // 16% من 649FCC
+              blurRadius: 10,
+              offset: Offset(0, 2),
+            ),
+          ],
         ),
         child: Column(
           children: [
             // Table Header
             Container(
-              padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+              padding: EdgeInsets.symmetric(horizontal: 32.w, vertical: 12.h),
               decoration: BoxDecoration(
-                color: AppColors.primaryLight.withOpacity(0.1),
+                color: Colors.white,
                 borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(12.r),
-                  topRight: Radius.circular(12.r),
+                  topLeft: Radius.circular(16.r),
+                  topRight: Radius.circular(16.r),
                 ),
               ),
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // اسم المريض (على اليمين)
-                  Expanded(
-                    flex: 3,
-                    child: Text(
-                      'اسم المريض',
-                      style: TextStyle(
-                        fontSize: 14.sp,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                      textAlign: TextAlign.right,
-                    ),
+                  // ترتيب الأعمدة من اليسار لليمين مع نفس المسافات مثل الصفوف
+                  SizedBox(
+                    width: 100.w,
+                    child: const SizedBox.shrink(), // عمود الزر بدون عنوان
                   ),
-                  // الموعد
-                  Expanded(
-                    flex: 2,
-                    child: Text(
-                      'الموعد',
-                      style: TextStyle(
-                        fontSize: 14.sp,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                  // رقم الهاتف
-                  Expanded(
-                    flex: 2,
+                  SizedBox(width: 60.w),
+                  SizedBox(
+                    width: 140.w,
                     child: Text(
                       'رقم الهاتف',
                       style: TextStyle(
-                        fontSize: 14.sp,
+                        fontSize: 16.sp,
                         fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
+                        color: const Color(0xFF76C6D1),
                       ),
                       textAlign: TextAlign.center,
                     ),
                   ),
-                  // زر العرض
-                  Expanded(
-                    flex: 1,
+                  SizedBox(width: 60.w),
+                  SizedBox(
+                    width: 140.w,
                     child: Text(
-                      'عرض',
+                      'الموعد',
                       style: TextStyle(
-                        fontSize: 14.sp,
+                        fontSize: 16.sp,
                         fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
+                        color: const Color(0xFF76C6D1),
                       ),
                       textAlign: TextAlign.center,
+                    ),
+                  ),
+                  SizedBox(width: 60.w),
+                  Expanded(
+                    child: Text(
+                      'اسم المريض',
+                      style: TextStyle(
+                        fontSize: 16.sp,
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF76C6D1),
+                      ),
+                      textAlign: TextAlign.right,
                     ),
                   ),
                 ],
@@ -887,102 +885,85 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
 
                   return Container(
                     padding: EdgeInsets.symmetric(
-                      horizontal: 16.w,
-                      vertical: 12.h,
+                      horizontal: 32.w,
+                      vertical: 10.h,
                     ),
-                    decoration: BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(
-                          color: Colors.grey.withOpacity(0.2),
-                          width: 1,
-                        ),
-                      ),
-                    ),
+                    margin: EdgeInsets.symmetric(vertical: 4.h), // مسافة 8 بين الصفوف (4 أعلى + 4 أسفل)
                     child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
+                        // العمود الرابع: زر عرض
+                        SizedBox(
+                          width: 100.w,
+                          height: 30.h,
+                          child: ElevatedButton(
+                            onPressed: () {
+                              if (patient != null) {
+                                _patientController.selectPatient(patient);
+                                _showAppointments.value = false;
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF76C6D1),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10.r),
+                              ),
+                              padding: EdgeInsets.zero,
+                            ),
+                            child: Text(
+                              'عرض',
+                              style: TextStyle(
+                                fontSize: 14.sp,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 60.w),
+                        // رقم الهاتف
+                        SizedBox(
+                          width: 140.w,
+                          child: Text(
+                            patientPhone,
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              color: const Color(0x99212F34),
+                            ),
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        SizedBox(width: 60.w),
+                        // الموعد
+                        SizedBox(
+                          width: 140.w,
+                          child: Text(
+                            appointmentText,
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              color: const Color(0x99212F34),
+                            ),
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        SizedBox(width: 60.w),
                         // اسم المريض (على اليمين)
                         Expanded(
-                          flex: 3,
                           child: Text(
                             patientName,
                             style: TextStyle(
                               fontSize: 14.sp,
-                              color: AppColors.textPrimary,
+                              color: const Color(0xFF649FCC),
                               fontWeight: FontWeight.w600,
                             ),
                             textAlign: TextAlign.right,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        // الموعد
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            appointmentText,
-                            style: TextStyle(
-                              fontSize: 14.sp,
-                              color: isLate
-                                  ? Colors.red
-                                  : AppColors.textPrimary,
-                            ),
-                            textAlign: TextAlign.center,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        // رقم الهاتف
-                        Expanded(
-                          flex: 2,
-                          child: Text(
-                            patientPhone,
-                            style: TextStyle(
-                              fontSize: 14.sp,
-                              color: AppColors.textPrimary,
-                            ),
-                            textAlign: TextAlign.center,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        // زر العرض
-                        Expanded(
-                          flex: 1,
-                          child: Center(
-                            child: GestureDetector(
-                              onTap: () {
-                                if (patient != null) {
-                                  _patientController.selectPatient(patient);
-                                  _showAppointments.value = false;
-                                }
-                              },
-                              child: Container(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 12.w,
-                                  vertical: 8.h,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary,
-                                  borderRadius: BorderRadius.circular(8.r),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppColors.primary.withOpacity(0.3),
-                                      blurRadius: 4,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: Text(
-                                  'عرض',
-                                  style: TextStyle(
-                                    fontSize: 12.sp,
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
-                            ),
                           ),
                         ),
                       ],
@@ -5690,6 +5671,1030 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
       _phoneController.dispose();
       _ageController.dispose();
     });
+  }
+
+  void _showDoctorProfileDialog(BuildContext context) {
+    final user = _authController.currentUser.value;
+    final imageUrl = user?.imageUrl;
+    final validImageUrl = ImageUtils.convertToValidUrl(imageUrl);
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            width: 400.w,
+            padding: EdgeInsets.all(24.w),
+            decoration: BoxDecoration(
+              color: AppColors.white,
+              borderRadius: BorderRadius.circular(20.r),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x29649FCC),
+                  blurRadius: 12,
+                  offset: Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header: title + close
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'الملف الشخصي',
+                      style: TextStyle(
+                        fontSize: 18.sp,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () => Navigator.of(dialogContext).pop(),
+                      child: Container(
+                        padding: EdgeInsets.all(6.w),
+                        decoration: BoxDecoration(
+                          color: AppColors.divider,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.close,
+                          size: 20.sp,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 24.h),
+                // Profile image
+                CircleAvatar(
+                  radius: 48.r,
+                  backgroundColor: AppColors.primaryLight,
+                  child: validImageUrl != null &&
+                          ImageUtils.isValidImageUrl(validImageUrl)
+                      ? ClipOval(
+                          child: CachedNetworkImage(
+                            imageUrl: validImageUrl,
+                            fit: BoxFit.cover,
+                            width: 96.w,
+                            height: 96.w,
+                            fadeInDuration: Duration.zero,
+                            fadeOutDuration: Duration.zero,
+                            placeholder: (context, url) =>
+                                Container(color: AppColors.primaryLight),
+                            errorWidget: (context, url, error) => Icon(
+                              Icons.person,
+                              size: 40.sp,
+                              color: AppColors.white,
+                            ),
+                          ),
+                        )
+                      : Icon(
+                          Icons.person,
+                          size: 40.sp,
+                          color: AppColors.white,
+                        ),
+                ),
+                SizedBox(height: 24.h),
+                // Info fields
+                _buildProfileInfoRow('الاسم', user?.name ?? ''),
+                SizedBox(height: 12.h),
+                _buildProfileInfoRow('رقم الهاتف', user?.phoneNumber ?? ''),
+                SizedBox(height: 24.h),
+                // Edit button
+                SizedBox(
+                  width: double.infinity,
+                  height: 45.h,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(dialogContext).pop();
+                      _showEditDoctorProfileDialog(context);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14.r),
+                      ),
+                    ),
+                    child: Text(
+                      'تعديل الملف الشخصي',
+                      style: TextStyle(
+                        fontSize: 16.sp,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(height: 12.h),
+                // Working hours button
+                SizedBox(
+                  width: double.infinity,
+                  height: 45.h,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(dialogContext).pop();
+                      _showWorkingHoursDialog(context);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary.withOpacity(0.8),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14.r),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.access_time,
+                          color: Colors.white,
+                          size: 20.sp,
+                        ),
+                        SizedBox(width: 8.w),
+                        Text(
+                          'أوقات العمل',
+                          style: TextStyle(
+                            fontSize: 16.sp,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                SizedBox(height: 12.h),
+                // Logout button
+                SizedBox(
+                  width: double.infinity,
+                  height: 45.h,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      Navigator.of(dialogContext).pop();
+                      await _authController.logout();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.error,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14.r),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.exit_to_app,
+                          color: Colors.white,
+                          size: 20.sp,
+                        ),
+                        SizedBox(width: 8.w),
+                        Text(
+                          AppStrings.logout,
+                          style: TextStyle(
+                            fontSize: 16.sp,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildProfileInfoRow(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 14.sp,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        SizedBox(height: 4.h),
+        Container(
+          width: double.infinity,
+          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
+          decoration: BoxDecoration(
+            color: AppColors.white,
+            borderRadius: BorderRadius.circular(12.r),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.divider,
+                blurRadius: 3,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          child: Text(
+            value.isEmpty ? '-' : value,
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              fontSize: 14.sp,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showEditDoctorProfileDialog(BuildContext context) {
+    final AuthService _authService = AuthService();
+    final TextEditingController _nameController = TextEditingController();
+    final TextEditingController _phoneController = TextEditingController();
+    
+    // Load current data
+    final user = _authController.currentUser.value;
+    _nameController.text = user?.name ?? '';
+    _phoneController.text = user?.phoneNumber ?? '';
+    
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            bool _isLoading = false;
+            
+            Future<void> _saveChanges() async {
+              if (_nameController.text.isEmpty) {
+                Get.snackbar(
+                  'خطأ',
+                  'يرجى إدخال الاسم',
+                  snackPosition: SnackPosition.TOP,
+                  backgroundColor: AppColors.error,
+                  colorText: AppColors.white,
+                );
+                return;
+              }
+
+              if (_phoneController.text.isEmpty) {
+                Get.snackbar(
+                  'خطأ',
+                  'يرجى إدخال رقم الهاتف',
+                  snackPosition: SnackPosition.TOP,
+                  backgroundColor: AppColors.error,
+                  colorText: AppColors.white,
+                );
+                return;
+              }
+
+              setDialogState(() {
+                _isLoading = true;
+              });
+
+              try {
+                await _authService.updateProfile(
+                  name: _nameController.text,
+                  phone: _phoneController.text,
+                );
+
+                await _authController.checkLoggedInUser(navigate: false);
+
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+                  Get.snackbar(
+                    'نجح',
+                    'تم حفظ التغييرات بنجاح',
+                    snackPosition: SnackPosition.TOP,
+                    backgroundColor: AppColors.success,
+                    colorText: AppColors.white,
+                  );
+                }
+              } catch (e) {
+                Get.snackbar(
+                  'خطأ',
+                  'فشل حفظ التغييرات: ${e.toString()}',
+                  snackPosition: SnackPosition.TOP,
+                  backgroundColor: AppColors.error,
+                  colorText: AppColors.white,
+                );
+              } finally {
+                if (context.mounted) {
+                  setDialogState(() {
+                    _isLoading = false;
+                  });
+                }
+              }
+            }
+            
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              child: Container(
+                width: 400.w,
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.9,
+                ),
+                padding: EdgeInsets.all(24.w),
+                decoration: BoxDecoration(
+                  color: AppColors.white,
+                  borderRadius: BorderRadius.circular(20.r),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x29649FCC),
+                      blurRadius: 12,
+                      offset: Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Header
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'تعديل الملف الشخصي',
+                            style: TextStyle(
+                              fontSize: 18.sp,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: () => Navigator.of(dialogContext).pop(),
+                            child: Container(
+                              padding: EdgeInsets.all(6.w),
+                              decoration: BoxDecoration(
+                                color: AppColors.divider,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.close,
+                                size: 20.sp,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 24.h),
+                      // Name field
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            AppStrings.name,
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          SizedBox(height: 8.h),
+                          CustomTextField(
+                            controller: _nameController,
+                            hintText: 'أدخل الاسم',
+                            textAlign: TextAlign.right,
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 24.h),
+                      // Phone field
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            AppStrings.phoneNumber,
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          SizedBox(height: 8.h),
+                          CustomTextField(
+                            controller: _phoneController,
+                            hintText: 'أدخل رقم الهاتف',
+                            textAlign: TextAlign.right,
+                            keyboardType: TextInputType.phone,
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 24.h),
+                      // Save button
+                      SizedBox(
+                        width: double.infinity,
+                        height: 45.h,
+                        child: ElevatedButton(
+                          onPressed: _isLoading ? null : _saveChanges,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14.r),
+                            ),
+                          ),
+                          child: _isLoading
+                              ? SizedBox(
+                                  width: 20.w,
+                                  height: 20.h,
+                                  child: const CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : Text(
+                                  'حفظ التغييرات',
+                                  style: TextStyle(
+                                    fontSize: 16.sp,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    ).then((_) {
+      _nameController.dispose();
+      _phoneController.dispose();
+    });
+  }
+
+  void _showWorkingHoursDialog(BuildContext context) {
+    final WorkingHoursController controller = Get.put(WorkingHoursController());
+    
+    String _convertTo12Hour(String time24) {
+      try {
+        final parts = time24.split(':');
+        if (parts.length < 2) return time24;
+
+        final hour = int.tryParse(parts[0]) ?? 0;
+        final minute = parts[1];
+
+        if (hour == 0) {
+          return '12:$minute ص';
+        } else if (hour < 12) {
+          return '$hour:$minute ص';
+        } else if (hour == 12) {
+          return '12:$minute م';
+        } else {
+          return '${hour - 12}:$minute م';
+        }
+      } catch (e) {
+        return time24;
+      }
+    }
+
+    Future<void> _selectTime(
+      BuildContext context,
+      int dayIndex,
+      String currentTime, {
+      required bool isStart,
+    }) async {
+      final parts = currentTime.split(':');
+      final initialTime = TimeOfDay(
+        hour: int.tryParse(parts[0]) ?? 9,
+        minute: int.tryParse(parts[1]) ?? 0,
+      );
+
+      final TimeOfDay? picked = await showTimePicker(
+        context: context,
+        initialTime: initialTime,
+        builder: (context, child) {
+          return Theme(
+            data: ThemeData.light().copyWith(
+              colorScheme: ColorScheme.light(primary: AppColors.primary),
+            ),
+            child: child!,
+          );
+        },
+      );
+
+      if (picked != null) {
+        final formattedTime =
+            '${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}';
+        if (isStart) {
+          controller.updateStartTime(dayIndex, formattedTime);
+        } else {
+          controller.updateEndTime(dayIndex, formattedTime);
+        }
+      }
+    }
+
+    Future<void> _onSave() async {
+      final result = await controller.saveWorkingHours();
+      if (result['ok'] == true) {
+        Get.snackbar(
+          'تم الحفظ',
+          result['message'] ?? 'تم حفظ أوقات العمل بنجاح',
+          backgroundColor: AppColors.primary,
+          colorText: Colors.white,
+          snackPosition: SnackPosition.TOP,
+        );
+      } else {
+        Get.snackbar(
+          'فشل الحفظ',
+          result['message'] ?? 'تعذر حفظ أوقات العمل',
+          backgroundColor: AppColors.error,
+          colorText: Colors.white,
+          snackPosition: SnackPosition.TOP,
+        );
+      }
+    }
+
+    Future<void> _onDeleteAll() async {
+      final confirmed = await Get.dialog<bool>(
+        AlertDialog(
+          title: Text('حذف جميع أوقات العمل'),
+          content: Text('هل أنت متأكد؟ سيتم حذف جميع أوقات العمل'),
+          actions: [
+            TextButton(
+              onPressed: () => Get.back(result: false),
+              child: Text('إلغاء'),
+            ),
+            TextButton(
+              onPressed: () => Get.back(result: true),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.error,
+              ),
+              child: Text('حذف'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed == true) {
+        final result = await controller.deleteAllWorkingHours();
+        if (result['ok'] == true) {
+          Get.snackbar(
+            'تم الحذف',
+            result['message'] ?? 'تم حذف جميع أوقات العمل بنجاح',
+            backgroundColor: AppColors.primary,
+            colorText: Colors.white,
+            snackPosition: SnackPosition.TOP,
+          );
+        } else {
+          Get.snackbar(
+            'فشل الحذف',
+            result['message'] ?? 'تعذر حذف أوقات العمل',
+            backgroundColor: AppColors.error,
+            colorText: Colors.white,
+            snackPosition: SnackPosition.TOP,
+          );
+        }
+      }
+    }
+
+    Widget _buildTimeRow(
+      BuildContext context,
+      int dayIndex, {
+      required String label,
+      required String value,
+      required bool isStart,
+    }) {
+      return Row(
+        children: [
+          Expanded(
+            flex: 2,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 14.sp,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: GestureDetector(
+              onTap: () => _selectTime(context, dayIndex, value, isStart: isStart),
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(12.r),
+                  border: Border.all(color: Colors.grey[300]!),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.access_time,
+                      color: AppColors.primary,
+                      size: 20.sp,
+                    ),
+                    SizedBox(width: 8.w),
+                    Text(
+                      _convertTo12Hour(value),
+                      style: TextStyle(
+                        fontSize: 16.sp,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    Widget _buildSlotDurationRow(int dayIndex, int duration) {
+      return Row(
+        children: [
+          Expanded(
+            flex: 2,
+            child: Text(
+              'مدة الفترة',
+              style: TextStyle(
+                fontSize: 14.sp,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(12.r),
+                border: Border.all(color: Colors.grey[300]!),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    onPressed: () {
+                      if (duration > 15) {
+                        controller.updateSlotDuration(dayIndex, duration - 15);
+                      }
+                    },
+                    icon: Icon(
+                      Icons.remove_circle_outline,
+                      color: AppColors.primary,
+                      size: 24.sp,
+                    ),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                  SizedBox(width: 8.w),
+                  Flexible(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '$duration',
+                          style: TextStyle(
+                            fontSize: 16.sp,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        Text(
+                          'دقيقة',
+                          style: TextStyle(
+                            fontSize: 12.sp,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(width: 8.w),
+                  IconButton(
+                    onPressed: () {
+                      if (duration < 120) {
+                        controller.updateSlotDuration(dayIndex, duration + 15);
+                      }
+                    },
+                    icon: Icon(
+                      Icons.add_circle_outline,
+                      color: AppColors.primary,
+                      size: 24.sp,
+                    ),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    Widget _buildApplyToAllDaysButton(int dayIndex) {
+      return SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          onPressed: () {
+            controller.applyDayToAllDays(dayIndex);
+            Get.snackbar(
+              'تم التطبيق',
+              'تم تطبيق أوقات هذا اليوم على جميع الأيام',
+              backgroundColor: AppColors.primary,
+              colorText: Colors.white,
+              duration: const Duration(seconds: 2),
+            );
+          },
+          icon: Icon(Icons.copy_all, size: 18.sp),
+          label: Text(
+            'تطبيق على كل الأيام',
+            style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w700),
+          ),
+          style: OutlinedButton.styleFrom(
+            side: BorderSide(color: AppColors.primary),
+            foregroundColor: AppColors.primary,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12.r),
+            ),
+            padding: EdgeInsets.symmetric(vertical: 10.h),
+          ),
+        ),
+      );
+    }
+
+    Widget _buildDayCard(int dayIndex) {
+      return Obx(() {
+        final day = controller.workingHours[dayIndex];
+        final isWorking = day['isWorking'] as bool;
+        final isExpanded = controller.expandedDays[dayIndex] ?? false;
+
+        return Container(
+          margin: EdgeInsets.only(bottom: 12.h),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16.r),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Theme(
+            data: ThemeData(
+              dividerColor: Colors.transparent,
+              splashColor: Colors.transparent,
+              highlightColor: Colors.transparent,
+            ),
+            child: ExpansionTile(
+              tilePadding: EdgeInsets.symmetric(
+                horizontal: 16.w,
+                vertical: 4.h,
+              ),
+              childrenPadding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 16.h),
+              onExpansionChanged: (expanded) {
+                controller.expandedDays[dayIndex] = expanded;
+              },
+              leading: Container(
+                width: 40.w,
+                height: 40.w,
+                decoration: BoxDecoration(
+                  color: isWorking
+                      ? AppColors.primary.withOpacity(0.1)
+                      : Colors.grey[200],
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  isExpanded
+                      ? Icons.keyboard_arrow_up
+                      : Icons.keyboard_arrow_down,
+                  color: isWorking ? AppColors.primary : Colors.grey[400],
+                  size: 24.sp,
+                ),
+              ),
+              title: Text(
+                day['dayName'],
+                style: TextStyle(
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              subtitle: Text(
+                isWorking
+                    ? '${_convertTo12Hour(day['startTime'])} - ${_convertTo12Hour(day['endTime'])}'
+                    : 'عطلة',
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              trailing: Switch(
+                value: isWorking,
+                onChanged: (value) {
+                  controller.toggleDayWorking(dayIndex);
+                },
+                activeColor: AppColors.primary,
+              ),
+              children: isWorking
+                  ? [
+                      _buildTimeRow(
+                        context,
+                        dayIndex,
+                        label: 'من',
+                        value: day['startTime'],
+                        isStart: true,
+                      ),
+                      SizedBox(height: 12.h),
+                      _buildTimeRow(
+                        context,
+                        dayIndex,
+                        label: 'إلى',
+                        value: day['endTime'],
+                        isStart: false,
+                      ),
+                      SizedBox(height: 12.h),
+                      _buildSlotDurationRow(dayIndex, day['slotDuration']),
+                      SizedBox(height: 12.h),
+                      _buildApplyToAllDaysButton(dayIndex),
+                    ]
+                  : [],
+            ),
+          ),
+        );
+      });
+    }
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            width: 500.w,
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.9,
+            ),
+            padding: EdgeInsets.all(24.w),
+            decoration: BoxDecoration(
+              color: AppColors.white,
+              borderRadius: BorderRadius.circular(20.r),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x29649FCC),
+                  blurRadius: 12,
+                  offset: Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'إدارة أوقات العمل',
+                      style: TextStyle(
+                        fontSize: 18.sp,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () => Navigator.of(dialogContext).pop(),
+                      child: Container(
+                        padding: EdgeInsets.all(6.w),
+                        decoration: BoxDecoration(
+                          color: AppColors.divider,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.close,
+                          size: 20.sp,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 16.h),
+                // Info card
+                Container(
+                  padding: EdgeInsets.all(16.w),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(16.r),
+                    border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, color: AppColors.primary, size: 24.sp),
+                      SizedBox(width: 12.w),
+                      Expanded(
+                        child: Text(
+                          'حدد أوقات عملك لكل يوم من أيام الأسبوع',
+                          style: TextStyle(
+                            fontSize: 14.sp,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 16.h),
+                // Days list
+                Flexible(
+                  child: Obx(() {
+                    if (controller.isLoading.value) {
+                      return Center(
+                        child: CircularProgressIndicator(
+                          color: AppColors.primary,
+                        ),
+                      );
+                    }
+                    return SingleChildScrollView(
+                      child: Column(
+                        children: List.generate(7, (index) => _buildDayCard(index)),
+                      ),
+                    );
+                  }),
+                ),
+                SizedBox(height: 16.h),
+                // Action buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _onDeleteAll,
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(color: AppColors.error),
+                          foregroundColor: AppColors.error,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16.r),
+                          ),
+                          padding: EdgeInsets.symmetric(vertical: 14.h),
+                        ),
+                        icon: const Icon(Icons.delete_outline),
+                        label: Text(
+                          'حذف الكل',
+                          style: TextStyle(
+                            fontSize: 16.sp,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.error,
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 12.w),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: _onSave,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16.r),
+                          ),
+                          padding: EdgeInsets.symmetric(vertical: 14.h),
+                          elevation: 0,
+                        ),
+                        icon: const Icon(Icons.save, color: Colors.white),
+                        label: Text(
+                          'حفظ',
+                          style: TextStyle(
+                            fontSize: 16.sp,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _showTreatmentTypeDialog(BuildContext context, PatientModel patient) {
