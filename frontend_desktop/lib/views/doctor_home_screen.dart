@@ -245,6 +245,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                   onTap: () {
                     // Clear selected patient and show appointments table
                     _patientController.selectPatient(null);
+                    // إعادة تحميل مواعيد جميع المرضى
+                    _appointmentController.loadDoctorAppointments();
                     _showAppointments.value = true;
                   },
                   child: Image.asset(
@@ -570,6 +572,9 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
           return p.name.toLowerCase().contains(query) ||
               p.phoneNumber.contains(query);
         }).toList();
+        
+        // ترتيب المرضى من الأحدث إلى الأقدم حسب الـ id
+        filteredPatients.sort((a, b) => b.id.compareTo(a.id));
 
         if (filteredPatients.isEmpty) {
           return Center(
@@ -945,7 +950,9 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                             appointmentText,
                             style: TextStyle(
                               fontSize: 14.sp,
-                              color: const Color(0x99212F34),
+                              color: isLate
+                                  ? Colors.red
+                                  : const Color(0x99212F34),
                             ),
                             textAlign: TextAlign.center,
                             maxLines: 1,
@@ -1021,6 +1028,9 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                 return p.name.toLowerCase().contains(query) ||
                     p.phoneNumber.contains(query);
               }).toList();
+              
+              // ترتيب المرضى من الأحدث إلى الأقدم حسب الـ id
+              filteredPatients.sort((a, b) => b.id.compareTo(a.id));
 
               if (filteredPatients.isEmpty) {
                 return Center(
@@ -1100,7 +1110,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                           children: [
                             TextSpan(
                               text: 'الاسم : ',
-                              style: TextStyle(
+                              style: GoogleFonts.cairo(
                                 fontSize: 13.sp,
                                 fontWeight: FontWeight.w600,
                                 color: const Color(0xFF505558),
@@ -2309,7 +2319,11 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
     }
 
     return Obx(() {
-      if (implantStageController.isLoading.value) {
+      // Only consider stages for this patient (controller may hold stages for multiple patients)
+      final patientStages = implantStageController.stagesForPatient(patient.id);
+      
+      // Show loading only if no stages exist yet (initial load)
+      if (implantStageController.isLoading.value && patientStages.isEmpty) {
         return Container(
           color: const Color(0xFFF4FEFF),
           child: Center(
@@ -2317,9 +2331,6 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
           ),
         );
       }
-
-      // Only consider stages for this patient (controller may hold stages for multiple patients)
-      final patientStages = implantStageController.stagesForPatient(patient.id);
 
       if (patientStages.isEmpty) {
         return Container(
@@ -2528,7 +2539,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                   Text(
                     stage.stageName,
                     style: TextStyle(
-                      fontSize: 16.sp,
+                      fontSize: 14.sp,
                       fontWeight: FontWeight.bold,
                       color: stage.isCompleted
                           ? AppColors.primary.withOpacity(0.7)
@@ -2599,6 +2610,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                 }
 
                 if (success) {
+                  // إعادة تحميل المراحل لتحديث الواجهة بشكل حي
+                  await implantStageController.loadStages(patientId);
                   Get.snackbar(
                     'نجح',
                     message,
@@ -2622,8 +2635,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                 }
               },
               child: Container(
-                width: 32.w,
-                height: 32.h,
+                width: 24.w,
+                height: 24.h,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: stage.isCompleted
@@ -2632,7 +2645,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                   border: Border.all(color: AppColors.primary, width: 2),
                 ),
                 child: stage.isCompleted
-                    ? Icon(Icons.check, color: AppColors.white, size: 20.sp)
+                    ? Icon(Icons.check, color: AppColors.white, size: 16.sp)
                     : null,
               ),
             ),
@@ -3880,7 +3893,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                               );
 
                               // Reload appointments
-                              _appointmentController
+                              await _appointmentController
                                   .loadPatientAppointmentsById(patientId);
                             } catch (e) {
                               print(
@@ -5362,8 +5375,9 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
               });
 
               try {
+                // إضافة المريض
                 var createdPatient = await runWithOperationDialog(
-                  context: context,
+                  context: dialogContext,
                   message: 'جارٍ الإضافة',
                   action: () async {
                     return await _doctorService.addPatient(
@@ -5379,7 +5393,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                 if (_selectedPatientImageBytes != null) {
                   try {
                     await runWithOperationDialog(
-                      context: context,
+                      context: dialogContext,
                       message: 'جارٍ الرفع',
                       action: () async {
                         await _doctorService.uploadPatientImage(
@@ -5408,35 +5422,50 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                   }
                 }
 
+                // إغلاق الـ dialog أولاً
+                if (dialogContext.mounted) {
+                  Navigator.of(dialogContext).pop();
+                }
+                
+                // استخدام microtask للتأكد من أن إغلاق الـ dialog تم بالكامل
+                await Future.microtask(() {});
+                
+                // تحميل المرضى بعد إغلاق الـ dialog
                 await _patientController.loadPatients();
-                if (context.mounted) {
-                  Navigator.of(context).pop();
+                
+                // انتظار قليلاً قبل عرض رسالة النجاح
+                await Future.delayed(const Duration(milliseconds: 200));
+                
+                // عرض رسالة النجاح
+                Get.snackbar(
+                  'نجح',
+                  'تم إضافة المريض بنجاح',
+                  snackPosition: SnackPosition.TOP,
+                  backgroundColor: AppColors.success,
+                  colorText: AppColors.white,
+                );
+              } on ApiException catch (e) {
+                if (dialogContext.mounted) {
                   Get.snackbar(
-                    'نجح',
-                    'تم إضافة المريض بنجاح',
+                    'خطأ',
+                    e.message,
                     snackPosition: SnackPosition.TOP,
-                    backgroundColor: AppColors.success,
+                    backgroundColor: AppColors.error,
                     colorText: AppColors.white,
                   );
                 }
-              } on ApiException catch (e) {
-                Get.snackbar(
-                  'خطأ',
-                  e.message,
-                  snackPosition: SnackPosition.TOP,
-                  backgroundColor: AppColors.error,
-                  colorText: AppColors.white,
-                );
               } catch (e) {
-                Get.snackbar(
-                  'خطأ',
-                  'فشل إضافة المريض',
-                  snackPosition: SnackPosition.TOP,
-                  backgroundColor: AppColors.error,
-                  colorText: AppColors.white,
-                );
+                if (dialogContext.mounted) {
+                  Get.snackbar(
+                    'خطأ',
+                    'فشل إضافة المريض',
+                    snackPosition: SnackPosition.TOP,
+                    backgroundColor: AppColors.error,
+                    colorText: AppColors.white,
+                  );
+                }
               } finally {
-                if (context.mounted) {
+                if (dialogContext.mounted) {
                   setDialogState(() {
                     _isLoading = false;
                   });
