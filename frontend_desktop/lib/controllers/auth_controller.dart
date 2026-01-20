@@ -6,6 +6,7 @@ import 'package:frontend_desktop/services/auth_service.dart';
 import 'package:frontend_desktop/services/patient_service.dart';
 
 import 'package:frontend_desktop/core/routes/app_routes.dart';
+import 'package:frontend_desktop/core/utils/network_utils.dart';
 
 class AuthController extends GetxController {
   final _authService = AuthService();
@@ -88,8 +89,7 @@ class AuthController extends GetxController {
           if (user.userType == 'doctor') {
             Get.offAllNamed(AppRoutes.doctorHome);
           } else if (user.userType == 'receptionist') {
-            // Get.offAllNamed(AppRoutes.receptionHome); // Not implemented yet
-            Get.snackbar('Alert', 'Receptionist home not ready yet');
+            Get.offAllNamed(AppRoutes.receptionHome);
           } else {
             Get.offAllNamed(AppRoutes.userSelection);
           }
@@ -139,25 +139,48 @@ class AuthController extends GetxController {
             case 'doctor':
               targetRoute = AppRoutes.doctorHome;
               break;
+            case 'receptionist':
+              targetRoute = AppRoutes.receptionHome;
+              break;
             default:
               targetRoute = AppRoutes.userSelection;
           }
 
           print('🔀 [AuthController] Navigating to: $targetRoute');
           Get.offAllNamed(targetRoute);
-          Get.snackbar('نجح', 'تم تسجيل الدخول بنجاح');
+          // انتظار قليلاً حتى تكتمل عملية التنقل قبل عرض Snackbar
+          await Future.delayed(const Duration(milliseconds: 300));
+          if (Get.context != null) {
+            try {
+              Get.snackbar('نجح', 'تم تسجيل الدخول بنجاح');
+            } catch (e) {
+              print('⚠️ [AuthController] Error showing snackbar: $e');
+            }
+          }
         } else {
-          Get.snackbar(
-            'خطأ',
-            userRes['error']?.toString() ?? 'فشل جلب معلومات المستخدم',
-          );
+          final errorMsg = userRes['error']?.toString() ?? 'فشل جلب معلومات المستخدم';
+          if (NetworkUtils.isNetworkError(errorMsg)) {
+            NetworkUtils.showNetworkErrorDialog();
+          } else {
+            Get.snackbar('خطأ', errorMsg);
+          }
         }
       } else {
-        Get.snackbar('خطأ', res['error']?.toString() ?? 'فشل تسجيل الدخول');
+        final errorMsg = res['error']?.toString() ?? 'فشل تسجيل الدخول';
+        if (NetworkUtils.isNetworkError(errorMsg)) {
+          NetworkUtils.showNetworkErrorDialog();
+        } else {
+          Get.snackbar('خطأ', errorMsg);
+        }
       }
     } catch (e) {
       print('❌ [AuthController] General error: $e');
-      Get.snackbar('خطأ', 'فشل تسجيل الدخول');
+      final errorMsg = e.toString();
+      if (NetworkUtils.isNetworkError(errorMsg)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', 'فشل تسجيل الدخول');
+      }
     } finally {
       isLoading.value = false;
     }
@@ -171,7 +194,12 @@ class AuthController extends GetxController {
       print('✅ [AuthController] Logged out successfully');
       Get.offAllNamed(AppRoutes.userSelection);
     } catch (e) {
-      Get.snackbar('خطأ', 'حدث خطأ أثناء تسجيل الخروج');
+      final errorMsg = e.toString();
+      if (NetworkUtils.isNetworkError(errorMsg)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', 'حدث خطأ أثناء تسجيل الخروج');
+      }
     }
   }
 }

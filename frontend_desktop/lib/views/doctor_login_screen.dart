@@ -22,8 +22,6 @@ class _DoctorLoginScreenState extends State<DoctorLoginScreen> {
   @override
   void initState() {
     super.initState();
-    // Default credentials for easier testing if needed, or clear them
-    _usernameController.text = 'baqer121';
   }
 
   @override
@@ -128,7 +126,6 @@ class _DoctorLoginScreenState extends State<DoctorLoginScreen> {
                         width: 300.w,
                         child: CustomTextField(
                           labelText: AppStrings.doctorName,
-                          hintText: 'baqer121',
                           controller: _usernameController,
                         ),
                       ),

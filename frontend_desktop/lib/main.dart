@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:frontend_desktop/core/constants/app_colors.dart';
 import 'package:frontend_desktop/core/constants/app_strings.dart';
 import 'package:frontend_desktop/core/routes/app_routes.dart';
@@ -24,6 +25,10 @@ void main() async {
 
   // Initialize Arabic locale for DateFormat
   await initializeDateFormatting('ar', null);
+
+  // Initialize Hive for local cache
+  await Hive.initFlutter();
+  await Hive.openBox('patients');
 
   // Initialize AuthController to load persisted session
   Get.put(AuthController());

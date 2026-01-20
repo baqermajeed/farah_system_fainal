@@ -5,7 +5,7 @@ import 'package:frontend_desktop/core/constants/app_colors.dart';
 import 'package:frontend_desktop/core/constants/app_strings.dart';
 import 'package:frontend_desktop/core/widgets/custom_text_field.dart';
 import 'package:frontend_desktop/core/widgets/back_button_widget.dart';
-import 'package:frontend_desktop/core/routes/app_routes.dart';
+import 'package:frontend_desktop/controllers/auth_controller.dart';
 
 class ReceptionLoginScreen extends StatefulWidget {
   const ReceptionLoginScreen({super.key});
@@ -15,44 +15,15 @@ class ReceptionLoginScreen extends StatefulWidget {
 }
 
 class _ReceptionLoginScreenState extends State<ReceptionLoginScreen> {
+  final AuthController _authController = Get.find<AuthController>();
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  bool _isLoading = false;
 
   @override
   void dispose() {
     _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
-  }
-
-  Future<void> _handleLogin() async {
-    if (_usernameController.text.isEmpty || _passwordController.text.isEmpty) {
-      Get.snackbar(
-        'خطأ',
-        'يرجى إدخال اسم المستخدم وكلمة المرور',
-        snackPosition: SnackPosition.TOP,
-      );
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    // TODO: Implement actual login logic
-    await Future.delayed(const Duration(seconds: 2));
-
-    setState(() {
-      _isLoading = false;
-    });
-
-    Get.snackbar(
-      'نجح',
-      'تم تسجيل الدخول بنجاح',
-      snackPosition: SnackPosition.TOP,
-    );
-    Get.offAllNamed(AppRoutes.receptionHome);
   }
 
   @override
@@ -152,43 +123,63 @@ class _ReceptionLoginScreenState extends State<ReceptionLoginScreen> {
                       ),
                     ),
                     SizedBox(height: 24.h),
-                    // Login button
-                    Center(
-                      child: Container(
-                        width: 300.w,
-                        height: 50.h,
-                        decoration: BoxDecoration(
-                          color: _isLoading
-                              ? AppColors.textHint
-                              : AppColors.secondary,
-                          borderRadius: BorderRadius.circular(16.r),
-                        ),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: _isLoading ? null : _handleLogin,
+                    // Login button (without icon)
+                    Obx(
+                      () => Center(
+                        child: Container(
+                          width: 300.w,
+                          height: 50.h,
+                          decoration: BoxDecoration(
+                            color: _authController.isLoading.value
+                                ? AppColors.textHint
+                                : AppColors.secondary,
                             borderRadius: BorderRadius.circular(16.r),
-                            child: Center(
-                              child: _isLoading
-                                  ? SizedBox(
-                                      width: 20.w,
-                                      height: 20.h,
-                                      child: const CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        valueColor:
-                                            AlwaysStoppedAnimation<Color>(
-                                          AppColors.white,
+                          ),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: _authController.isLoading.value
+                                  ? null
+                                  : () async {
+                                      if (_usernameController.text.isEmpty ||
+                                          _passwordController.text.isEmpty) {
+                                        Get.snackbar(
+                                          'خطأ',
+                                          'يرجى إدخال اسم المستخدم وكلمة المرور',
+                                          snackPosition: SnackPosition.TOP,
+                                        );
+                                        return;
+                                      }
+
+                                      await _authController.loginDoctor(
+                                        username:
+                                            _usernameController.text.trim(),
+                                        password: _passwordController.text,
+                                      );
+                                    },
+                              borderRadius: BorderRadius.circular(16.r),
+                              child: Center(
+                                child: _authController.isLoading.value
+                                    ? SizedBox(
+                                        width: 20.w,
+                                        height: 20.h,
+                                        child: const CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                            AppColors.white,
+                                          ),
+                                        ),
+                                      )
+                                    : Text(
+                                        AppStrings.login,
+                                        style: TextStyle(
+                                          fontSize: 16.sp,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.white,
                                         ),
                                       ),
-                                    )
-                                  : Text(
-                                      AppStrings.login,
-                                      style: TextStyle(
-                                        fontSize: 16.sp,
-                                        fontWeight: FontWeight.w600,
-                                        color: AppColors.white,
-                                      ),
-                                    ),
+                              ),
                             ),
                           ),
                         ),

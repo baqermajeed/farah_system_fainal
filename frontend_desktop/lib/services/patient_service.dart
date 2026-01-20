@@ -336,6 +336,72 @@ class PatientService {
     }
   }
 
+  // جلب بيانات المريض والأطباء المرتبطين به من QR code (نفس مبدأ الموبايل)
+  Future<Map<String, dynamic>?> getPatientByQrCodeWithDoctors(String qrCode) async {
+    try {
+      print('🔍 [Desktop PatientService] getPatientByQrCodeWithDoctors called with QR code: $qrCode');
+      final response = await _api.get(ApiConstants.qrScan(qrCode));
+
+      print('📡 [Desktop PatientService] QR scan response status: ${response.statusCode}');
+      print('📡 [Desktop PatientService] QR scan response data: ${response.data}');
+
+      if (response.statusCode == 200) {
+        final data = response.data as Map<String, dynamic>;
+        print('📋 [Desktop PatientService] Response data type: ${data.runtimeType}');
+        print('📋 [Desktop PatientService] Response keys: ${data.keys.toList()}');
+        print('📋 [Desktop PatientService] Patient in response: ${data['patient']}');
+        print('📋 [Desktop PatientService] Doctors in response: ${data['doctors']}');
+
+        if (!data.containsKey('patient') || data['patient'] == null) {
+          print('⚠️ [Desktop PatientService] Patient is null or missing in response');
+          return null;
+        }
+
+        try {
+          final patient =
+              _mapPatientOutToModel(data['patient'] as Map<String, dynamic>);
+          final doctorsList = data['doctors'];
+          final doctors = (doctorsList != null && doctorsList is List)
+              ? doctorsList
+                  .map(
+                    (json) => DoctorModel.fromJson(
+                      json as Map<String, dynamic>,
+                    ),
+                  )
+                  .toList()
+              : <DoctorModel>[];
+
+          print(
+            '✅ [Desktop PatientService] Successfully parsed patient: ${patient.name} and ${doctors.length} doctors',
+          );
+
+          return {
+            'patient': patient,
+            'doctors': doctors,
+          };
+        } catch (e) {
+          print(
+            '❌ [Desktop PatientService] Error parsing patient data: $e',
+          );
+          rethrow;
+        }
+      } else {
+        print(
+          '❌ [Desktop PatientService] Unexpected status code: ${response.statusCode}',
+        );
+        throw ApiException('فشل جلب بيانات المريض');
+      }
+    } catch (e) {
+      print(
+        '❌ [Desktop PatientService] Error in getPatientByQrCodeWithDoctors: $e',
+      );
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('فشل جلب بيانات المريض: ${e.toString()}');
+    }
+  }
+
   // جلب قائمة الأطباء المرتبطين بالمريض
   Future<List<Map<String, dynamic>>> getMyDoctors() async {
     try {

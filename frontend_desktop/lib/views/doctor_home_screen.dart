@@ -29,6 +29,8 @@ import 'package:frontend_desktop/models/implant_stage_model.dart';
 import 'package:frontend_desktop/core/utils/image_utils.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:frontend_desktop/services/patient_service.dart';
+import 'package:frontend_desktop/models/doctor_model.dart';
 
 // Delegate for sticky TabBar
 class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
@@ -77,6 +79,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
   final AppointmentController _appointmentController = Get.put(
     AppointmentController(),
   );
+  final PatientService _patientService = PatientService();
   final WorkingHoursService _workingHoursService = WorkingHoursService();
   final ImagePicker _imagePicker = ImagePicker();
   late TabController _tabController; // For patient file tabs
@@ -84,6 +87,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
   final RxInt _currentTabIndex = 0.obs;
   final RxBool _showAppointments =
       false.obs; // Track if appointments should be shown
+  final TextEditingController _qrScanController = TextEditingController();
 
   @override
   void initState() {
@@ -108,6 +112,10 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
         _galleryController.loadGallery(patient.id);
         _appointmentController.loadPatientAppointmentsById(patient.id);
 
+        // Set default tab to Records (index 2) when a patient is selected
+        _tabController.animateTo(2);
+        _currentTabIndex.value = 2;
+
         // Load implant stages if treatment type is زراعة
         if (patient.treatmentHistory != null &&
             patient.treatmentHistory!.isNotEmpty &&
@@ -122,6 +130,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
   @override
   void dispose() {
     _searchController.dispose();
+    _qrScanController.dispose();
     _tabController.dispose();
     _appointmentsTabController.dispose();
     super.dispose();
@@ -187,6 +196,66 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
 
   // --- Widgets Components ---
 
+  /// معالجة كود الباركود القادم من جهاز قارئ خارجي (نفس منطق الموبايل)
+  Future<void> _handleDesktopQrScan(String code) async {
+    try {
+      _qrScanController.clear();
+
+      // جلب بيانات المريض والأطباء المرتبطين به
+      final result =
+          await _patientService.getPatientByQrCodeWithDoctors(code);
+
+      if (result == null || result['patient'] == null) {
+        Get.snackbar(
+          'تنبيه',
+          'المريض غير موجود',
+          snackPosition: SnackPosition.TOP,
+          backgroundColor: AppColors.error,
+          colorText: AppColors.white,
+        );
+        return;
+      }
+
+      final patient = result['patient'] as PatientModel;
+      final doctors = (result['doctors'] as List<DoctorModel>? ?? []);
+
+      // الطبيب في نسخة الديسكتوب دائماً "DoctorHomeScreen"
+      final userId = _authController.currentUser.value?.id;
+
+      // التحقق إن كان هذا المريض تابعاً للطبيب الحالي
+      final isMyPatient = userId != null &&
+          (doctors.any((d) => d.id == userId) ||
+              patient.doctorIds.contains(userId));
+
+      if (isMyPatient) {
+        // فتح ملف المريض مباشرة (نفس مبدأ _navigateToPatientDetails)
+        _patientController.selectPatient(patient);
+        _showAppointments.value = false;
+      } else {
+        // إظهار رسالة بأن المريض محوّل لطبيب آخر (سلوك مبسط مشابه للموبايل)
+        final assignedDoctor = doctors.isNotEmpty ? doctors.first : null;
+        final doctorName = assignedDoctor?.name ?? 'طبيب آخر';
+
+        Get.snackbar(
+          'تنبيه',
+          'هذا المريض مرتبط بالطبيب: $doctorName',
+          snackPosition: SnackPosition.TOP,
+          backgroundColor: AppColors.primary,
+          colorText: AppColors.white,
+          duration: const Duration(seconds: 3),
+        );
+      }
+    } catch (e) {
+      Get.snackbar(
+        'خطأ',
+        'حدث خطأ أثناء البحث عن المريض: ${e.toString()}',
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: AppColors.error,
+        colorText: AppColors.white,
+      );
+    }
+  }
+
   Widget _buildTopBar() {
     return Padding(
       padding: EdgeInsets.only(left: 0, right: 40.w, top: 0, bottom: 10.h),
@@ -221,6 +290,63 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
             child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
+                // QR Scan input (external barcode scanner) + Action Icons
+                SizedBox(
+                  width: 130.w,
+                  child: TextField(
+                    controller: _qrScanController,
+                    textAlign: TextAlign.left,
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      color: AppColors.textPrimary,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'ضع المؤشر هنا ثم امسح الباركود',
+                      hintStyle: TextStyle(
+                        fontSize: 11.sp,
+                        color: AppColors.textHint,
+                      ),
+                      prefixIcon: Icon(
+                        Icons.qr_code_scanner,
+                        color: AppColors.primary,
+                        size: 18.sp,
+                      ),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 8.w,
+                        vertical: 6.h,
+                      ),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10.r),
+                        borderSide: BorderSide(
+                          color: const Color(0xB3649FCC),
+                          width: 1.5,
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10.r),
+                        borderSide: BorderSide(
+                          color: const Color(0xB3649FCC),
+                          width: 1.5,
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10.r),
+                        borderSide: BorderSide(
+                          color: AppColors.primary,
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                    onSubmitted: (value) {
+                      if (value.trim().isNotEmpty) {
+                        _handleDesktopQrScan(value.trim());
+                      }
+                    },
+                  ),
+                ),
+                SizedBox(width: 15.w),
                 // Action Icons (ستظهر في أقصى اليسار في الترتيب العربي) - using images without container
                 GestureDetector(
                   onTap: () {
@@ -1647,11 +1773,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
           itemCount: records.length,
           itemBuilder: (context, index) {
             final record = records[index];
-            return GestureDetector(
-              onTap: () {
-                _showRecordDetailsDialog(context, record);
-              },
-              child: Container(
+            return Container(
                 margin: EdgeInsets.only(bottom: 6.h),
                 padding: EdgeInsets.all(6.w),
                 decoration: BoxDecoration(
@@ -1689,28 +1811,59 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                           spacing: 8.w,
                           runSpacing: 8.h,
                           children: record.images!.map((imageUrl) {
-                            return Container(
-                              width: 60.w,
-                              height: 68.h,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(8.r),
-                                border: Border.all(color: AppColors.divider),
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(8.r),
-                                child: Image.network(
-                                  imageUrl,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return Container(
-                                      color: AppColors.divider,
-                                      child: Icon(
-                                        Icons.broken_image,
-                                        color: AppColors.textHint,
-                                        size: 30.sp,
-                                      ),
-                                    );
-                                  },
+                            final validImageUrl = ImageUtils.convertToValidUrl(imageUrl);
+                            return GestureDetector(
+                              onTap: () {
+                                if (validImageUrl != null && ImageUtils.isValidImageUrl(validImageUrl)) {
+                                  _showImageFullScreenDialog(context, validImageUrl);
+                                }
+                              },
+                              child: Container(
+                                width: 60.w,
+                                height: 68.h,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8.r),
+                                  border: Border.all(color: AppColors.divider),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(8.r),
+                                  child: validImageUrl != null && ImageUtils.isValidImageUrl(validImageUrl)
+                                      ? CachedNetworkImage(
+                                          imageUrl: validImageUrl,
+                                          fit: BoxFit.cover,
+                                          progressIndicatorBuilder: (context, url, progress) => Container(
+                                            color: AppColors.divider,
+                                            child: Center(
+                                              child: CircularProgressIndicator(
+                                                value: progress.progress,
+                                                strokeWidth: 2,
+                                                valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                                              ),
+                                            ),
+                                          ),
+                                          errorWidget: (context, url, error) => Container(
+                                            color: AppColors.divider,
+                                            child: Icon(
+                                              Icons.broken_image,
+                                              color: AppColors.textHint,
+                                              size: 30.sp,
+                                            ),
+                                          ),
+                                        )
+                                      : Image.network(
+                                          imageUrl,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) {
+                                            return Container(
+                                              color: AppColors.divider,
+                                              child: Icon(
+                                                Icons.broken_image,
+                                                color: AppColors.textHint,
+                                                size: 30.sp,
+                                              ),
+                                            );
+                                          },
+                                        ),
                                 ),
                               ),
                             );
@@ -1739,7 +1892,6 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                     ),
                   ],
                 ),
-              ),
             );
           },
         ),
@@ -2588,42 +2740,27 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
             GestureDetector(
               onTap: () async {
                 bool success;
-                String message;
                 if (stage.isCompleted) {
                   // إلغاء الإكمال
                   success = await implantStageController.uncompleteStage(
                     patientId,
                     stage.stageName,
                   );
-                  message = success
-                      ? 'تم إلغاء إكمال المرحلة بنجاح'
-                      : 'فشل إلغاء إكمال المرحلة';
                 } else {
                   // إكمال المرحلة
                   success = await implantStageController.completeStage(
                     patientId,
                     stage.stageName,
                   );
-                  message = success
-                      ? 'تم إكمال المرحلة بنجاح'
-                      : 'فشل إكمال المرحلة';
                 }
 
                 if (success) {
-                  // إعادة تحميل المراحل لتحديث الواجهة بشكل حي
-                  await implantStageController.loadStages(patientId);
-                  Get.snackbar(
-                    'نجح',
-                    message,
-                    snackPosition: SnackPosition.BOTTOM,
-                    backgroundColor: AppColors.primary,
-                    colorText: AppColors.white,
-                  );
+                  // لا نعرض Snackbar للنجاح، التحديث المتفائل حدث بالفعل في الواجهة
                 } else {
                   final errorMsg =
                       implantStageController.errorMessage.value.isNotEmpty
                       ? implantStageController.errorMessage.value
-                      : message;
+                      : 'فشل تحديث حالة المرحلة';
                   Get.snackbar(
                     'خطأ',
                     errorMsg,
@@ -3383,11 +3520,9 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                     note: noteText.isEmpty ? null : noteText,
                                     imageFiles: imagesToSend,
                                   );
-                                  // Reload records after adding
-                                  await _medicalRecordController
-                                      .loadPatientRecords(patientId);
+                                  // لا نعيد تحميل السجلات هنا، الكونترولر أضاف السجل متفائلاً
                                 } catch (e) {
-                                  // Error already shown in controller
+                                  // الخطأ يُعرض من داخل الكونترولر
                                 }
                               },
                               style: ElevatedButton.styleFrom(
@@ -3643,27 +3778,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                       if (dialogContext.mounted) {
                                         if (success) {
                                           Navigator.of(dialogContext).pop();
-                                          Get.snackbar(
-                                            'نجح',
-                                            'تم رفع الصورة بنجاح',
-                                            snackPosition: SnackPosition.BOTTOM,
-                                            backgroundColor: AppColors.primary,
-                                            colorText: Colors.white,
-                                          );
-                                          // Reload gallery
-                                          await _galleryController.loadGallery(
-                                            patientId,
-                                          );
+                                          // المعرض تم تحديثه متفائلاً في الكونترولر، لا حاجة لإعادة تحميل
                                         } else {
-                                          Get.snackbar(
-                                            'خطأ',
-                                            _galleryController
-                                                .errorMessage
-                                                .value,
-                                            snackPosition: SnackPosition.BOTTOM,
-                                            backgroundColor: Colors.red,
-                                            colorText: Colors.white,
-                                          );
                                           setDialogState(() {
                                             isUploading = false;
                                           });
@@ -3891,25 +4007,11 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                     ? selectedImages
                                     : null,
                               );
-
-                              // Reload appointments
-                              await _appointmentController
-                                  .loadPatientAppointmentsById(patientId);
+                              // لا نعيد تحميل المواعيد هنا، الكونترولر يضيف الموعد متفائلاً
                             } catch (e) {
                               print(
                                 '❌ [DoctorHomeScreen] Error adding appointment: $e',
                               );
-                              // لا تعرض خطأ إذا كان الخطأ في parsing فقط (الموعد تمت إضافته)
-                              final errorMsg = e.toString();
-                              if (!errorMsg.contains('معالجة البيانات')) {
-                                Get.snackbar(
-                                  'خطأ',
-                                  'فشل إضافة الموعد',
-                                  snackPosition: SnackPosition.BOTTOM,
-                                  backgroundColor: Colors.red,
-                                  colorText: AppColors.white,
-                                );
-                              }
                             }
                           }
                         },
@@ -4644,7 +4746,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                         ),
                       ),
                       GestureDetector(
-                        onTap: () => Navigator.of(context).pop(),
+                        onTap: () => Navigator.of(dialogContext).pop(),
                         child: Container(
                           padding: EdgeInsets.all(8.w),
                           decoration: BoxDecoration(
@@ -4804,6 +4906,11 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
 
   void _showGalleryImageDialog(BuildContext context, dynamic galleryImage) {
     final imageUrl = ImageUtils.convertToValidUrl(galleryImage.imagePath);
+    final screenSize = MediaQuery.of(context).size;
+    final maxDialogWidth = screenSize.width * 0.6;
+    final maxDialogHeight = screenSize.height * 0.75;
+    final maxImageWidth = maxDialogWidth - 48.w;
+    final maxImageHeight = maxDialogHeight - 180.h;
 
     showDialog(
       context: context,
@@ -4814,160 +4921,184 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
           insetPadding: EdgeInsets.all(24.w),
           child: Container(
             constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.9,
+              maxWidth: maxDialogWidth,
+              maxHeight: maxDialogHeight,
             ),
-            width: double.infinity,
             padding: EdgeInsets.all(24.w),
             decoration: BoxDecoration(
               color: AppColors.white,
               borderRadius: BorderRadius.circular(20.r),
             ),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header with close button
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'تفاصيل الصورة',
-                        style: TextStyle(
-                          fontSize: 20.sp,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
-                        ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header with close button
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'تفاصيل الصورة',
+                      style: TextStyle(
+                        fontSize: 18.sp,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
                       ),
-                      GestureDetector(
-                        onTap: () => Navigator.of(context).pop(),
-                        child: Container(
-                          padding: EdgeInsets.all(8.w),
-                          decoration: BoxDecoration(
-                            color: AppColors.divider.withOpacity(0.3),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.close,
-                            color: AppColors.textSecondary,
-                            size: 20.sp,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 24.h),
-
-                  // Image
-                  if (imageUrl != null && ImageUtils.isValidImageUrl(imageUrl))
+                    ),
                     GestureDetector(
-                      onTap: () {
-                        Navigator.of(context).pop();
-                        _showImageFullScreenDialog(context, imageUrl);
-                      },
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12.r),
-                        child: CachedNetworkImage(
-                          imageUrl: imageUrl,
-                          fit: BoxFit.contain,
-                          width: double.infinity,
-                          progressIndicatorBuilder: (context, url, progress) =>
-                              Container(
-                                height: 300.h,
-                                color: AppColors.divider,
-                                child: Center(
-                                  child: CircularProgressIndicator(
-                                    value: progress.progress,
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      AppColors.primary,
+                      onTap: () => Navigator.of(dialogContext).pop(),
+                      child: Container(
+                        padding: EdgeInsets.all(8.w),
+                        decoration: BoxDecoration(
+                          color: AppColors.divider.withOpacity(0.3),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.close,
+                          color: AppColors.textSecondary,
+                          size: 20.sp,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 16.h),
+
+                // Image
+                Flexible(
+                  child: Center(
+                    child: imageUrl != null && ImageUtils.isValidImageUrl(imageUrl)
+                        ? GestureDetector(
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              _showImageFullScreenDialog(context, imageUrl);
+                            },
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12.r),
+                              child: CachedNetworkImage(
+                                imageUrl: imageUrl,
+                                fit: BoxFit.contain,
+                                width: maxImageWidth,
+                                height: maxImageHeight,
+                                progressIndicatorBuilder: (context, url, progress) =>
+                                    Container(
+                                      width: maxImageWidth,
+                                      height: maxImageHeight,
+                                      color: AppColors.divider,
+                                      child: Center(
+                                        child: CircularProgressIndicator(
+                                          value: progress.progress,
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(
+                                            AppColors.primary,
+                                          ),
+                                        ),
+                                      ),
                                     ),
+                                errorWidget: (context, url, error) => Container(
+                                  width: maxImageWidth,
+                                  height: maxImageHeight,
+                                  color: AppColors.divider,
+                                  child: Icon(
+                                    Icons.broken_image,
+                                    color: AppColors.textHint,
+                                    size: 50.sp,
                                   ),
                                 ),
                               ),
-                          errorWidget: (context, url, error) => Container(
-                            height: 300.h,
-                            color: AppColors.divider,
+                            ),
+                          )
+                        : Container(
+                            width: maxImageWidth,
+                            height: maxImageHeight,
+                            decoration: BoxDecoration(
+                              color: AppColors.divider,
+                              borderRadius: BorderRadius.circular(12.r),
+                            ),
                             child: Icon(
                               Icons.broken_image,
                               color: AppColors.textHint,
                               size: 50.sp,
                             ),
                           ),
-                        ),
-                      ),
-                    )
-                  else
-                    Container(
-                      height: 300.h,
-                      decoration: BoxDecoration(
-                        color: AppColors.divider,
-                        borderRadius: BorderRadius.circular(12.r),
-                      ),
-                      child: Icon(
-                        Icons.broken_image,
-                        color: AppColors.textHint,
-                        size: 50.sp,
-                      ),
-                    ),
-                  SizedBox(height: 16.h),
+                  ),
+                ),
+                SizedBox(height: 12.h),
 
-                  // Date
-                  if (galleryImage.createdAt != null &&
-                      galleryImage.createdAt.isNotEmpty)
-                    Row(
+                // Date
+                if (galleryImage.createdAt != null &&
+                    galleryImage.createdAt.isNotEmpty)
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4.w),
+                    child: Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         Icon(
                           Icons.calendar_today,
-                          size: 16.sp,
+                          size: 14.sp,
                           color: AppColors.textSecondary,
                         ),
-                        SizedBox(width: 8.w),
-                        Text(
-                          galleryImage.createdAt,
-                          style: TextStyle(
-                            fontSize: 14.sp,
-                            fontWeight: FontWeight.w500,
-                            color: AppColors.textSecondary,
+                        SizedBox(width: 6.w),
+                        Flexible(
+                          child: Text(
+                            galleryImage.createdAt,
+                            style: TextStyle(
+                              fontSize: 12.sp,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.textSecondary,
+                            ),
+                            textAlign: TextAlign.right,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
                     ),
+                  ),
 
-                  // Note
-                  if (galleryImage.note != null &&
-                      galleryImage.note!.isNotEmpty) ...[
-                    SizedBox(height: 16.h),
-                    Text(
-                      'الشرح:',
-                      style: TextStyle(
-                        fontSize: 16.sp,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    SizedBox(height: 8.h),
-                    Container(
-                      width: double.infinity,
-                      padding: EdgeInsets.all(16.w),
-                      decoration: BoxDecoration(
-                        color: AppColors.divider.withOpacity(0.3),
-                        borderRadius: BorderRadius.circular(12.r),
-                      ),
-                      child: Text(
-                        galleryImage.note!,
-                        style: TextStyle(
-                          fontSize: 14.sp,
-                          color: AppColors.textPrimary,
-                          height: 1.5,
+                // Note
+                if (galleryImage.note != null &&
+                    galleryImage.note!.isNotEmpty) ...[
+                  SizedBox(height: 12.h),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4.w),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'الشرح:',
+                          style: TextStyle(
+                            fontSize: 14.sp,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                          ),
                         ),
-                        textAlign: TextAlign.right,
-                      ),
+                        SizedBox(height: 6.h),
+                        Container(
+                          width: double.infinity,
+                          constraints: BoxConstraints(maxHeight: 100.h),
+                          padding: EdgeInsets.all(12.w),
+                          decoration: BoxDecoration(
+                            color: AppColors.divider.withOpacity(0.3),
+                            borderRadius: BorderRadius.circular(12.r),
+                          ),
+                          child: SingleChildScrollView(
+                            child: Text(
+                              galleryImage.note!,
+                              style: TextStyle(
+                                fontSize: 12.sp,
+                                color: AppColors.textPrimary,
+                                height: 1.5,
+                              ),
+                              textAlign: TextAlign.right,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ],
-              ),
+              ],
             ),
           ),
         );
@@ -5035,7 +5166,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                   top: 40.h,
                   right: 20.w,
                   child: GestureDetector(
-                    onTap: () => Navigator.of(context).pop(),
+                    onTap: () => Navigator.of(dialogContext).pop(),
                     child: Container(
                       padding: EdgeInsets.all(12.w),
                       decoration: BoxDecoration(
@@ -5427,16 +5558,10 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                   Navigator.of(dialogContext).pop();
                 }
                 
-                // استخدام microtask للتأكد من أن إغلاق الـ dialog تم بالكامل
-                await Future.microtask(() {});
-                
-                // تحميل المرضى بعد إغلاق الـ dialog
-                await _patientController.loadPatients();
-                
-                // انتظار قليلاً قبل عرض رسالة النجاح
-                await Future.delayed(const Duration(milliseconds: 200));
-                
-                // عرض رسالة النجاح
+                // إضافة المريض مباشرة إلى قائمة المرضى وتعيينه كمحدد (تحديث حي)
+                _patientController.addPatient(createdPatient);
+
+                // عرض رسالة النجاح بعد الإضافة الحية
                 Get.snackbar(
                   'نجح',
                   'تم إضافة المريض بنجاح',
@@ -5500,24 +5625,24 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                             color: AppColors.primary,
                           ),
                         ),
-                        GestureDetector(
-                          onTap: () => Navigator.of(context).pop(),
-                          child: Container(
-                            padding: EdgeInsets.all(8.w),
-                            decoration: BoxDecoration(
-                              color: AppColors.divider,
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              Icons.close,
-                              color: AppColors.textPrimary,
-                              size: 24.sp,
-                            ),
-                          ),
+                    GestureDetector(
+                      onTap: () => Navigator.of(dialogContext).pop(),
+                      child: Container(
+                        padding: EdgeInsets.all(8.w),
+                        decoration: BoxDecoration(
+                          color: AppColors.divider,
+                          shape: BoxShape.circle,
                         ),
-                      ],
+                        child: Icon(
+                          Icons.close,
+                          color: AppColors.textPrimary,
+                          size: 24.sp,
+                        ),
+                      ),
                     ),
-                    SizedBox(height: 24.h),
+                  ],
+                ),
+                SizedBox(height: 24.h),
                     // Scrollable content
                     Flexible(
                       child: SingleChildScrollView(
@@ -6896,7 +7021,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                         // Back button (left)
                         Expanded(
                           child: GestureDetector(
-                            onTap: () => Navigator.of(context).pop(),
+                            onTap: () => Navigator.of(dialogContext).pop(),
                             child: Container(
                               height: 40.h,
                               decoration: BoxDecoration(
@@ -6943,17 +7068,6 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                   patientId: patient.id,
                                   treatmentType: treatmentType,
                                 );
-
-                                // تحديث بيانات المريض في الصفحة
-                                await _patientController.loadPatients();
-
-                                // تحديث بيانات المريض الحالي في الـ controller
-                                final updatedPatient = _patientController
-                                    .getPatientById(patient.id);
-                                if (updatedPatient != null) {
-                                  _patientController.selectedPatient.value =
-                                      updatedPatient;
-                                }
 
                                 Navigator.of(context).pop();
                                 Get.snackbar(

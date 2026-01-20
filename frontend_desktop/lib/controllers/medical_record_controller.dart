@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:frontend_desktop/models/medical_record_model.dart';
 import 'package:frontend_desktop/services/doctor_service.dart';
 import 'package:frontend_desktop/core/network/api_exception.dart';
+import 'package:frontend_desktop/core/utils/network_utils.dart';
 
 class MedicalRecordController extends GetxController {
   final _doctorService = DoctorService();
@@ -19,9 +20,17 @@ class MedicalRecordController extends GetxController {
       );
       records.value = recordsList;
     } on ApiException catch (e) {
-      Get.snackbar('خطأ', e.message);
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', e.message);
+      }
     } catch (e) {
-      Get.snackbar('خطأ', 'حدث خطأ أثناء تحميل السجلات');
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', 'حدث خطأ أثناء تحميل السجلات');
+      }
     } finally {
       isLoading.value = false;
     }
@@ -33,24 +42,60 @@ class MedicalRecordController extends GetxController {
     String? note,
     List<File>? imageFiles,
   }) async {
+    MedicalRecordModel? tempRecord;
+
     try {
-      isLoading.value = true;
+      // 1) إنشاء سجل مؤقت (تحديث متفائل)
+      tempRecord = MedicalRecordModel(
+        id: 'temp-${DateTime.now().millisecondsSinceEpoch}',
+        patientId: patientId,
+        doctorId: '',
+        date: DateTime.now(),
+        treatmentType: '',
+        diagnosis: note ?? '',
+        images: null,
+        notes: note,
+      );
+
+      records.insert(0, tempRecord);
+
+      // 2) استدعاء السيرفر
       final newRecord = await _doctorService.addNote(
         patientId: patientId,
         note: note,
         imageFiles: imageFiles,
       );
-      // إضافة السجل الجديد في البداية (الأحدث أولاً)
-      records.insert(0, newRecord);
+
+      // 3) استبدال السجل المؤقت بالسجل الحقيقي
+      final index = records.indexWhere((r) => r.id == tempRecord!.id);
+      if (index != -1) {
+        records[index] = newRecord;
+      } else {
+        records.insert(0, newRecord);
+      }
+
       Get.snackbar('نجح', 'تم إضافة السجل بنجاح');
     } on ApiException catch (e) {
-      Get.snackbar('خطأ', e.message);
+      // Rollback
+      if (tempRecord != null) {
+        records.removeWhere((r) => r.id == tempRecord!.id);
+      }
+
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', e.message);
+      }
       rethrow;
     } catch (e) {
-      Get.snackbar('خطأ', 'حدث خطأ أثناء إضافة السجل');
+      if (tempRecord != null) {
+        records.removeWhere((r) => r.id == tempRecord!.id);
+      }
+
+      NetworkUtils.showNetworkErrorDialog();
       rethrow;
     } finally {
-      isLoading.value = false;
+      // لا نستخدم isLoading هنا حتى لا نظهر تحميل عام على كامل الشاشة
     }
   }
 
@@ -76,10 +121,18 @@ class MedicalRecordController extends GetxController {
       }
       Get.snackbar('نجح', 'تم تحديث السجل بنجاح');
     } on ApiException catch (e) {
-      Get.snackbar('خطأ', e.message);
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', e.message);
+      }
       rethrow;
     } catch (e) {
-      Get.snackbar('خطأ', 'حدث خطأ أثناء تحديث السجل');
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', 'حدث خطأ أثناء تحديث السجل');
+      }
       rethrow;
     } finally {
       isLoading.value = false;
@@ -101,10 +154,18 @@ class MedicalRecordController extends GetxController {
       records.removeWhere((r) => r.id == recordId);
       Get.snackbar('نجح', 'تم حذف السجل بنجاح');
     } on ApiException catch (e) {
-      Get.snackbar('خطأ', e.message);
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', e.message);
+      }
       rethrow;
     } catch (e) {
-      Get.snackbar('خطأ', 'حدث خطأ أثناء حذف السجل');
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', 'حدث خطأ أثناء حذف السجل');
+      }
       rethrow;
     } finally {
       isLoading.value = false;

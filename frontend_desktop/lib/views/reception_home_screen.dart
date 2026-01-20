@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
@@ -7,7 +8,11 @@ import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:frontend_desktop/core/constants/app_colors.dart';
-import 'package:frontend_desktop/core/routes/app_routes.dart';
+import 'package:frontend_desktop/core/constants/app_strings.dart';
+import 'package:frontend_desktop/core/widgets/custom_text_field.dart';
+import 'package:frontend_desktop/core/widgets/gender_selector.dart';
+import 'package:frontend_desktop/core/utils/operation_dialog.dart';
+import 'package:frontend_desktop/core/network/api_exception.dart';
 import 'package:frontend_desktop/controllers/patient_controller.dart';
 import 'package:frontend_desktop/controllers/auth_controller.dart';
 import 'package:frontend_desktop/controllers/medical_record_controller.dart';
@@ -21,6 +26,10 @@ import 'package:frontend_desktop/models/appointment_model.dart';
 import 'package:frontend_desktop/models/implant_stage_model.dart';
 import 'package:frontend_desktop/core/utils/image_utils.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:frontend_desktop/models/doctor_model.dart';
+import 'package:frontend_desktop/services/patient_service.dart';
+import 'package:frontend_desktop/services/auth_service.dart';
 
 // Delegate for sticky TabBar
 class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
@@ -70,12 +79,19 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
     AppointmentController(),
   );
   final WorkingHoursService _workingHoursService = WorkingHoursService();
+  final PatientService _patientService = PatientService();
   final ImagePicker _imagePicker = ImagePicker();
+  final TextEditingController _qrScanController = TextEditingController();
   late TabController _tabController; // For patient file tabs
   late TabController _appointmentsTabController; // For appointments tabs
   final RxInt _currentTabIndex = 0.obs;
   final RxBool _showAppointments =
       false.obs; // Track if appointments should be shown
+  
+  // For receptionist: patient doctors
+  final RxList<DoctorModel> _patientDoctors = <DoctorModel>[].obs;
+  final RxBool _isLoadingDoctors = false.obs;
+  String? _currentPatientIdForDoctors; // Track which patient's doctors are loaded
 
   @override
   void initState() {
@@ -89,8 +105,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
       }
     });
 
-    // Load patients and appointments after the frame is built
-    // This ensures AuthController has loaded user data
+    // Load patients and appointments on first build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _patientController.loadPatients();
       _appointmentController.loadDoctorAppointments();
@@ -99,7 +114,22 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
     // Listen to patient selection changes
     ever(_patientController.selectedPatient, (patient) {
       if (patient != null) {
-        // Load records, gallery, and appointments when a patient is selected
+        // التحقق من نوع المستخدم
+        final userType = _authController.currentUser.value?.userType;
+        
+        // موظف الاستقبال لا يملك صلاحيات للوصول إلى السجلات والمعرض والمواعيد لمريض محدد
+        if (userType == 'receptionist') {
+          // موظف الاستقبال: نحمل فقط أطباء المريض
+          // إعادة تعيين قائمة الأطباء إذا كان المريض مختلفاً
+          if (_currentPatientIdForDoctors != patient.id) {
+            _patientDoctors.clear();
+            _currentPatientIdForDoctors = patient.id;
+            _loadPatientDoctors(patient.id);
+          }
+          return;
+        }
+        
+        // للطبيب: تحميل السجلات والمعرض والمواعيد
         _medicalRecordController.loadPatientRecords(patient.id);
         _galleryController.loadGallery(patient.id);
         _appointmentController.loadPatientAppointmentsById(patient.id);
@@ -120,6 +150,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
     _searchController.dispose();
     _tabController.dispose();
     _appointmentsTabController.dispose();
+    _qrScanController.dispose();
     super.dispose();
   }
 
@@ -127,47 +158,55 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF4FEFF),
-      body: Row(
+      body: Stack(
         children: [
-          // Main Content Area
-          Expanded(
-            child: Column(
-              children: [
-                // Top Bar (Header)
-                _buildTopBar(),
-
-                // Content Area
-                Expanded(
-                  child: Row(
-                    children: [
-                      // Left Side - Appointments Table or Patient File
-                      Expanded(
-                        flex: 2,
-                        child: Obx(() {
-                          final selectedPatient =
-                              _patientController.selectedPatient.value;
-                          if (selectedPatient != null) {
-                            _showAppointments.value = false;
-                            return _buildPatientFile(selectedPatient);
-                          } else if (_showAppointments.value) {
-                            return _buildAppointmentsTable();
-                          } else {
-                            return _buildWelcomeState();
-                          }
-                        }),
-                      ),
-
-                      // Right Side - Patients List
-                      _buildPatientsListSidebar(),
-                    ],
+          // Decorative tooth image in top-left, outside TopBar so it isn't clipped
+          Positioned(
+            left: -36,
+            top: -116,
+            child: Image.asset(
+              'assets/images/tooth-whitening.png',
+              width: 220.w,
+              height: 380.h,
+              errorBuilder: (context, error, stackTrace) {
+                return Container(
+                  width: 200.w,
+                  height: 200.h,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.blue,
                   ),
-                ),
-              ],
+                  child: const Icon(
+                    Icons.local_hospital,
+                    color: Colors.white,
+                  ),
+                );
+              },
             ),
           ),
+          Row(
+            children: [
+              // Main Content Area
+              Expanded(
+                child: Column(
+                  children: [
+                    // Top Bar (Header)
+                    _buildTopBar(),
 
-          // Right Sidebar Navigation (FARAH Logo)
-          _buildRightSidebarNavigation(),
+                    // Table with two columns
+                    Padding(
+                      padding:
+                          EdgeInsets.only(top: 0, right: 16.w, left: 16.w),
+                      child: _buildPatientsTable(),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Right Sidebar Navigation (FARAH Logo)
+              _buildRightSidebarNavigation(),
+            ],
+          ),
         ],
       ),
     );
@@ -175,212 +214,493 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
 
   // --- Widgets Components ---
 
+  /// معالجة كود الباركود القادم من جهاز قارئ خارجي (نفس منطق الموبايل للموظف)
+  Future<void> _handleDesktopQrScan(String code) async {
+    try {
+      _qrScanController.clear();
+
+      final result =
+          await _patientService.getPatientByQrCodeWithDoctors(code);
+
+      if (result == null || result['patient'] == null) {
+        Get.snackbar(
+          'تنبيه',
+          'المريض غير موجود',
+          snackPosition: SnackPosition.TOP,
+          backgroundColor: AppColors.error,
+          colorText: AppColors.white,
+        );
+        return;
+      }
+
+      final patient = result['patient'] as PatientModel;
+
+      // في شاشة الاستقبال: نختار المريض مباشرة ونحدّث واجهة الأطباء
+      _patientController.selectPatient(patient);
+      _showAppointments.value = false;
+
+      // تحميل أطباء المريض للقسم الجانبي
+      await _loadPatientDoctors(patient.id);
+    } catch (e) {
+      Get.snackbar(
+        'خطأ',
+        'حدث خطأ أثناء البحث عن المريض: ${e.toString()}',
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: AppColors.error,
+        colorText: AppColors.white,
+      );
+    }
+  }
+
   Widget _buildTopBar() {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 40.w, vertical: 20.h),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
+    return Padding(
+      padding: EdgeInsets.only(left: 0, right: 40.w, top: 0, bottom: 10.h),
       child: Column(
         children: [
-          // First Row: Logo, Center Title, Profile
+          // First Row: Center Title only
           Row(
             children: [
-              // Logo in top left
-              Image.asset(
-                'assets/images/logo.png',
-                width: 50.w,
-                height: 50.h,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    width: 50.w,
-                    height: 50.h,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.blue,
-                    ),
-                    child: const Icon(
-                      Icons.local_hospital,
-                      color: Colors.white,
-                    ),
-                  );
-                },
-              ),
-
+              SizedBox(width: 200.w), // Space for logo
               const Spacer(),
 
               // Center Title
-              Text(
-                'استقبال',
-                style: TextStyle(
-                  fontSize: 24.sp,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primary,
+              Transform.translate(
+                offset: Offset(0, 10.h),
+                child: Text(
+                  'استقبال',
+                  style: TextStyle(
+                    fontSize: 24.sp,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primary,
+                  ),
                 ),
               ),
 
               const Spacer(),
-
-              // Right Side - Profile Section
-              GestureDetector(
-                onTap: () {
-                  Get.toNamed(AppRoutes.doctorProfile);
-                },
-                child: Row(
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Obx(() {
-                          final user = _authController.currentUser.value;
-                          return Text(
-                            user?.name ?? 'موظف استقبال',
-                            style: TextStyle(
-                              fontSize: 16.sp,
-                              fontWeight: FontWeight.bold,
-                              color: const Color(0xFF1A1A1A),
-                            ),
-                          );
-                        }),
-                      ],
-                    ),
-                    SizedBox(width: 12.w),
-                    Obx(() {
-                      final user = _authController.currentUser.value;
-                      final imageUrl = user?.imageUrl;
-                      final validImageUrl = ImageUtils.convertToValidUrl(
-                        imageUrl,
-                      );
-
-                      return CircleAvatar(
-                        radius: 30.r,
-                        backgroundColor: AppColors.primaryLight,
-                        child:
-                            validImageUrl != null &&
-                                ImageUtils.isValidImageUrl(validImageUrl)
-                            ? ClipOval(
-                                child: CachedNetworkImage(
-                                  imageUrl: validImageUrl,
-                                  fit: BoxFit.cover,
-                                  width: 60.w,
-                                  height: 60.h,
-                                  fadeInDuration: Duration.zero,
-                                  fadeOutDuration: Duration.zero,
-                                  placeholder: (context, url) => Container(
-                                    color: AppColors.primaryLight,
-                                    child: Icon(
-                                      Icons.person,
-                                      color: AppColors.primary,
-                                      size: 30.sp,
-                                    ),
-                                  ),
-                                  errorWidget: (context, url, error) {
-                                    final name = user?.name ?? 'موظف استقبال';
-                                    return Container(
-                                      color: AppColors.primaryLight,
-                                      child: Text(
-                                        name.isNotEmpty ? name[0] : 'م',
-                                        style: TextStyle(
-                                          color: AppColors.primary,
-                                          fontSize: 22.sp,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              )
-                            : Text(
-                                user?.name.isNotEmpty == true
-                                    ? user!.name[0]
-                                    : 'م',
-                                style: TextStyle(
-                                  color: AppColors.primary,
-                                  fontSize: 22.sp,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                      );
-                    }),
-                  ],
-                ),
-              ),
             ],
           ),
 
-          SizedBox(height: 20.h),
-
-          // Second Row: Icons and Search Bar
-          Row(
-            children: [
-              const Spacer(),
-              // Action Icons on the left
-              GestureDetector(
-                onTap: () {
-                  // Navigate to add patient screen
-                  Get.toNamed(AppRoutes.addPatient)?.then((result) {
-                    // Reload patients when returning from add patient screen
-                    if (result == true) {
-                      _patientController.loadPatients();
-                    }
-                  });
-                },
-                child: _buildActionIcon(Icons.person_add_outlined),
-              ),
-              SizedBox(width: 15.w),
-              GestureDetector(
-                onTap: () {
-                  // Clear selected patient and show appointments table
-                  _patientController.selectPatient(null);
-                  _showAppointments.value = true;
-                },
-                child: _buildActionIcon(Icons.calendar_today_outlined),
-              ),
-              SizedBox(width: 30.w),
-              // Search Bar on the right
-              Container(
-                width: 721.w,
-                height: 45.h,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF5F7F9),
-                  borderRadius: BorderRadius.circular(12.r),
+          // Second Row: Profile, Receptionist Name, Search Bar, Icons - starts from right, 10px from title, 20px from right edge
+          Padding(
+            padding: EdgeInsets.only(top: 4.h, right: 20.w),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                // QR Scan input (external barcode scanner) + Action Icons
+                SizedBox(
+                  width: 130.w,
+                  child: TextField(
+                    controller: _qrScanController,
+                    textAlign: TextAlign.left,
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      color: AppColors.textPrimary,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'ضع المؤشر هنا ثم امسح الباركود',
+                      hintStyle: TextStyle(
+                        fontSize: 11.sp,
+                        color: AppColors.textHint,
+                      ),
+                      prefixIcon: Icon(
+                        Icons.qr_code_scanner,
+                        color: AppColors.primary,
+                        size: 18.sp,
+                      ),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 8.w,
+                        vertical: 6.h,
+                      ),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10.r),
+                        borderSide: BorderSide(
+                          color: const Color(0xB3649FCC),
+                          width: 1.5,
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10.r),
+                        borderSide: BorderSide(
+                          color: const Color(0xB3649FCC),
+                          width: 1.5,
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10.r),
+                        borderSide: BorderSide(
+                          color: AppColors.primary,
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                    onSubmitted: (value) {
+                      if (value.trim().isNotEmpty) {
+                        _handleDesktopQrScan(value.trim());
+                      }
+                    },
+                  ),
                 ),
-                child: TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    hintText: 'ابحث عن مريض....',
-                    hintStyle: TextStyle(
-                      color: Colors.grey[400],
-                      fontSize: 14.sp,
-                    ),
-                    suffixIcon: Icon(
-                      Icons.search,
-                      color: Colors.grey[400],
-                      size: 20.sp,
-                    ),
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 20.w,
-                      vertical: 12.h,
+                SizedBox(width: 15.w),
+                // Action Icons (ستظهر في أقصى اليسار في الترتيب العربي) - using images without container
+                GestureDetector(
+                  onTap: () {
+                    _showAddPatientDialog(context);
+                  },
+                  child: Image.asset(
+                    'assets/images/add.png',
+                    width: 30.w,
+                    height: 30.h,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Icon(
+                        Icons.person_add_outlined,
+                        color: Colors.grey[600],
+                        size: 24.sp,
+                      );
+                    },
+                  ),
+                ),
+                SizedBox(width: 15.w),
+                GestureDetector(
+                  onTap: () {
+                    // Clear selected patient and show appointments table
+                    _patientController.selectPatient(null);
+                    // إعادة تحميل مواعيد جميع المرضى
+                    _appointmentController.loadDoctorAppointments();
+                    _showAppointments.value = true;
+                  },
+                  child: Image.asset(
+                    'assets/images/date.png',
+                    width: 36.w,
+                    height: 36.h,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Icon(
+                        Icons.calendar_today_outlined,
+                        color: Colors.grey[600],
+                        size: 24.sp,
+                      );
+                    },
+                  ),
+                ),
+                SizedBox(width: 30.w),
+                // Search Bar
+                Container(
+                  width: 650.w,
+                  height: 35.h,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8.r),
+                    border: Border.all(
+                      color: const Color(0xB3649FCC), // 70% opacity of 649FCC
+                      width: 2,
                     ),
                   ),
-                  onChanged: (value) {
-                    setState(() {});
-                  },
+                  child: TextField(
+                    controller: _searchController,
+                    textAlign: TextAlign.right,
+                    decoration: InputDecoration(
+                      hintText: 'ابحث عن مريض....',
+                      hintStyle: TextStyle(
+                        color: Colors.grey[400],
+                        fontSize: 14.sp,
+                      ),
+                      // Icon from the right (Arabic layout)
+                      suffixIcon: Icon(
+                        Icons.search,
+                        color: Colors.grey[400],
+                        size: 20.sp,
+                      ),
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12.w,
+                        vertical: 8.h,
+                      ),
+                    ),
+                    onChanged: (value) {
+                      setState(() {});
+                    },
+                    cursorColor: AppColors.primary,
+                  ),
                 ),
-              ),
-            ],
+                SizedBox(width: 30.w),
+                // Receptionist Name
+                Obx(() {
+                  final user = _authController.currentUser.value;
+                  final userName = user?.name ?? 'موظف استقبال';
+                  return Text(
+                    userName,
+                    style: TextStyle(
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.bold,
+                      color: const Color(0xFF1A1A1A),
+                    ),
+                  );
+                }),
+                SizedBox(width: 12.w),
+                // Profile Image (ستظهر في أقصى اليمين)
+                Obx(() {
+                  final user = _authController.currentUser.value;
+                  final imageUrl = user?.imageUrl;
+                  final validImageUrl = ImageUtils.convertToValidUrl(
+                    imageUrl,
+                  );
+
+                  return GestureDetector(
+                    onTap: () {
+                      _showReceptionProfileDialog(context);
+                    },
+                    child: CircleAvatar(
+                      radius: 30.r,
+                      backgroundColor: AppColors.primaryLight,
+                      child: validImageUrl != null &&
+                              ImageUtils.isValidImageUrl(validImageUrl)
+                          ? ClipOval(
+                              child: CachedNetworkImage(
+                                imageUrl: validImageUrl,
+                                fit: BoxFit.cover,
+                                width: 60.w,
+                                height: 60.h,
+                                fadeInDuration: Duration.zero,
+                                fadeOutDuration: Duration.zero,
+                                placeholder: (context, url) => Container(
+                                  color: AppColors.primaryLight,
+                                  child: Icon(
+                                    Icons.person,
+                                    color: AppColors.primary,
+                                    size: 30.sp,
+                                  ),
+                                ),
+                                errorWidget: (context, url, error) {
+                                  final name = user?.name ?? 'موظف استقبال';
+                                  return Container(
+                                    color: AppColors.primaryLight,
+                                    child: Text(
+                                      name.isNotEmpty ? name[0] : 'م',
+                                      style: TextStyle(
+                                        color: AppColors.primary,
+                                        fontSize: 22.sp,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            )
+                          : Text(
+                              user?.name.isNotEmpty == true
+                                  ? user!.name[0]
+                                  : 'م',
+                              style: TextStyle(
+                                color: AppColors.primary,
+                                fontSize: 22.sp,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                    ),
+                  );
+                }),
+              ],
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildPatientsTable() {
+    return Container(
+      width: 1230.w,
+      height: 640.h,
+      decoration: BoxDecoration(
+        // Make background transparent so elements behind are visible,
+        // while keeping only the stroke (border).
+        color: Colors.transparent,
+        border: Border.all(
+          color: const Color(0xFF649FCC),
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(20.r),
+      ),
+      child: Row(
+        children: [
+          // Column 2: Patient File (on the left)
+          Expanded(
+            child: Column(
+              children: [
+                // Header Row (title changes based on current view)
+                Obx(() {
+                  final isAppointmentsView = _showAppointments.value;
+                  return Container(
+                    width: double.infinity,
+                    height: 50.h,
+                    decoration: BoxDecoration(
+                      // No fill, only bottom stroke and corner radius
+                      color: Colors.transparent,
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(20.r),
+                      ),
+                      border: const Border(
+                        bottom: BorderSide(
+                          color: Color(0xFF649FCC),
+                          width: 1,
+                        ),
+                      ),
+                    ),
+                    child: Center(
+                      child: Text(
+                        isAppointmentsView ? 'ســـــجل المواعيـــــد' : 'ملـــــف الـــــمريض',
+                        style: TextStyle(
+                          fontSize: 22.sp,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+                // Main Content: patient file or appointments table
+                Expanded(
+                  child: Obx(() {
+                    if (_showAppointments.value) {
+                      // Show appointments history/table in place of patient file
+                      return ClipRRect(
+                        borderRadius: BorderRadius.only(
+                          bottomLeft: Radius.circular(20.r),
+                        ),
+                        child: _buildAppointmentsTable(),
+                      );
+                    }
+
+                    final selectedPatient =
+                        _patientController.selectedPatient.value;
+                    if (selectedPatient != null) {
+                      return ClipRRect(
+                        borderRadius: BorderRadius.only(
+                          bottomLeft: Radius.circular(20.r),
+                        ),
+                        child: _buildPatientFile(selectedPatient),
+                      );
+                    } else {
+                      return Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF4FEFF),
+                          borderRadius: BorderRadius.only(
+                            bottomLeft: Radius.circular(20.r),
+                          ),
+                        ),
+                        child: Center(
+                          child: Text(
+                            'اختر مريضاً لعرض ملفه',
+                            style: TextStyle(
+                              fontSize: 16.sp,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+                  }),
+                ),
+              ],
+            ),
+          ),
+          // Column 1: All Patients (on the right)
+          Container(
+            width: 450.w,
+            decoration: BoxDecoration(
+              border: Border(
+                left: BorderSide(
+                  color: const Color(0xFF649FCC),
+                  width: 1,
+                ),
+              ),
+            ),
+            child: Column(
+              children: [
+                // Header Row
+                Container(
+                  width: double.infinity,
+                  height: 50.h,
+                  decoration: BoxDecoration(
+                    // No fill, only bottom stroke and corner radius
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.only(
+                      topRight: Radius.circular(20.r),
+                    ),
+                    border: const Border(
+                      bottom: BorderSide(
+                        color: Color(0xFF649FCC),
+                        width: 1,
+                      ),
+                    ),
+                  ),
+                  child: Center(
+                    child: Text(
+                      'جميـــــع المرضـــــى',
+                      style: TextStyle(
+                        fontSize: 22.sp,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ),
+                ),
+                // Patients List
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.only(
+                      bottomRight: Radius.circular(20.r),
+                    ),
+                    child: _buildPatientsListContent(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPatientsListContent() {
+    return Container(
+      color: const Color(0xFFF4FEFF),
+      child: Obx(() {
+        if (_patientController.isLoading.value) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final patients = _patientController.patients;
+        final query = _searchController.text.toLowerCase();
+        final filteredPatients = patients.where((p) {
+          return p.name.toLowerCase().contains(query) ||
+              p.phoneNumber.contains(query);
+        }).toList();
+        
+        // ترتيب المرضى من الأحدث إلى الأقدم حسب الـ id
+        filteredPatients.sort((a, b) => b.id.compareTo(a.id));
+
+        if (filteredPatients.isEmpty) {
+          return Center(
+            child: Text(
+              'لا يوجد مرضى',
+              style: TextStyle(fontSize: 16.sp, color: Colors.grey),
+            ),
+          );
+        }
+
+        return ListView.builder(
+          padding: EdgeInsets.all(20.w),
+          itemCount: filteredPatients.length,
+          itemBuilder: (context, index) {
+            final patient = filteredPatients[index];
+            return _buildPatientCard(patient: patient);
+          },
+        );
+      }),
     );
   }
 
@@ -486,40 +806,39 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Title
-          Text(
-            'جدول المواعيد',
-            style: TextStyle(
-              fontSize: 22.sp,
-              fontWeight: FontWeight.bold,
-              color: AppColors.primary,
-            ),
-          ),
-          SizedBox(height: 20.h),
+         
           // Tabs
           Container(
+            height: 37.h,
             decoration: BoxDecoration(
               color: const Color(0xFFF4FEFF),
-              borderRadius: BorderRadius.circular(16.r),
-              border: Border.all(color: Colors.grey.withOpacity(0.2), width: 1),
+              borderRadius: BorderRadius.circular(10.r),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x29649FCC), // 16% opacity of #649FCC
+                  blurRadius: 8,
+                  offset: Offset(0, 2),
+                ),
+              ],
             ),
             child: TabBar(
               controller: _appointmentsTabController,
+              padding: EdgeInsets.zero,
               indicator: BoxDecoration(
-                color: AppColors.primary,
-                borderRadius: BorderRadius.circular(16.r),
-                border: Border.all(color: AppColors.white, width: 2),
+                color: AppColors.primary.withOpacity(0.7),
+                borderRadius: BorderRadius.circular(10.r),
               ),
               indicatorSize: TabBarIndicatorSize.tab,
               dividerColor: Colors.transparent,
               labelColor: AppColors.white,
               unselectedLabelColor: AppColors.textSecondary,
               labelStyle: TextStyle(
-                fontSize: 14.sp,
+                fontSize: 16.sp,
                 fontWeight: FontWeight.bold,
               ),
               unselectedLabelStyle: TextStyle(
-                fontSize: 14.sp,
-                fontWeight: FontWeight.normal,
+                fontSize: 16.sp,
+                fontWeight: FontWeight.bold,
               ),
               tabs: const [
                 Tab(text: 'اليوم'),
@@ -598,73 +917,72 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
 
       return Container(
         decoration: BoxDecoration(
-          color: const Color(0xFFF4FEFF),
-          borderRadius: BorderRadius.circular(12.r),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16.r),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x29649FCC), // 16% من 649FCC
+              blurRadius: 10,
+              offset: Offset(0, 2),
+            ),
+          ],
         ),
         child: Column(
           children: [
             // Table Header
             Container(
-              padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+              padding: EdgeInsets.symmetric(horizontal: 32.w, vertical: 12.h),
               decoration: BoxDecoration(
-                color: AppColors.primaryLight.withOpacity(0.1),
+                color: Colors.white,
                 borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(12.r),
-                  topRight: Radius.circular(12.r),
+                  topLeft: Radius.circular(16.r),
+                  topRight: Radius.circular(16.r),
                 ),
               ),
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // اسم المريض (على اليمين)
-                  Expanded(
-                    flex: 3,
-                    child: Text(
-                      'اسم المريض',
-                      style: TextStyle(
-                        fontSize: 14.sp,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                      textAlign: TextAlign.right,
-                    ),
+                  // ترتيب الأعمدة من اليسار لليمين مع نفس المسافات مثل الصفوف
+                  SizedBox(
+                    width: 100.w,
+                    child: const SizedBox.shrink(), // عمود الزر بدون عنوان
                   ),
-                  // الموعد
-                  Expanded(
-                    flex: 2,
-                    child: Text(
-                      'الموعد',
-                      style: TextStyle(
-                        fontSize: 14.sp,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                  // رقم الهاتف
-                  Expanded(
-                    flex: 2,
+                  SizedBox(width: 60.w),
+                  SizedBox(
+                    width: 140.w,
                     child: Text(
                       'رقم الهاتف',
                       style: TextStyle(
-                        fontSize: 14.sp,
+                        fontSize: 16.sp,
                         fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
+                        color: const Color(0xFF76C6D1),
                       ),
                       textAlign: TextAlign.center,
                     ),
                   ),
-                  // زر العرض
-                  Expanded(
-                    flex: 1,
+                  SizedBox(width: 60.w),
+                  SizedBox(
+                    width: 140.w,
                     child: Text(
-                      'عرض',
+                      'الموعد',
                       style: TextStyle(
-                        fontSize: 14.sp,
+                        fontSize: 16.sp,
                         fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
+                        color: const Color(0xFF76C6D1),
                       ),
                       textAlign: TextAlign.center,
+                    ),
+                  ),
+                  SizedBox(width: 60.w),
+                  Expanded(
+                    child: Text(
+                      'اسم المريض',
+                      style: TextStyle(
+                        fontSize: 16.sp,
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF76C6D1),
+                      ),
+                      textAlign: TextAlign.right,
                     ),
                   ),
                 ],
@@ -706,101 +1024,87 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
 
                   return Container(
                     padding: EdgeInsets.symmetric(
-                      horizontal: 16.w,
-                      vertical: 12.h,
+                      horizontal: 32.w,
+                      vertical: 10.h,
                     ),
-                    decoration: BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(
-                          color: Colors.grey.withOpacity(0.2),
-                          width: 1,
-                        ),
-                      ),
-                    ),
+                    margin: EdgeInsets.symmetric(vertical: 4.h), // مسافة 8 بين الصفوف (4 أعلى + 4 أسفل)
                     child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        // اسم المريض (على اليمين)
-                        Expanded(
-                          flex: 3,
+                        // العمود الرابع: زر عرض
+                        SizedBox(
+                          width: 100.w,
+                          height: 30.h,
+                          child: ElevatedButton(
+                            onPressed: () {
+                              if (patient != null) {
+                                _patientController.selectPatient(patient);
+                                _showAppointments.value = false;
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF76C6D1),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10.r),
+                              ),
+                              padding: EdgeInsets.zero,
+                            ),
+                            child: Text(
+                              'عرض',
+                              style: TextStyle(
+                                fontSize: 14.sp,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 60.w),
+                        // رقم الهاتف
+                        SizedBox(
+                          width: 140.w,
                           child: Text(
-                            patientName,
+                            patientPhone,
                             style: TextStyle(
                               fontSize: 14.sp,
-                              color: AppColors.textPrimary,
-                              fontWeight: FontWeight.w600,
+                              color: const Color(0x99212F34),
                             ),
-                            textAlign: TextAlign.right,
+                            textAlign: TextAlign.center,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
+                        SizedBox(width: 60.w),
                         // الموعد
-                        Expanded(
-                          flex: 2,
+                        SizedBox(
+                          width: 140.w,
                           child: Text(
                             appointmentText,
                             style: TextStyle(
                               fontSize: 14.sp,
                               color: isLate
                                   ? Colors.red
-                                  : AppColors.textPrimary,
+                                  : const Color(0x99212F34),
                             ),
                             textAlign: TextAlign.center,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        // رقم الهاتف
+                        SizedBox(width: 60.w),
+                        // اسم المريض (على اليمين)
                         Expanded(
-                          flex: 2,
                           child: Text(
-                            patientPhone,
+                            patientName,
                             style: TextStyle(
                               fontSize: 14.sp,
-                              color: AppColors.textPrimary,
+                              color: const Color(0xFF649FCC),
+                              fontWeight: FontWeight.w600,
                             ),
-                            textAlign: TextAlign.center,
+                            textAlign: TextAlign.right,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        // زر العرض
-                        Expanded(
-                          flex: 1,
-                          child: Center(
-                            child: GestureDetector(
-                              onTap: () {
-                                if (patient != null) {
-                                  _patientController.selectPatient(patient);
-                                }
-                              },
-                              child: Container(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 12.w,
-                                  vertical: 8.h,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary,
-                                  borderRadius: BorderRadius.circular(8.r),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppColors.primary.withOpacity(0.3),
-                                      blurRadius: 4,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: Text(
-                                  'عرض',
-                                  style: TextStyle(
-                                    fontSize: 12.sp,
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
-                            ),
                           ),
                         ),
                       ],
@@ -889,6 +1193,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
       return GestureDetector(
         onTap: () {
           _patientController.selectPatient(patient);
+          _showAppointments.value = false;
         },
         child: Container(
           margin: EdgeInsets.only(bottom: 12.h),
@@ -928,14 +1233,14 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                       RichText(
                         textAlign: TextAlign.right,
                         text: TextSpan(
-                          style: TextStyle(
+                          style: GoogleFonts.cairo(
                             fontSize: 14.sp,
                             fontWeight: FontWeight.w600,
                           ),
                           children: [
                             TextSpan(
                               text: 'الاسم : ',
-                              style: TextStyle(
+                              style: GoogleFonts.cairo(
                                 fontSize: 13.sp,
                                 fontWeight: FontWeight.w600,
                                 color: const Color(0xFF505558),
@@ -943,7 +1248,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                             ),
                             TextSpan(
                               text: patient.name,
-                              style: TextStyle(
+                              style: GoogleFonts.cairo(
                                 color: AppColors.primary,
                                 fontSize: 14.sp,
                                 fontWeight: FontWeight.w600,
@@ -1083,34 +1388,147 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
   }
 
   Widget _buildPatientFile(PatientModel patient) {
+    // التحقق من نوع المستخدم
+    final userType = _authController.currentUser.value?.userType;
+    final isReceptionist = userType != null && userType.toLowerCase() == 'receptionist';
+
     return Container(
       color: const Color(0xFFF4FEFF),
       child: Column(
         children: [
           Expanded(
-            child: NestedScrollView(
-              headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
-                return [
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
                   // Patient Information Card
-                  SliverToBoxAdapter(
-                    child: Container(
-                      margin: EdgeInsets.all(16.w),
-                      padding: EdgeInsets.zero,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(8.r),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.08),
-                            blurRadius: 12,
-                            offset: const Offset(0, 6),
+                  Container(
+                    margin: EdgeInsets.all(16.w),
+                    padding: EdgeInsets.zero,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8.r),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.08),
+                          blurRadius: 12,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        // QR Code (on the left)
+                        GestureDetector(
+                          onTap: () {
+                            _showQrCodeDialog(
+                              context,
+                              patient.id,
+                            );
+                          },
+                          child: Container(
+                            width: 120.w,
+                            height: 120.w,
+                            padding: EdgeInsets.all(8.w),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(8.r),
+                            ),
+                            child: QrImageView(
+                              data: patient.id,
+                              version: QrVersions.auto,
+                              size: 104.w,
+                              backgroundColor: Colors.white,
+                            ),
                           ),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          // Patient Image
-                          Container(
+                        ),
+                        Spacer(),
+                        // Patient Details (Text only) - same height as image
+                        Container(
+                          height: 145.h,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              // Name at the top
+                              Text(
+                                'الاسم : ${patient.name}',
+                                style: GoogleFonts.cairo(
+                                  fontSize: 14.sp,
+                                  fontWeight: FontWeight.w700,
+                                  color: const Color(0xFF649FCC),
+                                ),
+                                textAlign: TextAlign.right,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                'العمر : ${patient.age} سنة',
+                                style: TextStyle(
+                                  fontSize: 12.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF505558),
+                                ),
+                                textAlign: TextAlign.right,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                'الجنس: ${patient.gender == 'male'
+                                    ? 'ذكر'
+                                    : patient.gender == 'female'
+                                    ? 'أنثى'
+                                    : patient.gender}',
+                                style: TextStyle(
+                                  fontSize: 12.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF505558),
+                                ),
+                                textAlign: TextAlign.right,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                'رقم الهاتف : ${patient.phoneNumber}',
+                                style: TextStyle(
+                                  fontSize: 12.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF505558),
+                                ),
+                                textAlign: TextAlign.right,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                'المدينة : ${patient.city}',
+                                style: TextStyle(
+                                  fontSize: 12.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF505558),
+                                ),
+                                textAlign: TextAlign.right,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              // Last item at the bottom
+                              Text(
+                                'نوع العلاج : ${patient.treatmentHistory != null && patient.treatmentHistory!.isNotEmpty ? patient.treatmentHistory!.last : 'لا يوجد'}',
+                                style: TextStyle(
+                                  fontSize: 12.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF505558),
+                                ),
+                                textAlign: TextAlign.right,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(width: 20.w),
+                        // Patient Image (on the right - at the start from the right)
+                        Padding(
+                          padding: EdgeInsets.only(right: 4.w, top: 4.h, bottom: 4.h),
+                          child: Container(
                             width: 110.w,
                             height: 156.h,
                             decoration: BoxDecoration(
@@ -1160,312 +1578,58 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                                     ),
                             ),
                           ),
-                          SizedBox(width: 12.w),
-                          // Patient Details and QR Code
-                          Expanded(
-                            child: Padding(
-                              padding: EdgeInsets.only(
-                                left: 0.w,
-                                top: 6.h,
-                                bottom: 6.h,
-                              ),
-                              child: Column(
-                                children: [
-                                  // Name at the top
-                                  Align(
-                                    alignment: Alignment.centerRight,
-                                    child: Text(
-                                      'الاسم : ${patient.name}',
-                                      style: TextStyle(
-                                        fontSize: 14.sp,
-                                        fontWeight: FontWeight.w700,
-                                        color: const Color(0xFF649FCC),
-                                      ),
-                                      textAlign: TextAlign.right,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  SizedBox(height: 4.h),
-                                  // Row with details and QR code
-                                  Row(
-                                    children: [
-                                      // Patient Details column
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.end,
-                                          children: [
-                                            Align(
-                                              alignment: Alignment.centerRight,
-                                              child: Text(
-                                                'العمر : ${patient.age} سنة',
-                                                style: TextStyle(
-                                                  fontSize: 12.sp,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: const Color(
-                                                    0xFF505558,
-                                                  ),
-                                                ),
-                                                textAlign: TextAlign.right,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ),
-                                            SizedBox(height: 4.h),
-                                            Align(
-                                              alignment: Alignment.centerRight,
-                                              child: Text(
-                                                'الجنس: ${patient.gender == 'male'
-                                                    ? 'ذكر'
-                                                    : patient.gender == 'female'
-                                                    ? 'أنثى'
-                                                    : patient.gender}',
-                                                style: TextStyle(
-                                                  fontSize: 12.sp,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: const Color(
-                                                    0xFF505558,
-                                                  ),
-                                                ),
-                                                textAlign: TextAlign.right,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ),
-                                            SizedBox(height: 4.h),
-                                            Align(
-                                              alignment: Alignment.centerRight,
-                                              child: Text(
-                                                'رقم الهاتف : ${patient.phoneNumber}',
-                                                style: TextStyle(
-                                                  fontSize: 12.sp,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: const Color(
-                                                    0xFF505558,
-                                                  ),
-                                                ),
-                                                textAlign: TextAlign.right,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ),
-                                            SizedBox(height: 4.h),
-                                            Align(
-                                              alignment: Alignment.centerRight,
-                                              child: Text(
-                                                'المدينة : ${patient.city}',
-                                                style: TextStyle(
-                                                  fontSize: 12.sp,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: const Color(
-                                                    0xFF505558,
-                                                  ),
-                                                ),
-                                                textAlign: TextAlign.right,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ),
-                                            SizedBox(height: 4.h),
-                                            Align(
-                                              alignment: Alignment.centerRight,
-                                              child: Text(
-                                                'نوع العلاج : ${patient.treatmentHistory != null && patient.treatmentHistory!.isNotEmpty ? patient.treatmentHistory!.last : 'لا يوجد'}',
-                                                style: TextStyle(
-                                                  fontSize: 12.sp,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: const Color(
-                                                    0xFF505558,
-                                                  ),
-                                                ),
-                                                textAlign: TextAlign.right,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      SizedBox(width: 12.w),
-                                      // QR Code column
-                                      Column(
-                                        children: [
-                                          // QR Code (clickable)
-                                          GestureDetector(
-                                            onTap: () {
-                                              _showQrCodeDialog(
-                                                context,
-                                                patient.id,
-                                              );
-                                            },
-                                            child: Container(
-                                              width: 70.w,
-                                              height: 70.w,
-                                              padding: EdgeInsets.all(8.w),
-                                              decoration: BoxDecoration(
-                                                color: Colors.white,
-                                                borderRadius:
-                                                    BorderRadius.circular(8.r),
-                                              ),
-                                              child: QrImageView(
-                                                data: patient.id,
-                                                version: QrVersions.auto,
-                                                size: 54.w,
-                                                backgroundColor: Colors.white,
-                                              ),
-                                            ),
-                                          ),
-                                          SizedBox(height: 8.h),
-                                          // Edit treatment type button
-                                          GestureDetector(
-                                            onTap: () {
-                                              _showTreatmentTypeDialog(
-                                                context,
-                                                patient,
-                                              );
-                                            },
-                                            child: Container(
-                                              width: 40.w,
-                                              height: 40.w,
-                                              decoration: BoxDecoration(
-                                                color: AppColors.primaryLight,
-                                                borderRadius:
-                                                    BorderRadius.circular(8.r),
-                                              ),
-                                              child: Icon(
-                                                Icons.edit,
-                                                color: AppColors.primary,
-                                                size: 20.sp,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  // Sticky TabBar
-                  SliverPadding(
-                    padding: EdgeInsets.symmetric(horizontal: 16.w),
-                    sliver: SliverPersistentHeader(
-                      pinned: true,
-                      delegate: _SliverTabBarDelegate(
-                        height: 48.h,
-                        child: Container(
-                          height: 48.h,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF4FEFF),
-                            borderRadius: BorderRadius.circular(16.r),
-                            border: Border.all(
-                              color: Colors.grey.withOpacity(0.2),
-                              width: 1,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.08),
-                                blurRadius: 12,
-                                offset: const Offset(0, 6),
-                              ),
-                            ],
-                          ),
-                          child: TabBar(
-                            controller: _tabController,
-                            indicator: BoxDecoration(
-                              color: const Color(0xB3649FCC), // 70% of #649FCC
-                              borderRadius: BorderRadius.circular(16.r),
-                            ),
-                            indicatorSize: TabBarIndicatorSize.tab,
-                            dividerColor: Colors.transparent,
-                            labelColor: Colors.white,
-                            unselectedLabelColor: const Color(0xFF505558),
-                            labelStyle: TextStyle(
-                              fontSize: 16.sp,
-                              fontWeight: FontWeight.w700,
-                            ),
-                            unselectedLabelStyle: TextStyle(
-                              fontSize: 16.sp,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            tabs: const [
-                              Tab(text: 'السجلات'),
-                              Tab(text: 'المواعيد'),
-                              Tab(text: 'المعرض'),
-                            ],
-                          ),
                         ),
-                      ),
-                    ),
-                  ),
-                ];
-              },
-              body: Column(
-                children: [
-                  // Tab Content
-                  Expanded(
-                    child: TabBarView(
-                      controller: _tabController,
-                      children: [
-                        _buildRecordsTab(patient),
-                        _buildAppointmentsTab(patient),
-                        _buildGalleryTab(patient),
                       ],
                     ),
                   ),
 
-                  // Add Record Button (Dynamic based on tab)
-                  Padding(
-                    padding: EdgeInsets.all(24.w),
-                    child: Obx(() {
-                      final selectedPatient =
-                          _patientController.selectedPatient.value;
-                      if (selectedPatient == null) {
-                        return const SizedBox.shrink();
-                      }
+                  // Doctors Section (only for receptionist)
+                  if (isReceptionist) ...[
+                    SizedBox(height: 24.h),
+                    _buildDoctorsSection(patient),
+                  ],
 
-                      final tabIndex = _currentTabIndex.value;
-                      return Container(
-                        width: double.infinity,
-                        height: 56.h,
-                        decoration: BoxDecoration(
-                          color: AppColors.primary,
-                          borderRadius: BorderRadius.circular(16.r),
-                        ),
-                        child: ElevatedButton(
-                          onPressed: () {
-                            _onButtonPressed(tabIndex, selectedPatient.id);
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.transparent,
-                            shadowColor: Colors.transparent,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16.r),
-                            ),
-                          ),
-                          child: Text(
-                            _getButtonText(tabIndex),
-                            style: TextStyle(
-                              fontSize: 16.sp,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      );
-                    }),
-                  ),
+                  // Add spacing at bottom for receptionist
+                  if (isReceptionist)
+                    SizedBox(height: 24.h),
                 ],
               ),
             ),
           ),
+
+          // Transfer Button (only for receptionist)
+          if (isReceptionist)
+            Padding(
+              padding: EdgeInsets.all(24.w),
+              child: Container(
+                width: double.infinity,
+                height: 56.h,
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(16.r),
+                ),
+                child: ElevatedButton(
+                  onPressed: () {
+                  _showSelectDoctorDialog(context, patient);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    shadowColor: Colors.transparent,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16.r),
+                    ),
+                  ),
+                  child: Text(
+                    'تحويل',
+                    style: TextStyle(
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -1524,11 +1688,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
           itemCount: records.length,
           itemBuilder: (context, index) {
             final record = records[index];
-            return GestureDetector(
-              onTap: () {
-                _showRecordDetailsDialog(context, record);
-              },
-              child: Container(
+            return Container(
                 margin: EdgeInsets.only(bottom: 16.h),
                 padding: EdgeInsets.all(16.w),
                 decoration: BoxDecoration(
@@ -1566,28 +1726,59 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                           spacing: 8.w,
                           runSpacing: 8.h,
                           children: record.images!.map((imageUrl) {
-                            return Container(
-                              width: 60.w,
-                              height: 70.h,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(8.r),
-                                border: Border.all(color: AppColors.divider),
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(8.r),
-                                child: Image.network(
-                                  imageUrl,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return Container(
-                                      color: AppColors.divider,
-                                      child: Icon(
-                                        Icons.broken_image,
-                                        color: AppColors.textHint,
-                                        size: 30.sp,
-                                      ),
-                                    );
-                                  },
+                            final validImageUrl = ImageUtils.convertToValidUrl(imageUrl);
+                            return GestureDetector(
+                              onTap: () {
+                                if (validImageUrl != null && ImageUtils.isValidImageUrl(validImageUrl)) {
+                                  _showImageFullScreenDialog(context, validImageUrl);
+                                }
+                              },
+                              child: Container(
+                                width: 60.w,
+                                height: 70.h,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8.r),
+                                  border: Border.all(color: AppColors.divider),
+                                ),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(8.r),
+                                  child: validImageUrl != null && ImageUtils.isValidImageUrl(validImageUrl)
+                                      ? CachedNetworkImage(
+                                          imageUrl: validImageUrl,
+                                          fit: BoxFit.cover,
+                                          progressIndicatorBuilder: (context, url, progress) => Container(
+                                            color: AppColors.divider,
+                                            child: Center(
+                                              child: CircularProgressIndicator(
+                                                value: progress.progress,
+                                                strokeWidth: 2,
+                                                valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                                              ),
+                                            ),
+                                          ),
+                                          errorWidget: (context, url, error) => Container(
+                                            color: AppColors.divider,
+                                            child: Icon(
+                                              Icons.broken_image,
+                                              color: AppColors.textHint,
+                                              size: 30.sp,
+                                            ),
+                                          ),
+                                        )
+                                      : Image.network(
+                                          imageUrl,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) {
+                                            return Container(
+                                              color: AppColors.divider,
+                                              child: Icon(
+                                                Icons.broken_image,
+                                                color: AppColors.textHint,
+                                                size: 30.sp,
+                                              ),
+                                            );
+                                          },
+                                        ),
                                 ),
                               ),
                             );
@@ -1616,7 +1807,6 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                     ),
                   ],
                 ),
-              ),
             );
           },
         ),
@@ -2052,40 +2242,25 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
             GestureDetector(
               onTap: () async {
                 bool success;
-                String message;
                 if (stage.isCompleted) {
                   // إلغاء الإكمال
                   success = await implantStageController.uncompleteStage(
                     patientId,
                     stage.stageName,
                   );
-                  message = success
-                      ? 'تم إلغاء إكمال المرحلة بنجاح'
-                      : 'فشل إلغاء إكمال المرحلة';
                 } else {
                   // إكمال المرحلة
                   success = await implantStageController.completeStage(
                     patientId,
                     stage.stageName,
                   );
-                  message = success
-                      ? 'تم إكمال المرحلة بنجاح'
-                      : 'فشل إكمال المرحلة';
                 }
 
-                if (success) {
-                  Get.snackbar(
-                    'نجح',
-                    message,
-                    snackPosition: SnackPosition.BOTTOM,
-                    backgroundColor: AppColors.primary,
-                    colorText: AppColors.white,
-                  );
-                } else {
+                if (!success) {
                   final errorMsg =
                       implantStageController.errorMessage.value.isNotEmpty
-                      ? implantStageController.errorMessage.value
-                      : message;
+                          ? implantStageController.errorMessage.value
+                          : 'فشل تحديث حالة المرحلة';
                   Get.snackbar(
                     'خطأ',
                     errorMsg,
@@ -2494,117 +2669,32 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
 
   Widget _buildRightSidebarNavigation() {
     return Container(
-      width: 120.w,
+      width: 110.w,
       decoration: BoxDecoration(
         color: const Color(0xFF649FCC),
       ),
       child: Column(
         children: [
-          SizedBox(height: 40.h),
+          SizedBox(height: 50.h),
           // Logo Section
-          Column(
-            children: [
-              // Logo Circle with Tooth Logo Image
-              Container(
-                width: 80.w,
-                height: 80.h,
-                decoration: BoxDecoration(
-                  color: AppColors.primary,
-                  shape: BoxShape.circle,
-                ),
-                child: ClipOval(
-                  child: Image.asset(
-                    'assets/images/logo.png',
-                    width: 80.w,
-                    height: 80.h,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          // White Tooth
-                          Icon(
-                            Icons.medical_services,
-                            color: Colors.white,
-                            size: 40.sp,
-                          ),
-                          // Stars around
-                          Positioned(
-                            top: 10.h,
-                            left: 10.w,
-                            child: Icon(
-                              Icons.star,
-                              color: Colors.white,
-                              size: 12.sp,
-                            ),
-                          ),
-                          Positioned(
-                            top: 10.h,
-                            right: 10.w,
-                            child: Icon(
-                              Icons.star,
-                              color: Colors.white,
-                              size: 12.sp,
-                            ),
-                          ),
-                          Positioned(
-                            bottom: 15.h,
-                            left: 15.w,
-                            child: Icon(
-                              Icons.star,
-                              color: Colors.white,
-                              size: 10.sp,
-                            ),
-                          ),
-                          Positioned(
-                            bottom: 15.h,
-                            right: 15.w,
-                            child: Icon(
-                              Icons.star,
-                              color: Colors.white,
-                              size: 10.sp,
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-              ),
-              SizedBox(height: 15.h),
-              // FARAH Text
-              Text(
-                'FARAH',
-                style: TextStyle(
-                  fontSize: 20.sp,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                  letterSpacing: 2,
-                ),
-              ),
-              SizedBox(height: 5.h),
-              Text(
-                'Dental Clinic',
-                style: TextStyle(
-                  fontSize: 12.sp,
-                  color: Colors.white70,
-                  letterSpacing: 1,
-                ),
-              ),
-            ],
+          Image.asset(
+            'assets/images/logo.png',
+            width: 140.w,
+            height: 140.h,
+            fit: BoxFit.contain,
           ),
 
-          SizedBox(height: 40.h),
+          
 
           // Vertical Text
           Expanded(
             child: RotatedBox(
-              quarterTurns: 1,
+              quarterTurns: 3,
               child: Center(
                 child: Text(
                   'مركز فرح التخصصي لطب الاسنان',
                   style: TextStyle(
-                    fontSize: 16.sp,
+                    fontSize: 26.sp,
                     color: Colors.white,
                     fontWeight: FontWeight.w500,
                   ),
@@ -2613,17 +2703,16 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
             ),
           ),
 
-          SizedBox(height: 40.h),
+          SizedBox(height: 25.h),
 
           // Bottom Icons
           Column(
             children: [
               // Tooth Logo at bottom
               Image.asset(
-                'assets/images/tooth_logo.png',
-                width: 40.w,
-                height: 40.h,
-                color: Colors.white,
+                'assets/images/happy 2.png',
+                width: 80.w,
+                height: 80.h,
                 errorBuilder: (context, error, stackTrace) {
                   return Icon(
                     Icons.medical_services_outlined,
@@ -2632,21 +2721,12 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                   );
                 },
               ),
-              SizedBox(height: 20.h),
-              IconButton(
-                icon: Icon(
-                  Icons.arrow_forward_ios,
-                  color: Colors.white,
-                  size: 20.sp,
-                ),
-                onPressed: () {
-                  _authController.logout();
-                },
-              ),
+              
+             
             ],
           ),
 
-          SizedBox(height: 40.h),
+          SizedBox(height: 100.h),
         ],
       ),
     );
@@ -2942,11 +3022,9 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                                     note: noteText.isEmpty ? null : noteText,
                                     imageFiles: imagesToSend,
                                   );
-                                  // Reload records after adding
-                                  await _medicalRecordController
-                                      .loadPatientRecords(patientId);
+                                  // لا نعيد تحميل السجلات هنا حتى لا يحدث فلاش، الكونترولر حدّث القائمة متفائلاً
                                 } catch (e) {
-                                  // Error already shown in controller
+                                  // الخطأ يظهر من داخل الكونترولر
                                 }
                               },
                               style: ElevatedButton.styleFrom(
@@ -3203,27 +3281,8 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                                       if (dialogContext.mounted) {
                                         if (success) {
                                           Navigator.of(dialogContext).pop();
-                                          Get.snackbar(
-                                            'نجح',
-                                            'تم رفع الصورة بنجاح',
-                                            snackPosition: SnackPosition.BOTTOM,
-                                            backgroundColor: AppColors.primary,
-                                            colorText: Colors.white,
-                                          );
-                                          // Reload gallery
-                                          await _galleryController.loadGallery(
-                                            patientId,
-                                          );
+                                          // المعرض تم تحديثه متفائلاً في الكونترولر، لا حاجة لإعادة تحميل
                                         } else {
-                                          Get.snackbar(
-                                            'خطأ',
-                                            _galleryController
-                                                .errorMessage
-                                                .value,
-                                            snackPosition: SnackPosition.BOTTOM,
-                                            backgroundColor: Colors.red,
-                                            colorText: Colors.white,
-                                          );
                                           setDialogState(() {
                                             isUploading = false;
                                           });
@@ -3453,25 +3512,11 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                                     ? selectedImages
                                     : null,
                               );
-
-                              // Reload appointments
-                              _appointmentController
-                                  .loadPatientAppointmentsById(patientId);
+                              // لا نعيد تحميل المواعيد هنا حتى لا يحدث فلاش، الكونترولر يضيف الموعد متفائلاً
                             } catch (e) {
                               print(
-                                '❌ [DoctorHomeScreen] Error adding appointment: $e',
+                                '❌ [ReceptionHomeScreen] Error adding appointment: $e',
                               );
-                              // لا تعرض خطأ إذا كان الخطأ في parsing فقط (الموعد تمت إضافته)
-                              final errorMsg = e.toString();
-                              if (!errorMsg.contains('معالجة البيانات')) {
-                                Get.snackbar(
-                                  'خطأ',
-                                  'فشل إضافة الموعد',
-                                  snackPosition: SnackPosition.BOTTOM,
-                                  backgroundColor: Colors.red,
-                                  colorText: AppColors.white,
-                                );
-                              }
                             }
                           }
                         },
@@ -4215,7 +4260,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                         ),
                       ),
                       GestureDetector(
-                        onTap: () => Navigator.of(context).pop(),
+                        onTap: () => Navigator.of(dialogContext).pop(),
                         child: Container(
                           padding: EdgeInsets.all(8.w),
                           decoration: BoxDecoration(
@@ -4375,6 +4420,11 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
 
   void _showGalleryImageDialog(BuildContext context, dynamic galleryImage) {
     final imageUrl = ImageUtils.convertToValidUrl(galleryImage.imagePath);
+    final screenSize = MediaQuery.of(context).size;
+    final maxDialogWidth = screenSize.width * 0.6;
+    final maxDialogHeight = screenSize.height * 0.75;
+    final maxImageWidth = maxDialogWidth - 48.w;
+    final maxImageHeight = maxDialogHeight - 180.h;
 
     showDialog(
       context: context,
@@ -4385,160 +4435,184 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
           insetPadding: EdgeInsets.all(24.w),
           child: Container(
             constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.9,
+              maxWidth: maxDialogWidth,
+              maxHeight: maxDialogHeight,
             ),
-            width: double.infinity,
             padding: EdgeInsets.all(24.w),
             decoration: BoxDecoration(
               color: AppColors.white,
               borderRadius: BorderRadius.circular(20.r),
             ),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header with close button
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'تفاصيل الصورة',
-                        style: TextStyle(
-                          fontSize: 20.sp,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
-                        ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header with close button
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'تفاصيل الصورة',
+                      style: TextStyle(
+                        fontSize: 18.sp,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
                       ),
-                      GestureDetector(
-                        onTap: () => Navigator.of(context).pop(),
-                        child: Container(
-                          padding: EdgeInsets.all(8.w),
-                          decoration: BoxDecoration(
-                            color: AppColors.divider.withOpacity(0.3),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.close,
-                            color: AppColors.textSecondary,
-                            size: 20.sp,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 24.h),
-
-                  // Image
-                  if (imageUrl != null && ImageUtils.isValidImageUrl(imageUrl))
+                    ),
                     GestureDetector(
-                      onTap: () {
-                        Navigator.of(context).pop();
-                        _showImageFullScreenDialog(context, imageUrl);
-                      },
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12.r),
-                        child: CachedNetworkImage(
-                          imageUrl: imageUrl,
-                          fit: BoxFit.contain,
-                          width: double.infinity,
-                          progressIndicatorBuilder: (context, url, progress) =>
-                              Container(
-                                height: 300.h,
-                                color: AppColors.divider,
-                                child: Center(
-                                  child: CircularProgressIndicator(
-                                    value: progress.progress,
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      AppColors.primary,
+                      onTap: () => Navigator.of(dialogContext).pop(),
+                      child: Container(
+                        padding: EdgeInsets.all(8.w),
+                        decoration: BoxDecoration(
+                          color: AppColors.divider.withOpacity(0.3),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.close,
+                          color: AppColors.textSecondary,
+                          size: 20.sp,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 16.h),
+
+                // Image
+                Flexible(
+                  child: Center(
+                    child: imageUrl != null && ImageUtils.isValidImageUrl(imageUrl)
+                        ? GestureDetector(
+                            onTap: () {
+                              Navigator.of(context).pop();
+                              _showImageFullScreenDialog(context, imageUrl);
+                            },
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12.r),
+                              child: CachedNetworkImage(
+                                imageUrl: imageUrl,
+                                fit: BoxFit.contain,
+                                width: maxImageWidth,
+                                height: maxImageHeight,
+                                progressIndicatorBuilder: (context, url, progress) =>
+                                    Container(
+                                      width: maxImageWidth,
+                                      height: maxImageHeight,
+                                      color: AppColors.divider,
+                                      child: Center(
+                                        child: CircularProgressIndicator(
+                                          value: progress.progress,
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(
+                                            AppColors.primary,
+                                          ),
+                                        ),
+                                      ),
                                     ),
+                                errorWidget: (context, url, error) => Container(
+                                  width: maxImageWidth,
+                                  height: maxImageHeight,
+                                  color: AppColors.divider,
+                                  child: Icon(
+                                    Icons.broken_image,
+                                    color: AppColors.textHint,
+                                    size: 50.sp,
                                   ),
                                 ),
                               ),
-                          errorWidget: (context, url, error) => Container(
-                            height: 300.h,
-                            color: AppColors.divider,
+                            ),
+                          )
+                        : Container(
+                            width: maxImageWidth,
+                            height: maxImageHeight,
+                            decoration: BoxDecoration(
+                              color: AppColors.divider,
+                              borderRadius: BorderRadius.circular(12.r),
+                            ),
                             child: Icon(
                               Icons.broken_image,
                               color: AppColors.textHint,
                               size: 50.sp,
                             ),
                           ),
-                        ),
-                      ),
-                    )
-                  else
-                    Container(
-                      height: 300.h,
-                      decoration: BoxDecoration(
-                        color: AppColors.divider,
-                        borderRadius: BorderRadius.circular(12.r),
-                      ),
-                      child: Icon(
-                        Icons.broken_image,
-                        color: AppColors.textHint,
-                        size: 50.sp,
-                      ),
-                    ),
-                  SizedBox(height: 16.h),
+                  ),
+                ),
+                SizedBox(height: 12.h),
 
-                  // Date
-                  if (galleryImage.createdAt != null &&
-                      galleryImage.createdAt.isNotEmpty)
-                    Row(
+                // Date
+                if (galleryImage.createdAt != null &&
+                    galleryImage.createdAt.isNotEmpty)
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4.w),
+                    child: Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         Icon(
                           Icons.calendar_today,
-                          size: 16.sp,
+                          size: 14.sp,
                           color: AppColors.textSecondary,
                         ),
-                        SizedBox(width: 8.w),
-                        Text(
-                          galleryImage.createdAt,
-                          style: TextStyle(
-                            fontSize: 14.sp,
-                            fontWeight: FontWeight.w500,
-                            color: AppColors.textSecondary,
+                        SizedBox(width: 6.w),
+                        Flexible(
+                          child: Text(
+                            galleryImage.createdAt,
+                            style: TextStyle(
+                              fontSize: 12.sp,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.textSecondary,
+                            ),
+                            textAlign: TextAlign.right,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
                     ),
+                  ),
 
-                  // Note
-                  if (galleryImage.note != null &&
-                      galleryImage.note!.isNotEmpty) ...[
-                    SizedBox(height: 16.h),
-                    Text(
-                      'الشرح:',
-                      style: TextStyle(
-                        fontSize: 16.sp,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    SizedBox(height: 8.h),
-                    Container(
-                      width: double.infinity,
-                      padding: EdgeInsets.all(16.w),
-                      decoration: BoxDecoration(
-                        color: AppColors.divider.withOpacity(0.3),
-                        borderRadius: BorderRadius.circular(12.r),
-                      ),
-                      child: Text(
-                        galleryImage.note!,
-                        style: TextStyle(
-                          fontSize: 14.sp,
-                          color: AppColors.textPrimary,
-                          height: 1.5,
+                // Note
+                if (galleryImage.note != null &&
+                    galleryImage.note!.isNotEmpty) ...[
+                  SizedBox(height: 12.h),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4.w),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'الشرح:',
+                          style: TextStyle(
+                            fontSize: 14.sp,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                          ),
                         ),
-                        textAlign: TextAlign.right,
-                      ),
+                        SizedBox(height: 6.h),
+                        Container(
+                          width: double.infinity,
+                          constraints: BoxConstraints(maxHeight: 100.h),
+                          padding: EdgeInsets.all(12.w),
+                          decoration: BoxDecoration(
+                            color: AppColors.divider.withOpacity(0.3),
+                            borderRadius: BorderRadius.circular(12.r),
+                          ),
+                          child: SingleChildScrollView(
+                            child: Text(
+                              galleryImage.note!,
+                              style: TextStyle(
+                                fontSize: 12.sp,
+                                color: AppColors.textPrimary,
+                                height: 1.5,
+                              ),
+                              textAlign: TextAlign.right,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ],
-              ),
+              ],
             ),
           ),
         );
@@ -4606,7 +4680,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                   top: 40.h,
                   right: 20.w,
                   child: GestureDetector(
-                    onTap: () => Navigator.of(context).pop(),
+                    onTap: () => Navigator.of(dialogContext).pop(),
                     child: Container(
                       padding: EdgeInsets.all(12.w),
                       decoration: BoxDecoration(
@@ -4636,6 +4710,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
         return Dialog(
           backgroundColor: Colors.transparent,
           child: Container(
+            width: 365.w,
             padding: EdgeInsets.all(24.w),
             decoration: BoxDecoration(
               color: AppColors.white,
@@ -4907,17 +4982,6 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                                   treatmentType: treatmentType,
                                 );
 
-                                // تحديث بيانات المريض في الصفحة
-                                await _patientController.loadPatients();
-
-                                // تحديث بيانات المريض الحالي في الـ controller
-                                final updatedPatient = _patientController
-                                    .getPatientById(patient.id);
-                                if (updatedPatient != null) {
-                                  _patientController.selectedPatient.value =
-                                      updatedPatient;
-                                }
-
                                 Navigator.of(context).pop();
                                 Get.snackbar(
                                   'نجح',
@@ -5026,6 +5090,1809 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
           ),
         ),
       ),
+    );
+  }
+
+  // Load patient doctors (for receptionist)
+  Future<void> _loadPatientDoctors(String patientId) async {
+    // تجنب تحميل مكرر إذا كان التحميل جارياً بالفعل لنفس المريض
+    if (_isLoadingDoctors.value && _currentPatientIdForDoctors == patientId) {
+      return;
+    }
+    
+    // إذا كان المريض مختلفاً، قم بإعادة التعيين
+    if (_currentPatientIdForDoctors != patientId) {
+      _patientDoctors.clear();
+      _currentPatientIdForDoctors = patientId;
+    }
+    
+    _isLoadingDoctors.value = true;
+    try {
+      print('👨‍⚕️ [ReceptionHomeScreen] Loading doctors for patient: $patientId');
+      final doctors = await _patientService.getPatientDoctors(patientId);
+      print('👨‍⚕️ [ReceptionHomeScreen] Loaded ${doctors.length} doctors for patient $patientId');
+      for (var doctor in doctors) {
+        print('  - Doctor: ${doctor.name} (ID: ${doctor.id})');
+      }
+      
+      // تأكد من أن هذه الأطباء للمريض الحالي فقط
+      if (_currentPatientIdForDoctors == patientId) {
+        _patientDoctors.value = doctors;
+      }
+    } catch (e) {
+      print('❌ [ReceptionHomeScreen] Error loading doctors for patient $patientId: $e');
+      // Error handling - can show snackbar if needed
+      if (_currentPatientIdForDoctors == patientId) {
+        _patientDoctors.clear();
+      }
+    } finally {
+      if (_currentPatientIdForDoctors == patientId) {
+        _isLoadingDoctors.value = false;
+      }
+    }
+  }
+
+  Widget _buildDoctorsSection(PatientModel patient) {
+    return Obx(() {
+      // Ensure doctors are loaded for the current patient
+      if (_currentPatientIdForDoctors != patient.id) {
+        // Different patient - clear and reload
+        _patientDoctors.clear();
+        _currentPatientIdForDoctors = patient.id;
+        if (!_isLoadingDoctors.value) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _loadPatientDoctors(patient.id);
+          });
+        }
+      }
+
+      if (_isLoadingDoctors.value) {
+        return Container(
+          margin: EdgeInsets.symmetric(horizontal: 16.w),
+          padding: EdgeInsets.all(16.w),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16.r),
+          ),
+          child: Center(
+            child: CircularProgressIndicator(color: AppColors.primary),
+          ),
+        );
+      }
+
+      return Container(
+        margin: EdgeInsets.symmetric(horizontal: 16.w),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text(
+              'الاطباء المعالجون',
+              style: TextStyle(
+                fontSize: 18.sp,
+                fontWeight: FontWeight.bold,
+                color: AppColors.primary,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 16.h),
+            if (_patientDoctors.isEmpty)
+              Container(
+                padding: EdgeInsets.all(12.w),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryLight,
+                  borderRadius: BorderRadius.circular(12.r),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Text(
+                      'لم يتم تحويله الى طبيب حتى الان',
+                      style: TextStyle(fontSize: 14.sp, color: AppColors.error),
+                      textAlign: TextAlign.right,
+                    ),
+                    SizedBox(width: 8.w),
+                    Icon(
+                      Icons.info_outline,
+                      color: AppColors.error,
+                      size: 20.sp,
+                    ),
+                  ],
+                ),
+              )
+            else
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _patientDoctors.length,
+                itemBuilder: (context, index) {
+                  final doctor = _patientDoctors[index];
+                  final doctorName = doctor.name ?? 'طبيب';
+                  final doctorInitials = doctorName.isNotEmpty
+                      ? doctorName
+                            .split(' ')
+                            .map((n) => n.isNotEmpty ? n[0] : '')
+                            .take(2)
+                            .join()
+                      : 'ط';
+
+                  return Container(
+                    margin: EdgeInsets.only(bottom: 12.h),
+                    padding: EdgeInsets.only(
+                      left: 0.w,
+                      top: 10.w,
+                      bottom: 10.w,
+                      right: 0,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16.r),
+                    ),
+                    child: Row(
+                      children: [
+                        // Doctor info column (on the left in RTL)
+                        Expanded(
+                          child: Padding(
+                            padding: EdgeInsets.only(
+                              left: 0.w,
+                              top: 12.w,
+                              bottom: 12.w,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // Doctor name at the top
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: Text(
+                                    'د. $doctorName',
+                                    style: TextStyle(
+                                      fontSize: 17.sp,
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    textAlign: TextAlign.right,
+                                  ),
+                                ),
+                                SizedBox(height: 6.h),
+                                // Specialization
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: Text(
+                                    'الاختصاص : طبيب اسنان',
+                                    style: TextStyle(
+                                      fontSize: 12.sp,
+                                      color: AppColors.textSecondary,
+                                    ),
+                                    textAlign: TextAlign.right,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 12.w),
+                        // Doctor Image on the right (in RTL) - last element
+                        Container(
+                          width: 80.w,
+                          height: 80.w,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16.r),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(16.r),
+                            child: _buildDoctorImage(doctor, doctorInitials),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+          ],
+        ),
+      );
+    });
+  }
+
+  Widget _buildDoctorImage(DoctorModel doctor, String doctorInitials) {
+    // Check if imageUrl is valid and convert to valid URL
+    final imageUrl = doctor.imageUrl;
+    final validImageUrl = ImageUtils.convertToValidUrl(imageUrl);
+
+    if (validImageUrl != null && ImageUtils.isValidImageUrl(validImageUrl)) {
+      return CachedNetworkImage(
+        imageUrl: validImageUrl,
+        fit: BoxFit.cover,
+        width: 80.w,
+        height: 80.w,
+        fadeInDuration: Duration.zero,
+        fadeOutDuration: Duration.zero,
+        placeholder: (context, url) => Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16.r),
+            gradient: LinearGradient(
+              colors: [AppColors.primary, AppColors.secondary],
+            ),
+          ),
+        ),
+        errorWidget: (context, url, error) =>
+            _buildDefaultDoctorImage(doctorInitials),
+      );
+    } else {
+      return _buildDefaultDoctorImage(doctorInitials);
+    }
+  }
+
+  Widget _buildDefaultDoctorImage(String doctorInitials) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16.r),
+        gradient: LinearGradient(
+          colors: [AppColors.primary, AppColors.secondary],
+        ),
+      ),
+      child: Center(
+        child: Text(
+          doctorInitials,
+          style: TextStyle(
+            fontSize: 28.sp,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showSelectDoctorDialog(BuildContext context, PatientModel patient) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return _SelectDoctorDialog(
+          patient: patient,
+          patientService: _patientService,
+          onSaved: () async {
+            // إعادة تحميل أطباء المريض للقسم الجانبي فقط
+            await _loadPatientDoctors(patient.id);
+
+            // تحديث doctorIds للمريض الحالي في الواجهة بدون إعادة تحميل كاملة
+            final newDoctorIds = _patientDoctors.map((d) => d.id).toList();
+            _patientController.updatePatientDoctorIds(
+              patient.id,
+              newDoctorIds,
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showAddPatientDialog(BuildContext context) {
+    final TextEditingController _nameController = TextEditingController();
+    final TextEditingController _phoneController = TextEditingController();
+    final TextEditingController _ageController = TextEditingController();
+    final ImagePicker _imagePicker = ImagePicker();
+
+    // State variables
+    String? selectedGender;
+    String? selectedCity;
+  bool _isLoading = false;
+    Uint8List? _selectedPatientImageBytes;
+    String? _selectedPatientImageName;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final List<String> cities = [
+              'بغداد',
+              'البصرة',
+              'النجف الاشرف',
+              'كربلاء',
+              'الموصل',
+              'أربيل',
+              'السليمانية',
+              'ديالى',
+              'الديوانية',
+              'المثنى',
+              'كركوك',
+              'واسط',
+              'ميسان',
+              'الأنبار',
+              'ذي قار',
+              'بابل',
+              'دهوك',
+              'صلاح الدين',
+            ];
+
+            bool _isPhoneValid(String phone) {
+              final cleaned = phone.trim();
+              return RegExp(r'^07\d{9}$').hasMatch(cleaned);
+            }
+
+            void _showCityPicker() {
+              showModalBottomSheet(
+                context: context,
+                backgroundColor: AppColors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20.r)),
+                ),
+                isScrollControlled: true,
+                builder: (context) {
+                  final maxHeight = MediaQuery.of(context).size.height * 0.6;
+                  return Container(
+                    constraints: BoxConstraints(maxHeight: maxHeight),
+                    padding: EdgeInsets.symmetric(vertical: 16.h),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 40.w,
+                          height: 4.h,
+                          decoration: BoxDecoration(
+                            color: AppColors.divider,
+                            borderRadius: BorderRadius.circular(2.r),
+                          ),
+                        ),
+                        SizedBox(height: 16.h),
+                        Expanded(
+                          child: ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: cities.length,
+                            itemBuilder: (context, index) {
+                              final city = cities[index];
+                              return ListTile(
+                                title: Text(
+                                  city,
+                                  textAlign: TextAlign.right,
+                                  style: TextStyle(
+                                    fontSize: 16.sp,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                                onTap: () {
+                                  setDialogState(() {
+                                    selectedCity = city;
+                                  });
+                                  Navigator.pop(context);
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            }
+
+            Future<void> _pickPatientImage(ImageSource source) async {
+              try {
+                if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+                  final result = await FilePicker.platform.pickFiles(
+                    type: FileType.image,
+                    allowMultiple: false,
+                  );
+
+                  if (result != null &&
+                      result.files.isNotEmpty &&
+                      result.files.first.path != null) {
+                    final file = File(result.files.first.path!);
+                    final bytes = await file.readAsBytes();
+                    final fileName = result.files.first.name.isNotEmpty
+                        ? result.files.first.name
+                        : 'patient_${DateTime.now().millisecondsSinceEpoch}.jpg';
+                    setDialogState(() {
+                      _selectedPatientImageBytes = bytes;
+                      _selectedPatientImageName = fileName;
+                    });
+                  }
+                } else {
+                  final XFile? picked = await _imagePicker.pickImage(
+                    source: source,
+                    imageQuality: 85,
+                  );
+                  if (picked == null) return;
+                  final bytes = await picked.readAsBytes();
+                  final fileName = picked.name.isNotEmpty
+                      ? picked.name
+                      : 'patient_${DateTime.now().millisecondsSinceEpoch}.jpg';
+                  setDialogState(() {
+                    _selectedPatientImageBytes = bytes;
+                    _selectedPatientImageName = fileName;
+                  });
+                }
+              } catch (e) {
+        Get.snackbar(
+          'خطأ',
+                  'فشل اختيار الصورة: ${e.toString()}',
+                  snackPosition: SnackPosition.TOP,
+                  duration: const Duration(seconds: 3),
+                );
+              }
+            }
+
+            void _showPatientImagePicker() {
+              showModalBottomSheet(
+                context: context,
+                backgroundColor: AppColors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20.r)),
+                ),
+                builder: (context) {
+                  return SafeArea(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(height: 12.h),
+                        Container(
+                          width: 40.w,
+                          height: 4.h,
+                          decoration: BoxDecoration(
+                            color: AppColors.divider,
+                            borderRadius: BorderRadius.circular(2.r),
+                          ),
+                        ),
+                        SizedBox(height: 12.h),
+                        if (Platform.isWindows ||
+                            Platform.isLinux ||
+                            Platform.isMacOS)
+                          ListTile(
+                            leading: Icon(Icons.photo_library,
+                                color: AppColors.primary),
+                            title: Text('اختيار صورة',
+                                textAlign: TextAlign.right),
+                            onTap: () async {
+                              Navigator.pop(context);
+                              await _pickPatientImage(ImageSource.gallery);
+                            },
+                          )
+                        else ...[
+                          ListTile(
+                            leading: Icon(Icons.photo_library,
+                                color: AppColors.primary),
+                            title: Text('اختيار من المعرض',
+                                textAlign: TextAlign.right),
+                            onTap: () async {
+                              Navigator.pop(context);
+                              await _pickPatientImage(ImageSource.gallery);
+                            },
+                          ),
+                          ListTile(
+                            leading: Icon(Icons.photo_camera,
+                                color: AppColors.primary),
+                            title: Text('التقاط صورة',
+                                textAlign: TextAlign.right),
+                            onTap: () async {
+                              Navigator.pop(context);
+                              await _pickPatientImage(ImageSource.camera);
+                            },
+                          ),
+                        ],
+                        if (_selectedPatientImageBytes != null)
+                          ListTile(
+                            leading: const Icon(Icons.delete_outline,
+                                color: Colors.red),
+                            title: const Text('إزالة الصورة',
+                                textAlign: TextAlign.right),
+                            onTap: () {
+                              Navigator.pop(context);
+                              setDialogState(() {
+                                _selectedPatientImageBytes = null;
+                                _selectedPatientImageName = null;
+                              });
+                            },
+                          ),
+                        SizedBox(height: 8.h),
+                      ],
+                    ),
+                  );
+                },
+              );
+            }
+
+            Future<void> _handleAddPatient() async {
+              final trimmedPhone = _phoneController.text.trim();
+
+              if (_nameController.text.isEmpty ||
+                  trimmedPhone.isEmpty ||
+                  selectedGender == null ||
+                  selectedCity == null ||
+                  _ageController.text.isEmpty) {
+                Get.snackbar(
+                  'خطأ',
+                  'يرجى ملء جميع الحقول',
+                  snackPosition: SnackPosition.TOP,
+                );
+                return;
+              }
+
+              final age = int.tryParse(_ageController.text);
+              if (age == null || age < 1 || age > 120) {
+                Get.snackbar(
+                  'خطأ',
+                  'يرجى إدخال عمر صحيح',
+                  snackPosition: SnackPosition.TOP,
+                );
+                return;
+              }
+
+              if (!_isPhoneValid(trimmedPhone)) {
+                Get.snackbar(
+                  'خطأ',
+                  'رقم الهاتف يجب أن يكون 11 رقماً ويبدأ بـ 07',
+                  snackPosition: SnackPosition.TOP,
+                );
+                return;
+              }
+
+              setDialogState(() {
+                _isLoading = true;
+    });
+
+    try {
+                // إضافة المريض
+                var createdPatient = await runWithOperationDialog(
+                  context: dialogContext,
+                  message: 'جارٍ الإضافة',
+                  action: () async {
+                    return await _patientService.createPatientForReception(
+                      name: _nameController.text.trim(),
+                      phoneNumber: trimmedPhone,
+                      gender: selectedGender!,
+                      age: age,
+                      city: selectedCity!,
+                    );
+                  },
+                );
+
+                if (_selectedPatientImageBytes != null) {
+                  try {
+                    await runWithOperationDialog(
+                      context: dialogContext,
+                      message: 'جارٍ الرفع',
+                      action: () async {
+                        await _patientService.uploadPatientImageForReception(
+                          patientId: createdPatient.id,
+                          imageBytes: _selectedPatientImageBytes!,
+                          fileName: _selectedPatientImageName ??
+                              'patient_${DateTime.now().millisecondsSinceEpoch}.jpg',
+                        );
+                        return createdPatient;
+                      },
+                    );
+                  } catch (e) {
+                    if (e is ApiException) {
+                      Get.snackbar(
+                        'تنبيه',
+                        'تم إنشاء المريض لكن فشل رفع الصورة: ${e.message}',
+                        snackPosition: SnackPosition.TOP,
+                      );
+                    } else {
+                      Get.snackbar(
+                        'تنبيه',
+                        'تم إنشاء المريض لكن فشل رفع الصورة',
+                        snackPosition: SnackPosition.TOP,
+                      );
+                    }
+                  }
+                }
+
+                // إغلاق الـ dialog أولاً
+                if (dialogContext.mounted) {
+                  Navigator.of(dialogContext).pop();
+                }
+
+                // استخدام microtask للتأكد من أن إغلاق الـ dialog تم بالكامل
+                await Future.microtask(() {});
+
+                // إضافة المريض مباشرة إلى قائمة المرضى وتعيينه كمحدد
+                _patientController.addPatient(createdPatient);
+
+                // عرض رسالة النجاح بعد الإضافة الحية
+                Get.snackbar(
+                  'نجح',
+                  'تم إضافة المريض بنجاح',
+                  snackPosition: SnackPosition.TOP,
+                  backgroundColor: AppColors.success,
+                  colorText: AppColors.white,
+                );
+              } on ApiException catch (e) {
+                if (dialogContext.mounted) {
+                  Get.snackbar(
+                    'خطأ',
+                    e.message,
+                    snackPosition: SnackPosition.TOP,
+                    backgroundColor: AppColors.error,
+                    colorText: AppColors.white,
+        );
+      }
+    } catch (e) {
+                if (dialogContext.mounted) {
+        Get.snackbar(
+          'خطأ',
+                    'فشل إضافة المريض',
+                    snackPosition: SnackPosition.TOP,
+                    backgroundColor: AppColors.error,
+                    colorText: AppColors.white,
+                  );
+                }
+              } finally {
+                if (dialogContext.mounted) {
+                  setDialogState(() {
+                    _isLoading = false;
+                  });
+                }
+              }
+            }
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: Container(
+                width: 400.w,
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.9,
+        ),
+                padding: EdgeInsets.all(24.w),
+        decoration: BoxDecoration(
+                  color: AppColors.white,
+          borderRadius: BorderRadius.circular(20.r),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+                    // Close button and title
+                    Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                        Text(
+                          'اضافة مريض',
+                          style: TextStyle(
+                            fontSize: 20.sp,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: Container(
+                      padding: EdgeInsets.all(8.w),
+                      decoration: BoxDecoration(
+                        color: AppColors.divider,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.close,
+                        color: AppColors.textPrimary,
+                        size: 24.sp,
+                      ),
+                    ),
+                  ),
+                      ],
+                    ),
+                    SizedBox(height: 24.h),
+                    // Scrollable content
+                    Flexible(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          children: [
+                            // Patient image picker
+                            GestureDetector(
+                              onTap: _showPatientImagePicker,
+                              child: Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  CircleAvatar(
+                                    radius: 60.r,
+                                    backgroundColor: AppColors.primaryLight,
+                                    backgroundImage: _selectedPatientImageBytes !=
+                                            null
+                                        ? MemoryImage(_selectedPatientImageBytes!)
+                                        : null,
+                                    child: _selectedPatientImageBytes == null
+                                        ? Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Icon(
+                                                Icons.person,
+                                                size: 52.sp,
+                                                color: AppColors.primary,
+                                              ),
+                                              SizedBox(height: 4.h),
+                                              Text(
+                                                'إضافة صورة المريض',
+                                                textAlign: TextAlign.center,
+                                                style: TextStyle(
+                                                  fontSize: 10.sp,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: AppColors.primary,
+                                                ),
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ],
+                                          )
+                                        : null,
+                                  ),
+                                  Positioned(
+                                    bottom: 4.h,
+                                    right: 4.w,
+              child: Container(
+                                      width: 34.w,
+                                      height: 34.w,
+                decoration: BoxDecoration(
+                                        color: AppColors.primary,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                  color: AppColors.white,
+                                          width: 2,
+                                        ),
+                                      ),
+                                      child: Icon(
+                                        Icons.camera_alt,
+                                        color: AppColors.white,
+                                        size: 18.sp,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            SizedBox(height: 24.h),
+                            CustomTextField(
+                              labelText: AppStrings.name,
+                              hintText: AppStrings.enterYourName,
+                              controller: _nameController,
+                            ),
+                            SizedBox(height: 24.h),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                Text(
+                                  AppStrings.gender,
+                                      style: TextStyle(
+                                    fontSize: 16.sp,
+                                        fontWeight: FontWeight.w500,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                                SizedBox(height: 8.h),
+                                GenderSelector(
+                                  selectedGender: selectedGender,
+                                  onGenderChanged: (gender) {
+                                    setDialogState(() {
+                                      selectedGender = gender;
+                                    });
+                                  },
+                                  ),
+                                ],
+                              ),
+                            SizedBox(height: 24.h),
+                            CustomTextField(
+                              labelText: AppStrings.phoneNumber,
+                              hintText: '0000 000 0000',
+                              controller: _phoneController,
+                              keyboardType: TextInputType.phone,
+                            ),
+                            SizedBox(height: 24.h),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: CustomTextField(
+                                    labelText: AppStrings.city,
+                                    hintText: AppStrings.selectCity,
+                                    readOnly: true,
+                                    onTap: _showCityPicker,
+                                    controller: TextEditingController(
+                                      text: selectedCity ?? '',
+                      ),
+              ),
+            ),
+                                SizedBox(width: 16.w),
+                                Expanded(
+                                  child: CustomTextField(
+                                    labelText: AppStrings.age,
+                                    hintText: AppStrings.selectCity,
+                                    controller: _ageController,
+                                    keyboardType: TextInputType.number,
+                                  ),
+                  ),
+                ],
+              ),
+                            SizedBox(height: 24.h),
+                          ],
+                        ),
+                      ),
+                    ),
+                  // Add button
+                    Container(
+                      width: double.infinity,
+                      height: 50.h,
+                        decoration: BoxDecoration(
+                        color: _isLoading
+                              ? AppColors.textHint
+                            : AppColors.secondary,
+                        borderRadius: BorderRadius.circular(16.r),
+                        ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: _isLoading ? null : _handleAddPatient,
+                          borderRadius: BorderRadius.circular(16.r),
+                        child: Center(
+                            child: _isLoading
+                              ? SizedBox(
+                                  width: 20.w,
+                                  height: 20.h,
+                                    child: const CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                      valueColor:
+                                          AlwaysStoppedAnimation<Color>(
+                                      AppColors.white,
+                                    ),
+                                  ),
+                                )
+                              : Text(
+                                    AppStrings.addButton,
+                                  style: TextStyle(
+                                    fontSize: 16.sp,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.white,
+                                  ),
+                                ),
+                        ),
+                      ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+          },
+        );
+      },
+    ).then((_) {
+      _nameController.dispose();
+      _phoneController.dispose();
+      _ageController.dispose();
+    });
+  }
+
+  void _showReceptionProfileDialog(BuildContext context) {
+    final user = _authController.currentUser.value;
+    final imageUrl = user?.imageUrl;
+    final validImageUrl = ImageUtils.convertToValidUrl(imageUrl);
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            width: 400.w,
+            padding: EdgeInsets.all(24.w),
+            decoration: BoxDecoration(
+              color: AppColors.white,
+              borderRadius: BorderRadius.circular(20.r),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x29649FCC),
+                  blurRadius: 12,
+                  offset: Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header: title + close
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'الملف الشخصي',
+                      style: TextStyle(
+                        fontSize: 18.sp,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () => Navigator.of(dialogContext).pop(),
+                      child: Container(
+                        padding: EdgeInsets.all(6.w),
+                        decoration: BoxDecoration(
+                          color: AppColors.divider,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.close,
+                          size: 20.sp,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 24.h),
+                // Profile image
+                CircleAvatar(
+                  radius: 48.r,
+                  backgroundColor: AppColors.primaryLight,
+                  child: validImageUrl != null &&
+                          ImageUtils.isValidImageUrl(validImageUrl)
+                      ? ClipOval(
+                          child: CachedNetworkImage(
+                            imageUrl: validImageUrl,
+                            fit: BoxFit.cover,
+                            width: 96.w,
+                            height: 96.w,
+                            fadeInDuration: Duration.zero,
+                            fadeOutDuration: Duration.zero,
+                            placeholder: (context, url) =>
+                                Container(color: AppColors.primaryLight),
+                            errorWidget: (context, url, error) => Icon(
+                              Icons.person,
+                              size: 40.sp,
+                              color: AppColors.white,
+                            ),
+                          ),
+                        )
+                      : Icon(
+                          Icons.person,
+                          size: 40.sp,
+                          color: AppColors.white,
+                        ),
+                ),
+                SizedBox(height: 24.h),
+                // Name
+                Text(
+                  user?.name ?? 'موظف استقبال',
+                  style: TextStyle(
+                    fontSize: 18.sp,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 8.h),
+                // Phone
+                if (user?.phoneNumber != null &&
+                    user!.phoneNumber.trim().isNotEmpty)
+                  Text(
+                    user.phoneNumber,
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      color: AppColors.textSecondary,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                SizedBox(height: 24.h),
+                // Buttons: edit profile + logout
+                SizedBox(
+                  width: double.infinity,
+                  height: 45.h,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(dialogContext).pop();
+                      _showEditReceptionProfileDialog(context);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14.r),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.edit,
+                          color: Colors.white,
+                          size: 20.sp,
+                        ),
+                        SizedBox(width: 8.w),
+                        Text(
+                          'تعديل الملف الشخصي',
+                          style: TextStyle(
+                            fontSize: 16.sp,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                SizedBox(height: 12.h),
+                SizedBox(
+                  width: double.infinity,
+                  height: 45.h,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      Navigator.of(dialogContext).pop();
+                      await _authController.logout();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.error,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14.r),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.exit_to_app,
+                          color: Colors.white,
+                          size: 20.sp,
+                        ),
+                        SizedBox(width: 8.w),
+                        Text(
+                          'تسجيل الخروج',
+                          style: TextStyle(
+                            fontSize: 16.sp,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showEditReceptionProfileDialog(BuildContext context) {
+    final AuthService _authService = AuthService();
+    final TextEditingController _nameController = TextEditingController();
+    final TextEditingController _phoneController = TextEditingController();
+
+    final user = _authController.currentUser.value;
+    _nameController.text = user?.name ?? '';
+    _phoneController.text = user?.phoneNumber ?? '';
+
+    bool _isLoading = false;
+    bool _isUploadingImage = false;
+    int _imageTimestamp = DateTime.now().millisecondsSinceEpoch;
+    String? _currentImageUrl =
+        ImageUtils.convertToValidUrl(user?.imageUrl);
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            Future<void> _pickAndUploadImage() async {
+              try {
+                File? imageFile;
+
+                if (Platform.isWindows ||
+                    Platform.isLinux ||
+                    Platform.isMacOS) {
+                  final result = await FilePicker.platform.pickFiles(
+                    type: FileType.image,
+                  );
+
+                  if (result != null &&
+                      result.files.isNotEmpty &&
+                      result.files.first.path != null) {
+                    imageFile = File(result.files.first.path!);
+                  }
+                } else {
+                  final XFile? image = await _imagePicker.pickImage(
+                    source: ImageSource.gallery,
+                    imageQuality: 85,
+                  );
+
+                  if (image != null) {
+                    imageFile = File(image.path);
+                  }
+                }
+
+                if (imageFile == null) return;
+
+                setDialogState(() {
+                  _isUploadingImage = true;
+                });
+
+                await _authService.uploadProfileImage(imageFile);
+                await _authController.checkLoggedInUser(navigate: false);
+
+                setDialogState(() {
+                  _isUploadingImage = false;
+                  _imageTimestamp =
+                      DateTime.now().millisecondsSinceEpoch;
+                  final refreshedUser =
+                      _authController.currentUser.value;
+                  _currentImageUrl = ImageUtils.convertToValidUrl(
+                    refreshedUser?.imageUrl,
+                  );
+                });
+
+                Get.snackbar(
+                  'نجح',
+                  'تم تحديث الصورة بنجاح',
+                  snackPosition: SnackPosition.TOP,
+                  backgroundColor: AppColors.success,
+                  colorText: AppColors.white,
+                );
+              } catch (e) {
+                setDialogState(() {
+                  _isUploadingImage = false;
+                });
+                Get.snackbar(
+                  'خطأ',
+                  'فشل تحديث الصورة: ${e.toString()}',
+                  snackPosition: SnackPosition.TOP,
+                  backgroundColor: AppColors.error,
+                  colorText: AppColors.white,
+                );
+              }
+            }
+
+            Future<void> _saveChanges() async {
+              if (_nameController.text.isEmpty) {
+                Get.snackbar(
+                  'خطأ',
+                  'يرجى إدخال الاسم',
+                  snackPosition: SnackPosition.TOP,
+                  backgroundColor: AppColors.error,
+                  colorText: AppColors.white,
+                );
+                return;
+              }
+
+              if (_phoneController.text.isEmpty) {
+                Get.snackbar(
+                  'خطأ',
+                  'يرجى إدخال رقم الهاتف',
+                  snackPosition: SnackPosition.TOP,
+                  backgroundColor: AppColors.error,
+                  colorText: AppColors.white,
+                );
+                return;
+              }
+
+              setDialogState(() {
+                _isLoading = true;
+              });
+
+              try {
+                await _authService.updateProfile(
+                  name: _nameController.text,
+                  phone: _phoneController.text,
+                );
+
+                await _authController.checkLoggedInUser(navigate: false);
+
+                Navigator.of(dialogContext).pop();
+
+                Future.delayed(const Duration(milliseconds: 100), () {
+                  Get.snackbar(
+                    'نجح',
+                    'تم حفظ التغييرات بنجاح',
+                    snackPosition: SnackPosition.TOP,
+                    backgroundColor: AppColors.success,
+                    colorText: AppColors.white,
+                  );
+                });
+              } catch (e) {
+                setDialogState(() {
+                  _isLoading = false;
+                });
+                Get.snackbar(
+                  'خطأ',
+                  'فشل حفظ التغييرات: ${e.toString()}',
+                  snackPosition: SnackPosition.TOP,
+                  backgroundColor: AppColors.error,
+                  colorText: AppColors.white,
+                );
+              }
+            }
+
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              child: Container(
+                width: 400.w,
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.9,
+                ),
+                padding: EdgeInsets.all(24.w),
+                decoration: BoxDecoration(
+                  color: AppColors.white,
+                  borderRadius: BorderRadius.circular(20.r),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x29649FCC),
+                      blurRadius: 12,
+                      offset: Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'تعديل الملف الشخصي',
+                            style: TextStyle(
+                              fontSize: 18.sp,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: () => Navigator.of(dialogContext).pop(),
+                            child: Container(
+                              padding: EdgeInsets.all(6.w),
+                              decoration: BoxDecoration(
+                                color: AppColors.divider,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.close,
+                                size: 20.sp,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 24.h),
+                      Column(
+                        children: [
+                          // Profile image with change button
+                          Stack(
+                            children: [
+                              CircleAvatar(
+                                radius: 48.r,
+                                backgroundColor: AppColors.primaryLight,
+                                child: (_currentImageUrl != null &&
+                                        ImageUtils.isValidImageUrl(
+                                          _currentImageUrl!,
+                                        ))
+                                    ? ClipOval(
+                                        child: CachedNetworkImage(
+                                          imageUrl:
+                                              '$_currentImageUrl?t=$_imageTimestamp',
+                                          fit: BoxFit.cover,
+                                          width: 96.w,
+                                          height: 96.w,
+                                          fadeInDuration: Duration.zero,
+                                          fadeOutDuration: Duration.zero,
+                                          placeholder: (context, url) =>
+                                              Container(
+                                            color: AppColors.primaryLight,
+                                          ),
+                                          errorWidget:
+                                              (context, url, error) =>
+                                                  Icon(
+                                            Icons.person,
+                                            size: 40.sp,
+                                            color: AppColors.white,
+                                          ),
+                                        ),
+                                      )
+                                    : Icon(
+                                        Icons.person,
+                                        size: 40.sp,
+                                        color: AppColors.white,
+                                      ),
+                              ),
+                              if (!_isUploadingImage)
+                                Positioned(
+                                  bottom: 0,
+                                  right: 0,
+                                  child: GestureDetector(
+                                    onTap: _pickAndUploadImage,
+                                    child: Container(
+                                      padding: EdgeInsets.all(8.w),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primary,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: AppColors.white,
+                                          width: 2,
+                                        ),
+                                      ),
+                                      child: Icon(
+                                        Icons.camera_alt,
+                                        color: AppColors.white,
+                                        size: 20.sp,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              if (_isUploadingImage)
+                                Positioned.fill(
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color:
+                                          Colors.black.withOpacity(0.7),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Center(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          CircularProgressIndicator(
+                                            color: AppColors.white,
+                                            strokeWidth: 3,
+                                          ),
+                                          SizedBox(height: 8.h),
+                                          Text(
+                                            'جاري تحميل الصورة...',
+                                            style: TextStyle(
+                                              color: AppColors.white,
+                                              fontSize: 12.sp,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          SizedBox(height: 24.h),
+                        ],
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            AppStrings.name,
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          SizedBox(height: 8.h),
+                          CustomTextField(
+                            controller: _nameController,
+                            hintText: 'أدخل الاسم',
+                            textAlign: TextAlign.right,
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 24.h),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            AppStrings.phoneNumber,
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          SizedBox(height: 8.h),
+                          CustomTextField(
+                            controller: _phoneController,
+                            hintText: 'أدخل رقم الهاتف',
+                            textAlign: TextAlign.right,
+                            keyboardType: TextInputType.phone,
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 24.h),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 45.h,
+                        child: ElevatedButton(
+                          onPressed: _isLoading ? null : _saveChanges,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14.r),
+                            ),
+                          ),
+                          child: _isLoading
+                              ? SizedBox(
+                                  width: 20.w,
+                                  height: 20.h,
+                                  child: const CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : Text(
+                                  'حفظ التغييرات',
+                                  style: TextStyle(
+                                    fontSize: 16.sp,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    ).then((_) {
+      _nameController.dispose();
+      _phoneController.dispose();
+    });
+  }
+}
+
+class _SelectDoctorDialog extends StatefulWidget {
+  final PatientModel patient;
+  final PatientService patientService;
+  final VoidCallback onSaved;
+
+  const _SelectDoctorDialog({
+    required this.patient,
+    required this.patientService,
+    required this.onSaved,
+  });
+
+  @override
+  State<_SelectDoctorDialog> createState() => _SelectDoctorDialogState();
+}
+
+class _SelectDoctorDialogState extends State<_SelectDoctorDialog> {
+  List<DoctorModel> _doctors = [];
+  Set<String> _selectedDoctorIds = {};
+  bool _isLoading = false;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedDoctorIds = Set<String>.from(widget.patient.doctorIds);
+    _loadDoctors();
+  }
+
+  Future<void> _loadDoctors() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final doctors = await widget.patientService.getAllDoctors();
+      setState(() {
+        _doctors = doctors;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      if (mounted) {
+        Get.snackbar(
+          'خطأ',
+          'فشل جلب قائمة الأطباء',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+        );
+      }
+    }
+  }
+
+  void _toggleDoctorSelection(String doctorId) {
+    setState(() {
+      if (_selectedDoctorIds.contains(doctorId)) {
+        _selectedDoctorIds.remove(doctorId);
+                } else {
+        _selectedDoctorIds.add(doctorId);
+                }
+              });
+            }
+
+  Future<void> _saveSelection() async {
+    if (_isSaving) return;
+
+    setState(() {
+      _isSaving = true;
+              });
+
+              try {
+      await widget.patientService.assignPatientToDoctors(
+        widget.patient.id,
+        _selectedDoctorIds.toList(),
+                );
+
+                // Close dialog
+      if (mounted) {
+        Navigator.of(context).pop();
+                  await Future.delayed(const Duration(milliseconds: 100));
+                  
+        // Call onSaved callback to reload data
+        widget.onSaved();
+                  
+                  Get.snackbar(
+                    'نجح',
+                    'تم ربط المريض بالأطباء بنجاح',
+                    snackPosition: SnackPosition.BOTTOM,
+                    backgroundColor: AppColors.primary,
+                    colorText: Colors.white,
+                  );
+                }
+              } catch (e) {
+      setState(() {
+        _isSaving = false;
+                });
+      if (mounted) {
+                Get.snackbar(
+                  'خطأ',
+                  'فشل ربط المريض بالأطباء',
+                  snackPosition: SnackPosition.BOTTOM,
+                  backgroundColor: Colors.red,
+                  colorText: Colors.white,
+                );
+      }
+              }
+            }
+
+  @override
+  Widget build(BuildContext context) {
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              child: Container(
+        width: 365.w,
+        height: 450.h,
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.9,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF4FEFF),
+                  borderRadius: BorderRadius.circular(20.r),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Header
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF4FEFF),
+                        borderRadius: BorderRadius.only(
+                          topLeft: Radius.circular(20.r),
+                          topRight: Radius.circular(20.r),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          // Close button (on the left in RTL)
+                          GestureDetector(
+                            onTap: () => Navigator.of(context).pop(),
+                            child: Container(
+                              padding: EdgeInsets.all(8.w),
+                              decoration: BoxDecoration(
+                                color: AppColors.divider,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.close,
+                                color: AppColors.textPrimary,
+                                size: 24.sp,
+                              ),
+                            ),
+                          ),
+                          // Title (centered)
+                          Expanded(
+                            child: Center(
+                              child: Text(
+                                'اختر الطبيب',
+                                style: TextStyle(
+                                  fontSize: 20.sp,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                            ),
+                          ),
+                          // Empty space to balance close button
+                          SizedBox(width: 40.w),
+                        ],
+                      ),
+                    ),
+                    // Content
+                    Expanded(
+                      child: Container(
+                        margin: EdgeInsets.all(24.w),
+                        padding: EdgeInsets.all(24.w),
+                        decoration: BoxDecoration(
+                          color: AppColors.white,
+                          borderRadius: BorderRadius.circular(16.r),
+                        ),
+                child: _isLoading
+                            ? Center(
+                                child: CircularProgressIndicator(
+                                  color: AppColors.primary,
+                                ),
+                              )
+                    : _doctors.isEmpty
+                            ? Center(
+                                child: Text(
+                                  'لا يوجد أطباء متاحين',
+                                  style: TextStyle(
+                                    fontSize: 16.sp,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              )
+                            : GridView.builder(
+                                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 2,
+                                  crossAxisSpacing: 16.w,
+                                  mainAxisSpacing: 16.h,
+                                  childAspectRatio: 2.5,
+                                ),
+                        itemCount: _doctors.length,
+                                itemBuilder: (context, index) {
+                          final doctor = _doctors[index];
+                          final isSelected = _selectedDoctorIds.contains(
+                                    doctor.id,
+                                  );
+
+                                  return GestureDetector(
+                            onTap: () => _toggleDoctorSelection(doctor.id),
+                                    child: Container(
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 16.w,
+                                        vertical: 6.h,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: isSelected
+                                            ? AppColors.primary.withOpacity(0.1)
+                                            : Colors.grey[200],
+                                        borderRadius: BorderRadius.circular(12.r),
+                                        border: Border.all(
+                                          color: isSelected
+                                              ? AppColors.primary
+                                              : AppColors.divider,
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          // Radio button icon
+                                          Icon(
+                                            isSelected
+                                                ? Icons.radio_button_checked
+                                                : Icons.radio_button_unchecked,
+                                            color: isSelected
+                                                ? AppColors.primary
+                                                : AppColors.textSecondary,
+                                            size: 24.sp,
+                                          ),
+                                          SizedBox(width: 12.w),
+                                          // Doctor name
+                                          Expanded(
+                                            child: Text(
+                                              doctor.name ?? 'طبيب',
+                                              style: TextStyle(
+                                                fontSize: 14.sp,
+                                                fontWeight: FontWeight.w500,
+                                                color: isSelected
+                                                    ? AppColors.primary
+                                                    : AppColors.textPrimary,
+                                              ),
+                                              textAlign: TextAlign.right,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                    ),
+                    // Bottom buttons
+                    Container(
+                      padding: EdgeInsets.all(24.w),
+                      decoration: BoxDecoration(
+                        color: AppColors.white,
+                        borderRadius: BorderRadius.only(
+                          bottomLeft: Radius.circular(20.r),
+                          bottomRight: Radius.circular(20.r),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 10,
+                            offset: const Offset(0, -2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          // Back button
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => Navigator.of(context).pop(),
+                              child: Container(
+                                padding: EdgeInsets.symmetric(vertical: 14.h),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[200],
+                                  borderRadius: BorderRadius.circular(12.r),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    'عودة',
+                                    style: TextStyle(
+                                      fontSize: 16.sp,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 16.w),
+                          // Add button
+                          Expanded(
+                            child: GestureDetector(
+                      onTap: _isSaving ? null : _saveSelection,
+                              child: Container(
+                                padding: EdgeInsets.symmetric(vertical: 14.h),
+                                decoration: BoxDecoration(
+                          color: _isSaving
+                                      ? AppColors.textHint
+                                      : AppColors.primary,
+                                  borderRadius: BorderRadius.circular(12.r),
+                                ),
+                                child: Center(
+                          child: _isSaving
+                                      ? SizedBox(
+                                          width: 20.w,
+                                          height: 20.h,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            valueColor: AlwaysStoppedAnimation<Color>(
+                                              AppColors.white,
+                                            ),
+                                          ),
+                                        )
+                                      : Text(
+                                          'اضافة',
+                                          style: TextStyle(
+                                            fontSize: 16.sp,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppColors.white,
+                                          ),
+                                        ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
     );
   }
 }
