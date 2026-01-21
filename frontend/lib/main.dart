@@ -75,6 +75,7 @@ void main() async {
   await Hive.openBox('appointments');
   await Hive.openBox('medicalRecords');
   await Hive.openBox('messages');
+  await Hive.openBox('gallery');
 
   // Initialize Services
   Get.put(ApiService());

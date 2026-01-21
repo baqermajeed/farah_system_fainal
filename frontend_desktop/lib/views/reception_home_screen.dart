@@ -29,6 +29,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:frontend_desktop/models/doctor_model.dart';
 import 'package:frontend_desktop/services/patient_service.dart';
+import 'package:frontend_desktop/services/thermal_printer_service.dart';
 import 'package:frontend_desktop/services/auth_service.dart';
 
 // Delegate for sticky TabBar
@@ -1610,7 +1611,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                 ),
                 child: ElevatedButton(
                   onPressed: () {
-                  _showSelectDoctorDialog(context, patient);
+                      _showSelectDoctorDialog(context, patient);
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.transparent,
@@ -1734,14 +1735,14 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                                 }
                               },
                               child: Container(
-                                width: 60.w,
-                                height: 70.h,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(8.r),
-                                  border: Border.all(color: AppColors.divider),
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(8.r),
+                              width: 60.w,
+                              height: 70.h,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8.r),
+                                border: Border.all(color: AppColors.divider),
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8.r),
                                   child: validImageUrl != null && ImageUtils.isValidImageUrl(validImageUrl)
                                       ? CachedNetworkImage(
                                           imageUrl: validImageUrl,
@@ -1766,18 +1767,18 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                                           ),
                                         )
                                       : Image.network(
-                                          imageUrl,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (context, error, stackTrace) {
-                                            return Container(
-                                              color: AppColors.divider,
-                                              child: Icon(
-                                                Icons.broken_image,
-                                                color: AppColors.textHint,
-                                                size: 30.sp,
-                                              ),
-                                            );
-                                          },
+                                  imageUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Container(
+                                      color: AppColors.divider,
+                                      child: Icon(
+                                        Icons.broken_image,
+                                        color: AppColors.textHint,
+                                        size: 30.sp,
+                                      ),
+                                    );
+                                  },
                                         ),
                                 ),
                               ),
@@ -1806,7 +1807,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                       ],
                     ),
                   ],
-                ),
+              ),
             );
           },
         ),
@@ -2259,7 +2260,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                 if (!success) {
                   final errorMsg =
                       implantStageController.errorMessage.value.isNotEmpty
-                          ? implantStageController.errorMessage.value
+                      ? implantStageController.errorMessage.value
                           : 'فشل تحديث حالة المرحلة';
                   Get.snackbar(
                     'خطأ',
@@ -4443,105 +4444,105 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
               color: AppColors.white,
               borderRadius: BorderRadius.circular(20.r),
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header with close button
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'تفاصيل الصورة',
-                      style: TextStyle(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header with close button
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'تفاصيل الصورة',
+                        style: TextStyle(
                         fontSize: 18.sp,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                        ),
                       ),
-                    ),
-                    GestureDetector(
+                      GestureDetector(
                       onTap: () => Navigator.of(dialogContext).pop(),
-                      child: Container(
-                        padding: EdgeInsets.all(8.w),
-                        decoration: BoxDecoration(
-                          color: AppColors.divider.withOpacity(0.3),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.close,
-                          color: AppColors.textSecondary,
-                          size: 20.sp,
+                        child: Container(
+                          padding: EdgeInsets.all(8.w),
+                          decoration: BoxDecoration(
+                            color: AppColors.divider.withOpacity(0.3),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.close,
+                            color: AppColors.textSecondary,
+                            size: 20.sp,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
                 SizedBox(height: 16.h),
 
-                // Image
+                  // Image
                 Flexible(
                   child: Center(
                     child: imageUrl != null && ImageUtils.isValidImageUrl(imageUrl)
                         ? GestureDetector(
-                            onTap: () {
-                              Navigator.of(context).pop();
-                              _showImageFullScreenDialog(context, imageUrl);
-                            },
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(12.r),
-                              child: CachedNetworkImage(
-                                imageUrl: imageUrl,
-                                fit: BoxFit.contain,
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        _showImageFullScreenDialog(context, imageUrl);
+                      },
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12.r),
+                        child: CachedNetworkImage(
+                          imageUrl: imageUrl,
+                          fit: BoxFit.contain,
                                 width: maxImageWidth,
                                 height: maxImageHeight,
-                                progressIndicatorBuilder: (context, url, progress) =>
-                                    Container(
+                          progressIndicatorBuilder: (context, url, progress) =>
+                              Container(
                                       width: maxImageWidth,
                                       height: maxImageHeight,
-                                      color: AppColors.divider,
-                                      child: Center(
-                                        child: CircularProgressIndicator(
-                                          value: progress.progress,
-                                          strokeWidth: 2,
-                                          valueColor: AlwaysStoppedAnimation<Color>(
-                                            AppColors.primary,
-                                          ),
-                                        ),
-                                      ),
+                                color: AppColors.divider,
+                                child: Center(
+                                  child: CircularProgressIndicator(
+                                    value: progress.progress,
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      AppColors.primary,
                                     ),
-                                errorWidget: (context, url, error) => Container(
-                                  width: maxImageWidth,
-                                  height: maxImageHeight,
-                                  color: AppColors.divider,
-                                  child: Icon(
-                                    Icons.broken_image,
-                                    color: AppColors.textHint,
-                                    size: 50.sp,
                                   ),
                                 ),
                               ),
-                            ),
-                          )
-                        : Container(
-                            width: maxImageWidth,
-                            height: maxImageHeight,
-                            decoration: BoxDecoration(
-                              color: AppColors.divider,
-                              borderRadius: BorderRadius.circular(12.r),
-                            ),
+                          errorWidget: (context, url, error) => Container(
+                                  width: maxImageWidth,
+                                  height: maxImageHeight,
+                            color: AppColors.divider,
                             child: Icon(
                               Icons.broken_image,
                               color: AppColors.textHint,
                               size: 50.sp,
                             ),
                           ),
+                        ),
+                      ),
+                    )
+                        : Container(
+                            width: maxImageWidth,
+                            height: maxImageHeight,
+                      decoration: BoxDecoration(
+                        color: AppColors.divider,
+                        borderRadius: BorderRadius.circular(12.r),
+                      ),
+                      child: Icon(
+                        Icons.broken_image,
+                        color: AppColors.textHint,
+                        size: 50.sp,
+                      ),
+                    ),
                   ),
                 ),
                 SizedBox(height: 12.h),
 
-                // Date
-                if (galleryImage.createdAt != null &&
-                    galleryImage.createdAt.isNotEmpty)
+                  // Date
+                  if (galleryImage.createdAt != null &&
+                      galleryImage.createdAt.isNotEmpty)
                   Padding(
                     padding: EdgeInsets.symmetric(horizontal: 4.w),
                     child: Row(
@@ -4555,11 +4556,11 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                         SizedBox(width: 6.w),
                         Flexible(
                           child: Text(
-                            galleryImage.createdAt,
-                            style: TextStyle(
+                          galleryImage.createdAt,
+                          style: TextStyle(
                               fontSize: 12.sp,
-                              fontWeight: FontWeight.w500,
-                              color: AppColors.textSecondary,
+                            fontWeight: FontWeight.w500,
+                            color: AppColors.textSecondary,
                             ),
                             textAlign: TextAlign.right,
                             maxLines: 1,
@@ -4568,48 +4569,48 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                         ),
                       ],
                     ),
-                  ),
+                    ),
 
-                // Note
-                if (galleryImage.note != null &&
-                    galleryImage.note!.isNotEmpty) ...[
+                  // Note
+                  if (galleryImage.note != null &&
+                      galleryImage.note!.isNotEmpty) ...[
                   SizedBox(height: 12.h),
                   Padding(
                     padding: EdgeInsets.symmetric(horizontal: 4.w),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'الشرح:',
-                          style: TextStyle(
+                    Text(
+                      'الشرح:',
+                      style: TextStyle(
                             fontSize: 14.sp,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
                         SizedBox(height: 6.h),
-                        Container(
-                          width: double.infinity,
+                    Container(
+                      width: double.infinity,
                           constraints: BoxConstraints(maxHeight: 100.h),
                           padding: EdgeInsets.all(12.w),
-                          decoration: BoxDecoration(
-                            color: AppColors.divider.withOpacity(0.3),
-                            borderRadius: BorderRadius.circular(12.r),
-                          ),
+                      decoration: BoxDecoration(
+                        color: AppColors.divider.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(12.r),
+                      ),
                           child: SingleChildScrollView(
-                            child: Text(
-                              galleryImage.note!,
-                              style: TextStyle(
+                      child: Text(
+                        galleryImage.note!,
+                        style: TextStyle(
                                 fontSize: 12.sp,
-                                color: AppColors.textPrimary,
-                                height: 1.5,
-                              ),
-                              textAlign: TextAlign.right,
-                            ),
-                          ),
+                          color: AppColors.textPrimary,
+                          height: 1.5,
                         ),
-                      ],
+                        textAlign: TextAlign.right,
+                            ),
+                      ),
                     ),
+                ],
+              ),
                   ),
                 ],
               ],
@@ -4751,11 +4752,50 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                   child: QrImageView(
                     data: patientId,
                     version: QrVersions.auto,
-                    size: 250.w,
+                    size: 220.w,
                     backgroundColor: Colors.white,
                   ),
                 ),
                 SizedBox(height: 24.h),
+                // Print button
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      try {
+                        ThermalPrinterService().printPatientLabel(patientId);
+                        Get.snackbar(
+                          'تم',
+                          'تم إرسال أمر الطباعة للطابعة الحرارية',
+                          snackPosition: SnackPosition.TOP,
+                          backgroundColor: AppColors.primary,
+                          colorText: AppColors.white,
+                        );
+                      } catch (e) {
+                        Get.snackbar(
+                          'خطأ في الطباعة',
+                          e.toString(),
+                          snackPosition: SnackPosition.TOP,
+                          backgroundColor: AppColors.error,
+                          colorText: AppColors.white,
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.print),
+                    label: const Text('طباعة لاصق المريض'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(
+                        vertical: 12.h,
+                        horizontal: 16.w,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12.r),
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -5696,8 +5736,8 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                 _patientController.addPatient(createdPatient);
 
                 // عرض رسالة النجاح بعد الإضافة الحية
-                Get.snackbar(
-                  'نجح',
+        Get.snackbar(
+          'نجح',
                   'تم إضافة المريض بنجاح',
                   snackPosition: SnackPosition.TOP,
                   backgroundColor: AppColors.success,

@@ -1,9 +1,11 @@
 import 'dart:io';
 import 'package:get/get.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:farah_sys_final/models/appointment_model.dart';
 import 'package:farah_sys_final/services/patient_service.dart';
 import 'package:farah_sys_final/services/doctor_service.dart';
 import 'package:farah_sys_final/core/network/api_exception.dart';
+import 'package:farah_sys_final/core/utils/network_utils.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 
 class AppointmentController extends GetxController {
@@ -22,8 +24,40 @@ class AppointmentController extends GetxController {
       print('📅 [AppointmentController] loadPatientAppointments called');
       isLoading.value = true;
 
+      // 1) محاولة التحميل من الكاش أولاً (Hive)
+      final box = Hive.box('appointments');
       final authController = Get.find<AuthController>();
       final userType = authController.currentUser.value?.userType;
+      final cacheKey = 'patient_${userType ?? 'unknown'}';
+      
+      final cachedList = box.get(cacheKey);
+      if (cachedList != null && cachedList is List) {
+        try {
+          final cachedAppointments = cachedList
+              .map(
+                (json) => AppointmentModel.fromJson(
+                  Map<String, dynamic>.from(json as Map),
+                ),
+              )
+              .toList();
+          
+          if (userType == 'receptionist') {
+            appointments.value = cachedAppointments;
+            primaryAppointments.clear();
+            secondaryAppointments.clear();
+          } else {
+            // للمريض، نحتاج لفصل primary و secondary - لكن سنستخدم جميع المواعيد من الكاش
+            appointments.value = cachedAppointments;
+            primaryAppointments.value = cachedAppointments;
+            secondaryAppointments.value = [];
+          }
+          
+          print('✅ [AppointmentController] Loaded ${appointments.length} appointments from cache');
+        } catch (e) {
+          print('❌ [AppointmentController] Error parsing cached appointments: $e');
+        }
+      }
+
       print('📅 [AppointmentController] User type: $userType');
 
       if (userType == 'receptionist') {
@@ -46,13 +80,30 @@ class AppointmentController extends GetxController {
         print('📅 [AppointmentController] Loaded ${primaryAppointments.length} primary and ${secondaryAppointments.length} secondary appointments');
         print('📅 [AppointmentController] Total appointments: ${appointments.length}');
       }
+
+      // 2) تحديث الكاش بعد نجاح الجلب من API
+      try {
+        await box.put(cacheKey, appointments.map((a) => a.toJson()).toList());
+        await box.put('${cacheKey}_lastUpdated', DateTime.now().toIso8601String());
+        print('💾 [AppointmentController] Cache updated with ${appointments.length} appointments');
+      } catch (e) {
+        print('❌ [AppointmentController] Error updating cache: $e');
+      }
     } on ApiException catch (e) {
       print('❌ [AppointmentController] ApiException: ${e.message}');
-      Get.snackbar('خطأ', e.message);
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', e.message);
+      }
     } catch (e, stackTrace) {
       print('❌ [AppointmentController] Error loading appointments: $e');
       print('❌ [AppointmentController] Stack trace: $stackTrace');
-      Get.snackbar('خطأ', 'حدث خطأ أثناء تحميل المواعيد');
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', 'حدث خطأ أثناء تحميل المواعيد');
+      }
     } finally {
       isLoading.value = false;
       print('📅 [AppointmentController] loadPatientAppointments finished');
@@ -103,9 +154,17 @@ class AppointmentController extends GetxController {
       appointments.value = appointmentsList;
       print('📅 [AppointmentController] Loaded ${appointmentsList.length} appointments');
     } on ApiException catch (e) {
-      Get.snackbar('خطأ', e.message);
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', e.message);
+      }
     } catch (e) {
-      Get.snackbar('خطأ', 'حدث خطأ أثناء تحميل المواعيد');
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', 'حدث خطأ أثناء تحميل المواعيد');
+      }
     } finally {
       isLoading.value = false;
     }
@@ -123,9 +182,17 @@ class AppointmentController extends GetxController {
           .where((apt) => apt.patientId == patientId)
           .toList();
     } on ApiException catch (e) {
-      Get.snackbar('خطأ', e.message);
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', e.message);
+      }
     } catch (e) {
-      Get.snackbar('خطأ', 'حدث خطأ أثناء تحميل المواعيد');
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', 'حدث خطأ أثناء تحميل المواعيد');
+      }
     } finally {
       isLoading.value = false;
     }
@@ -147,10 +214,18 @@ class AppointmentController extends GetxController {
         throw ApiException('فشل حذف الموعد');
       }
     } on ApiException catch (e) {
-      Get.snackbar('خطأ', e.message);
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', e.message);
+      }
       rethrow;
     } catch (e) {
-      Get.snackbar('خطأ', 'حدث خطأ أثناء حذف الموعد');
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', 'حدث خطأ أثناء حذف الموعد');
+      }
       rethrow;
     } finally {
       isLoading.value = false;
@@ -165,8 +240,28 @@ class AppointmentController extends GetxController {
     File? imageFile,
     List<File>? imageFiles,
   }) async {
+    AppointmentModel? tempAppointment;
+
     try {
-      isLoading.value = true;
+      // 1) إنشاء موعد مؤقت (تحديث متفائل في الواجهة)
+      tempAppointment = AppointmentModel(
+        id: 'temp-${DateTime.now().millisecondsSinceEpoch}',
+        patientId: patientId,
+        patientName: '',
+        doctorId: '',
+        doctorName: '',
+        date: scheduledAt,
+        time:
+            '${scheduledAt.hour.toString().padLeft(2, '0')}:${scheduledAt.minute.toString().padLeft(2, '0')}',
+        status: 'scheduled',
+        notes: note,
+        imagePath: null,
+        imagePaths: const [],
+      );
+
+      appointments.add(tempAppointment);
+
+      // 2) استدعاء السيرفر
       final appointment = await _doctorService.addAppointment(
         patientId: patientId,
         scheduledAt: scheduledAt,
@@ -174,15 +269,42 @@ class AppointmentController extends GetxController {
         imageFile: imageFile,
         imageFiles: imageFiles,
       );
-      
-      appointments.add(appointment);
+
+      // 3) استبدال الموعد المؤقت بالموعد الحقيقي
+      final index =
+          appointments.indexWhere((apt) => apt.id == tempAppointment!.id);
+      if (index != -1) {
+        appointments[index] = appointment;
+      } else {
+        appointments.add(appointment);
+      }
+
       Get.snackbar('نجح', 'تم إضافة الموعد بنجاح');
     } on ApiException catch (e) {
-      Get.snackbar('خطأ', e.message);
+      // Rollback: إزالة الموعد المؤقت
+      if (tempAppointment != null) {
+        appointments.removeWhere((apt) => apt.id == tempAppointment!.id);
+      }
+
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', e.message);
+      }
+      rethrow;
     } catch (e) {
-      Get.snackbar('خطأ', 'حدث خطأ أثناء إضافة الموعد');
+      if (tempAppointment != null) {
+        appointments.removeWhere((apt) => apt.id == tempAppointment!.id);
+      }
+
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', 'حدث خطأ أثناء إضافة الموعد');
+      }
+      rethrow;
     } finally {
-      isLoading.value = false;
+      // لا نستخدم isLoading هنا حتى لا نظهر تحميل عام على كامل الشاشة
     }
   }
 
@@ -208,10 +330,18 @@ class AppointmentController extends GetxController {
 
       Get.snackbar('نجح', 'تم تحديث حالة الموعد بنجاح');
     } on ApiException catch (e) {
-      Get.snackbar('خطأ', e.message);
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', e.message);
+      }
       rethrow;
     } catch (e) {
-      Get.snackbar('خطأ', 'حدث خطأ أثناء تحديث حالة الموعد');
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', 'حدث خطأ أثناء تحديث حالة الموعد');
+      }
       rethrow;
     } finally {
       isLoading.value = false;

@@ -6,6 +6,7 @@ import 'package:farah_sys_final/services/doctor_service.dart';
 import 'package:farah_sys_final/services/patient_service.dart';
 import 'package:farah_sys_final/services/fcm_service.dart';
 import 'package:farah_sys_final/controllers/chat_controller.dart';
+import 'package:farah_sys_final/core/utils/network_utils.dart';
 
 class AuthController extends GetxController {
   final _authService = AuthService();
@@ -459,23 +460,43 @@ class AuthController extends GetxController {
             '🔀 [AuthController] Navigating to: $targetRoute (userType: ${user.userType})',
           );
           Get.offAllNamed(targetRoute);
-          Get.snackbar('نجح', 'تم تسجيل الدخول بنجاح');
+          // انتظار قليلاً حتى تكتمل عملية التنقل قبل عرض Snackbar
+          await Future.delayed(const Duration(milliseconds: 300));
+          if (Get.context != null && Get.context!.mounted) {
+            try {
+              Get.snackbar('نجح', 'تم تسجيل الدخول بنجاح');
+            } catch (e) {
+              print('⚠️ [AuthController] Error showing snackbar: $e');
+            }
+          }
         } else {
           print(
             '❌ [AuthController] Failed to get user info: ${userRes['error']}',
           );
-          Get.snackbar(
-            'خطأ',
-            userRes['error']?.toString() ?? 'فشل جلب معلومات المستخدم',
-          );
+          final errorMsg = userRes['error']?.toString() ?? 'فشل جلب معلومات المستخدم';
+          if (NetworkUtils.isNetworkError(errorMsg)) {
+            NetworkUtils.showNetworkErrorDialog();
+          } else {
+            Get.snackbar('خطأ', errorMsg);
+          }
         }
       } else {
         print('❌ [AuthController] Login failed: ${res['error']}');
-        Get.snackbar('خطأ', res['error']?.toString() ?? 'فشل تسجيل الدخول');
+        final errorMsg = res['error']?.toString() ?? 'فشل تسجيل الدخول';
+        if (NetworkUtils.isNetworkError(errorMsg)) {
+          NetworkUtils.showNetworkErrorDialog();
+        } else {
+          Get.snackbar('خطأ', errorMsg);
+        }
       }
     } catch (e) {
       print('❌ [AuthController] General error: $e');
-      Get.snackbar('خطأ', 'فشل تسجيل الدخول');
+      final errorMsg = e.toString();
+      if (NetworkUtils.isNetworkError(errorMsg)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', 'فشل تسجيل الدخول');
+      }
     } finally {
       print('🏁 [AuthController] Setting loading to false');
       isLoading.value = false;
@@ -526,7 +547,12 @@ class AuthController extends GetxController {
       Get.offAllNamed(AppRoutes.userSelection);
     } catch (e) {
       print('❌ [AuthController] Error during logout: $e');
-      Get.snackbar('خطأ', 'حدث خطأ أثناء تسجيل الخروج');
+      final errorMsg = e.toString();
+      if (NetworkUtils.isNetworkError(errorMsg)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', 'حدث خطأ أثناء تسجيل الخروج');
+      }
     }
   }
 }

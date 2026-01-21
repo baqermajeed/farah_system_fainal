@@ -16,9 +16,15 @@ class Settings(BaseSettings):
 
     MONGODB_URI: str = "mongodb://localhost:27017/"
 
+    # JWT settings
     JWT_SECRET: str = "farah_sys_final_project"
     JWT_ALGORITHM: str = "HS256"
-   
+    # مدة صلاحية الـ Access Token (قصير المدى - 1 ساعة)
+    # Access Token قصير لأسباب أمنية، يتم تجديده تلقائياً باستخدام Refresh Token
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60  # 1 ساعة
+    # مدة صلاحية الـ Refresh Token (طويل المدى - 30 يوم)
+    # Refresh Token يستخدم لتجديد Access Token تلقائياً
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30  # 30 يوم
 
     # Raw CORS string from env (comma-separated); parsed via cors_origins property
     CORS_ORIGINS: str | None = None

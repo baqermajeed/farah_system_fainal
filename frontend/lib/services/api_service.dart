@@ -2,9 +2,11 @@ import 'package:dio/dio.dart' hide Response, FormData, MultipartFile;
 import 'package:dio/dio.dart'
     as dio
     show Response, FormData, MultipartFile, Options;
+// RequestOptions and ErrorInterceptorHandler are used from dio package directly
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:farah_sys_final/core/network/api_constants.dart';
 import 'package:farah_sys_final/core/network/api_exception.dart';
+import 'package:farah_sys_final/services/auth_service.dart';
 
 class ApiService {
   static final ApiService _instance = ApiService._internal();
@@ -12,6 +14,9 @@ class ApiService {
 
   late Dio _dio;
   final _storage = const FlutterSecureStorage();
+  final _authService = AuthService();
+  bool _isRefreshing = false;
+  final List<_PendingRequest> _pendingRequests = [];
 
   ApiService._internal() {
     _dio = Dio(
@@ -53,12 +58,40 @@ class ApiService {
         onError: (error, handler) async {
           // Handle errors globally
           if (error.response?.statusCode == 401) {
-            // Token expired - logout
-            // في وضع العرض، لا نتعامل مع 401
-            try {
+            // Token expired - try to refresh
+            final requestOptions = error.requestOptions;
+            
+            // إذا كان الطلب هو refresh token نفسه، لا نعيد المحاولة
+            if (requestOptions.path.contains('/auth/refresh')) {
               await _handleUnauthorized();
-            } catch (e) {
-              // تجاهل الأخطاء في وضع العرض
+              return handler.next(error);
+            }
+            
+            // إذا كنا نعيد التجديد حالياً، نضيف الطلب للقائمة المعلقة
+            if (_isRefreshing) {
+              return _addPendingRequest(requestOptions, handler);
+            }
+            
+            // محاولة تجديد الـ token
+            _isRefreshing = true;
+            final refreshed = await _authService.refreshAccessToken();
+            
+            if (refreshed) {
+              // نجح التجديد - إعادة المحاولة للطلبات المعلقة
+              _isRefreshing = false;
+              await _retryPendingRequests();
+              
+              // إعادة المحاولة للطلب الأصلي
+              final opts = requestOptions;
+              opts.headers['Authorization'] = 'Bearer ${await _authService.getToken()}';
+              final response = await _dio.fetch(opts);
+              return handler.resolve(response);
+            } else {
+              // فشل التجديد - مسح tokens وlogout
+              _isRefreshing = false;
+              _pendingRequests.clear();
+              await _handleUnauthorized();
+              return handler.next(error);
             }
           }
           return handler.next(error);
@@ -70,6 +103,7 @@ class ApiService {
   Future<void> _handleUnauthorized() async {
     try {
       await _storage.delete(key: ApiConstants.tokenKey);
+      await _storage.delete(key: ApiConstants.refreshTokenKey);
       await _storage.delete(key: ApiConstants.userKey);
     } catch (e) {
       // تجاهل الأخطاء في وضع العرض أو إذا كان flutter_secure_storage غير متاح
@@ -77,6 +111,39 @@ class ApiService {
     }
     // في وضع العرض، لا نعيد التوجيه تلقائياً
     // Get.offAllNamed(AppRoutes.userSelection);
+  }
+
+  // إضافة طلب للقائمة المعلقة
+  void _addPendingRequest(
+    RequestOptions requestOptions,
+    ErrorInterceptorHandler handler,
+  ) {
+    _pendingRequests.add(_PendingRequest(
+      requestOptions: requestOptions,
+      handler: handler,
+    ));
+  }
+
+  // إعادة المحاولة للطلبات المعلقة
+  Future<void> _retryPendingRequests() async {
+    final token = await _authService.getToken();
+    if (token == null) return;
+
+    for (final pending in _pendingRequests) {
+      try {
+        pending.requestOptions.headers['Authorization'] = 'Bearer $token';
+        final response = await _dio.fetch(pending.requestOptions);
+        pending.handler.resolve(response);
+      } catch (e) {
+        pending.handler.reject(
+          DioException(
+            requestOptions: pending.requestOptions,
+            error: e,
+          ),
+        );
+      }
+    }
+    _pendingRequests.clear();
   }
 
   // GET Request
@@ -329,6 +396,18 @@ class ApiService {
   // Clear token
   Future<void> clearToken() async {
     await _storage.delete(key: ApiConstants.tokenKey);
+    await _storage.delete(key: ApiConstants.refreshTokenKey);
     await _storage.delete(key: ApiConstants.userKey);
   }
+}
+
+// Helper class للطلبات المعلقة أثناء refresh
+class _PendingRequest {
+  final RequestOptions requestOptions;
+  final ErrorInterceptorHandler handler;
+
+  _PendingRequest({
+    required this.requestOptions,
+    required this.handler,
+  });
 }

@@ -12,6 +12,7 @@ import 'package:intl/intl.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
+import 'package:farah_sys_final/core/utils/network_utils.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
 import 'package:farah_sys_final/controllers/patient_controller.dart';
 import 'package:farah_sys_final/controllers/appointment_controller.dart';
@@ -2044,44 +2045,40 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                       );
 
                       bool success;
-                      String message;
                       if (stage.isCompleted) {
                         // إلغاء الإكمال
                         success = await implantStageController.uncompleteStage(
                           patientId!,
                           stage.stageName,
                         );
-                        message = success
-                            ? 'تم إلغاء إكمال المرحلة بنجاح'
-                            : 'فشل إلغاء إكمال المرحلة';
                       } else {
                         // إكمال المرحلة
                         success = await implantStageController.completeStage(
                           patientId!,
                           stage.stageName,
                         );
-                        message = success
-                            ? 'تم إكمال المرحلة بنجاح'
-                            : 'فشل إكمال المرحلة';
                       }
 
                       if (success) {
-                        // إظهار دايلوج النجاح
-                        _showSuccessDialog(context, message);
-                        // المراحل يتم إعادة تحميلها تلقائياً في Controller
+                        // لا نعرض Snackbar للنجاح، التحديث المتفائل حدث بالفعل في الواجهة
                       } else {
                         final errorMsg =
                             implantStageController.errorMessage.value.isNotEmpty
                             ? implantStageController.errorMessage.value
-                            : message;
-                        Get.snackbar(
-                          'خطأ',
-                          errorMsg,
-                          snackPosition: SnackPosition.BOTTOM,
-                          backgroundColor: AppColors.error,
-                          colorText: AppColors.white,
-                          duration: Duration(seconds: 4),
-                        );
+                            : 'فشل تحديث حالة المرحلة';
+                        
+                        // إذا لم يكن الخطأ متعلق بالشبكة، نعرض Snackbar
+                        // (إذا كان متعلق بالشبكة، Controller يعرض الدايلوج بالفعل)
+                        if (!NetworkUtils.isNetworkError(errorMsg)) {
+                          Get.snackbar(
+                            'خطأ',
+                            errorMsg,
+                            snackPosition: SnackPosition.BOTTOM,
+                            backgroundColor: AppColors.error,
+                            colorText: AppColors.white,
+                            duration: Duration(seconds: 4),
+                          );
+                        }
                       }
                     }
                   : null,

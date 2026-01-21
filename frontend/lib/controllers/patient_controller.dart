@@ -1,9 +1,11 @@
 import 'package:get/get.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:farah_sys_final/models/patient_model.dart';
 import 'package:farah_sys_final/services/patient_service.dart';
 import 'package:farah_sys_final/services/doctor_service.dart';
 import 'package:farah_sys_final/core/network/api_exception.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
+import 'package:farah_sys_final/core/utils/network_utils.dart';
 
 class PatientController extends GetxController {
   final _patientService = PatientService();
@@ -16,56 +18,92 @@ class PatientController extends GetxController {
   final Rx<Map<String, dynamic>?> myDoctor = Rx<Map<String, dynamic>?>(null);
   final RxList<Map<String, dynamic>> myDoctors = <Map<String, dynamic>>[].obs;
 
-  // جلب قائمة المرضى (للطبيب أو موظف الاستقبال)
+  // جلب قائمة المرضى (للطبيب أو موظف الاستقبال) مع كاش Hive
   Future<void> loadPatients({int skip = 0, int limit = 50}) async {
     try {
       isLoading.value = true;
-      print('📋 [PatientController] Loading patients...');
+      print('📋 [PatientController] Loading patients with cache...');
 
-      // تحديد نوع المستخدم الحالي
+      // 1) محاولة التحميل من الكاش أولاً (Hive)
+      try {
+        final box = Hive.box('patients');
+        final cachedList = box.get('list');
+        if (cachedList != null && cachedList is List) {
+          final cachedPatients = cachedList
+              .map(
+                (json) => PatientModel.fromJson(
+                  Map<String, dynamic>.from(json as Map),
+                ),
+              )
+              .toList();
+          if (cachedPatients.isNotEmpty) {
+            patients.assignAll(cachedPatients);
+            print(
+              '✅ [PatientController] Loaded ${patients.length} patients from cache',
+            );
+          }
+        }
+      } catch (e) {
+        print('❌ [PatientController] Error reading cache: $e');
+      }
+
+      // 2) جلب من الـ API وتحديث الكاش
       final authController = Get.find<AuthController>();
       final userType = authController.currentUser.value?.userType;
       print('📋 [PatientController] Current user type: $userType');
 
+      List<PatientModel> patientsList;
       if (userType == 'receptionist') {
         // موظف الاستقبال: يجلب جميع المرضى من /reception/patients
-        print('📋 [PatientController] Loading all patients (receptionist)...');
-        final patientsList = await _patientService.getAllPatients(
+        print('📋 [PatientController] Loading all patients (receptionist, API)...');
+        patientsList = await _patientService.getAllPatients(
           skip: skip,
           limit: limit,
-        );
-        patients.value = patientsList;
-        print(
-          '✅ [PatientController] Loaded ${patientsList.length} patients (receptionist)',
         );
       } else {
         // الطبيب (أو أي نوع آخر): يجلب مرضاه فقط من /doctor/patients
-        print('📋 [PatientController] Loading doctor patients...');
-        final patientsList = await _doctorService.getMyPatients(
+        print('📋 [PatientController] Loading doctor patients (API)...');
+        patientsList = await _doctorService.getMyPatients(
           skip: skip,
           limit: limit,
-        );
-        patients.value = patientsList;
-        print(
-          '✅ [PatientController] Loaded ${patientsList.length} patients (doctor)',
         );
 
         if (patientsList.isEmpty) {
           print('⚠️ [PatientController] No patients found for this doctor!');
-          print(
-            '   💡 Make sure patients are assigned to this doctor in the backend.',
-          );
-          print(
-            '   💡 Patients need primary_doctor_id or secondary_doctor_id set.',
-          );
         }
+      }
+
+      patients.assignAll(patientsList);
+      print('✅ [PatientController] Loaded ${patients.length} patients from API');
+
+      // تحديث الكاش
+      try {
+        final box = Hive.box('patients');
+        await box.put(
+          'list',
+          patients.map((p) => p.toJson()).toList(),
+        );
+        await box.put('lastUpdated', DateTime.now().toIso8601String());
+        print(
+          '💾 [PatientController] Cache updated with ${patients.length} patients',
+        );
+      } catch (e) {
+        print('❌ [PatientController] Error updating cache: $e');
       }
     } on ApiException catch (e) {
       print('❌ [PatientController] ApiException: ${e.message}');
-      Get.snackbar('خطأ', e.message);
+      if (NetworkUtils.isNetworkError(e)) {
+        await NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', e.message);
+      }
     } catch (e) {
       print('❌ [PatientController] Error: $e');
-      Get.snackbar('خطأ', 'حدث خطأ أثناء تحميل المرضى');
+      if (NetworkUtils.isNetworkError(e)) {
+        await NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', 'حدث خطأ أثناء تحميل المرضى');
+      }
     } finally {
       isLoading.value = false;
     }
@@ -100,29 +138,131 @@ class PatientController extends GetxController {
     }
   }
 
-  // تحديد نوع العلاج (للطبيب)
+  // تحديد نوع العلاج (للطبيب) مع تحديث متفائل + تراجع + تحديث الكاش
   Future<void> setTreatmentType({
     required String patientId,
     required String treatmentType,
   }) async {
+    PatientModel? oldPatient;
+
     try {
       isLoading.value = true;
+
+      // حفظ نسخة قديمة للتراجع
+      final index = patients.indexWhere((p) => p.id == patientId);
+      if (index != -1) {
+        oldPatient = patients[index];
+
+        // نسخة محدثة بشكل متفائل
+        final optimisticPatient = PatientModel(
+          id: oldPatient.id,
+          name: oldPatient.name,
+          phoneNumber: oldPatient.phoneNumber,
+          gender: oldPatient.gender,
+          age: oldPatient.age,
+          city: oldPatient.city,
+          imageUrl: oldPatient.imageUrl,
+          doctorIds: oldPatient.doctorIds,
+          treatmentHistory: <String>[
+            ...?oldPatient.treatmentHistory,
+            treatmentType,
+          ],
+          qrCodeData: oldPatient.qrCodeData,
+          qrImagePath: oldPatient.qrImagePath,
+        );
+
+        patients[index] = optimisticPatient;
+        if (selectedPatient.value?.id == patientId) {
+          selectedPatient.value = optimisticPatient;
+        }
+
+        // كاش متفائل
+        try {
+          final box = Hive.box('patients');
+          await box.put(
+            'list',
+            patients.map((p) => p.toJson()).toList(),
+          );
+          await box.put('lastUpdated', DateTime.now().toIso8601String());
+        } catch (_) {}
+      }
+
+      // إرسال الطلب إلى السيرفر
       final updatedPatient = await _doctorService.setTreatmentType(
         patientId: patientId,
         treatmentType: treatmentType,
       );
 
-      // تحديث القائمة
-      final index = patients.indexWhere((p) => p.id == patientId);
-      if (index != -1) {
-        patients[index] = updatedPatient;
+      // تحديث القائمة بالبيانات المؤكدة
+      final newIndex = patients.indexWhere((p) => p.id == patientId);
+      if (newIndex != -1) {
+        patients[newIndex] = updatedPatient;
       }
+      if (selectedPatient.value?.id == patientId) {
+        selectedPatient.value = updatedPatient;
+      }
+
+      // تحديث الكاش
+      try {
+        final box = Hive.box('patients');
+        await box.put(
+          'list',
+          patients.map((p) => p.toJson()).toList(),
+        );
+        await box.put('lastUpdated', DateTime.now().toIso8601String());
+      } catch (_) {}
 
       Get.snackbar('نجح', 'تم تحديث نوع العلاج');
     } on ApiException catch (e) {
-      Get.snackbar('خطأ', e.message);
+      // تراجع (Rollback)
+      if (oldPatient != null) {
+        final index = patients.indexWhere((p) => p.id == patientId);
+        if (index != -1) {
+          patients[index] = oldPatient;
+        }
+        if (selectedPatient.value?.id == patientId) {
+          selectedPatient.value = oldPatient;
+        }
+        try {
+          final box = Hive.box('patients');
+          await box.put(
+            'list',
+            patients.map((p) => p.toJson()).toList(),
+          );
+          await box.put('lastUpdated', DateTime.now().toIso8601String());
+        } catch (_) {}
+      }
+
+      if (NetworkUtils.isNetworkError(e)) {
+        await NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', e.message);
+      }
     } catch (e) {
-      Get.snackbar('خطأ', 'حدث خطأ أثناء تحديث نوع العلاج');
+      // تراجع (Rollback)
+      if (oldPatient != null) {
+        final index = patients.indexWhere((p) => p.id == patientId);
+        if (index != -1) {
+          patients[index] = oldPatient;
+        }
+        if (selectedPatient.value?.id == patientId) {
+          selectedPatient.value = oldPatient;
+        }
+        try {
+          final box = Hive.box('patients');
+          await box.put(
+            'list',
+            patients.map((p) => p.toJson()).toList(),
+          );
+          await box.put('lastUpdated', DateTime.now().toIso8601String());
+        } catch (_) {}
+      }
+
+      if (NetworkUtils.isNetworkError(e)) {
+        await NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', 'حدث خطأ أثناء تحديث نوع العلاج');
+      }
     } finally {
       isLoading.value = false;
     }
@@ -147,6 +287,61 @@ class PatientController extends GetxController {
 
   void selectPatient(PatientModel? patient) {
     selectedPatient.value = patient;
+  }
+
+  // تحديث الأطباء المرتبطين بمريض معين في الواجهة بدون إعادة تحميل كاملة
+  void updatePatientDoctorIds(String patientId, List<String> doctorIds) {
+    final index = patients.indexWhere((p) => p.id == patientId);
+    if (index == -1) return;
+
+    final patient = patients[index];
+    final updatedPatient = PatientModel(
+      id: patient.id,
+      name: patient.name,
+      phoneNumber: patient.phoneNumber,
+      gender: patient.gender,
+      age: patient.age,
+      city: patient.city,
+      imageUrl: patient.imageUrl,
+      doctorIds: doctorIds,
+      treatmentHistory: patient.treatmentHistory,
+      qrCodeData: patient.qrCodeData,
+      qrImagePath: patient.qrImagePath,
+    );
+
+    patients[index] = updatedPatient;
+
+    // تحديث المريض المحدد إذا كان هو نفسه
+    if (selectedPatient.value?.id == patientId) {
+      selectedPatient.value = updatedPatient;
+    }
+
+    // تحديث الكاش
+    try {
+      final box = Hive.box('patients');
+      box.put(
+        'list',
+        patients.map((p) => p.toJson()).toList(),
+      );
+      box.put('lastUpdated', DateTime.now().toIso8601String());
+    } catch (_) {}
+  }
+
+  // إضافة مريض جديد إلى القائمة وتعيينه كمريض محدد بدون إعادة تحميل كاملة
+  void addPatient(PatientModel patient) {
+    // نضيف المريض في بداية القائمة ليظهر كأحدث مريض
+    patients.insert(0, patient);
+    selectedPatient.value = patient;
+
+    // تحديث الكاش بعد الإضافة
+    try {
+      final box = Hive.box('patients');
+      box.put(
+        'list',
+        patients.map((p) => p.toJson()).toList(),
+      );
+      box.put('lastUpdated', DateTime.now().toIso8601String());
+    } catch (_) {}
   }
 
   // التحقق من وجود طبيب مرتبط بالمريض

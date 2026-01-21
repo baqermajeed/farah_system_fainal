@@ -38,20 +38,51 @@ def verify_password(plain_password: str, hashed_password: str | None) -> bool:
 
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
-    """Create a signed JWT token with expiry."""
+    """Create a signed JWT access token (short-lived - 1 hour by default)."""
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (
         expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
-    to_encode.update({"exp": expire})
+    to_encode.update({"exp": expire, "type": "access"})  # إضافة type للتمييز
     return jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+
+
+def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    """Create a signed JWT refresh token (long-lived - 30 days by default)."""
+    to_encode = data.copy()
+    expire = datetime.now(timezone.utc) + (
+        expires_delta or timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    )
+    to_encode.update({"exp": expire, "type": "refresh"})  # إضافة type للتمييز
+    return jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+
+
+def decode_token(token: str, token_type: str = "access") -> dict:
+    """Decode JWT token and verify its type."""
+    try:
+        payload = jwt.decode(
+            token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM]
+        )
+        # التحقق من نوع الـ token
+        if payload.get("type") != token_type:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Invalid token type. Expected {token_type}",
+            )
+        return payload
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
 
 
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
 ) -> User:
-    """Decode JWT and fetch current user from MongoDB.
-    Raises 401 if token invalid or user not found.
+    """Decode JWT access token and fetch current user from MongoDB.
+    Raises 401 if token invalid, expired, or user not found.
+    Only accepts access tokens, not refresh tokens.
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -59,13 +90,14 @@ async def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(
-            token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM]
-        )
+        # استخدام decode_token للتحقق من نوع الـ token
+        payload = decode_token(token, token_type="access")
         user_id: str | None = payload.get("sub")
         if user_id is None:
             raise credentials_exception
-    except JWTError:
+    except HTTPException:
+        raise
+    except Exception:
         raise credentials_exception
 
     try:

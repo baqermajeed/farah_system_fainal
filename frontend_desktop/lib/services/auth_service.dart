@@ -50,17 +50,21 @@ class AuthService {
           response.statusCode! < 300) {
         final data = response.data;
         final accountExists = data['account_exists'] as bool? ?? false;
-        final token = data['token'] as String?;
+        final tokenObj = data['token'] as Map<String, dynamic>?;
 
-        if (accountExists && token != null) {
-          await _api.saveToken(token);
+        if (accountExists && tokenObj != null) {
+          final accessToken = tokenObj['access_token'] as String?;
+          final refreshToken = tokenObj['refresh_token'] as String?;
+          if (accessToken != null && refreshToken != null) {
+            await _api.saveTokens(accessToken, refreshToken);
+          }
         }
 
         return {
           'ok': true,
           'data': data,
           'accountExists': accountExists,
-          'token': token,
+          'token': tokenObj,
         };
       }
       throw ApiException('فشل التحقق من OTP');
@@ -146,10 +150,11 @@ class AuthService {
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         print('✅ STAFF LOGIN SUCCESS');
-        final token = decoded['access_token'] as String?;
-        if (token != null) {
-          await _api.saveToken(token);
-          print('✅ Token saved successfully');
+        final accessToken = decoded['access_token'] as String?;
+        final refreshToken = decoded['refresh_token'] as String?;
+        if (accessToken != null && refreshToken != null) {
+          await _api.saveTokens(accessToken, refreshToken);
+          print('✅ Tokens saved successfully');
         }
         return {'ok': true, 'data': decoded};
       }
@@ -190,6 +195,11 @@ class AuthService {
   Future<bool> isLoggedIn() async {
     final token = await _api.getToken();
     return token != null && token.isNotEmpty;
+  }
+
+  // الحصول على access token
+  Future<String?> getToken() async {
+    return await _api.getToken();
   }
 
   // Helper to get headers with token
@@ -327,6 +337,63 @@ class AuthService {
         throw Exception('انتهت مهلة الاتصال. يرجى التحقق من الاتصال بالإنترنت');
       }
       rethrow;
+    }
+  }
+
+  // تجديد Access Token باستخدام Refresh Token
+  Future<bool> refreshAccessToken() async {
+    try {
+      print('🔄 ========== API REFRESH TOKEN ==========');
+      final refreshToken = await _api.getRefreshToken();
+      
+      if (refreshToken == null || refreshToken.isEmpty) {
+        print('❌ No refresh token found');
+        return false;
+      }
+      
+      final uri = Uri.parse(_getFullUrl(ApiConstants.authRefresh));
+      print('🔄 URL: $uri');
+      print('🔄 Refresh token: ${refreshToken.substring(0, 30)}...');
+      print('🔄 =====================================');
+      
+      final response = await http
+          .post(
+            uri,
+            headers: await _getHeaders(includeContentType: true),
+            body: jsonEncode({'refresh_token': refreshToken}),
+          )
+          .timeout(
+            const Duration(seconds: 15),
+            onTimeout: () {
+              print('❌ REFRESH TOKEN TIMEOUT');
+              throw Exception('Timeout');
+            },
+          );
+      
+      print('🔄 ========== API REFRESH TOKEN RESPONSE ==========');
+      print('🔄 Status Code: ${response.statusCode}');
+      print('🔄 Response Body: ${response.body}');
+      print('🔄 ================================================');
+      
+      final decoded = _decodeBody(response.bodyBytes);
+      
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        print('✅ REFRESH TOKEN SUCCESS');
+        final accessToken = decoded['access_token'] as String?;
+        final newRefreshToken = decoded['refresh_token'] as String?;
+        if (accessToken != null && newRefreshToken != null) {
+          await _api.saveTokens(accessToken, newRefreshToken);
+          print('✅ New tokens saved successfully');
+          return true;
+        }
+        return false;
+      }
+      
+      print('❌ REFRESH TOKEN FAILED: ${decoded['detail'] ?? 'Unknown error'}');
+      return false;
+    } catch (e) {
+      print('❌ REFRESH TOKEN ERROR: $e');
+      return false;
     }
   }
 

@@ -2,6 +2,7 @@ import 'package:get/get.dart';
 import 'package:farah_sys_final/models/implant_stage_model.dart';
 import 'package:farah_sys_final/services/implant_stage_service.dart';
 import 'package:farah_sys_final/core/network/api_exception.dart';
+import 'package:farah_sys_final/core/utils/network_utils.dart';
 
 class ImplantStageController extends GetxController {
   final _implantStageService = ImplantStageService();
@@ -121,10 +122,45 @@ class ImplantStageController extends GetxController {
     DateTime date,
     String time,
   ) async {
+    ImplantStageModel? oldStage;
+
     try {
-      isLoading.value = true;
       errorMessage.value = '';
 
+      // 1) تحديث متفائل محلياً
+      final index = stages.indexWhere(
+        (s) => s.patientId == patientId && s.stageName == stageName,
+      );
+      if (index != -1) {
+        oldStage = stages[index];
+
+        // دمج التاريخ والوقت محلياً (التاريخ يُمرر من الـ UI مع الوقت المختار)
+        final timeParts = time.split(':');
+        final hour = int.tryParse(timeParts[0]) ?? 0;
+        final minute = timeParts.length > 1 ? int.tryParse(timeParts[1]) ?? 0 : 0;
+        final localDateTime = DateTime(
+          date.year,
+          date.month,
+          date.day,
+          hour,
+          minute,
+        );
+
+        final optimisticStage = ImplantStageModel(
+          id: oldStage.id,
+          patientId: oldStage.patientId,
+          stageName: oldStage.stageName,
+          scheduledAt: localDateTime,
+          isCompleted: oldStage.isCompleted,
+          appointmentId: oldStage.appointmentId,
+          createdAt: oldStage.createdAt,
+          updatedAt: DateTime.now(),
+        );
+
+        stages[index] = optimisticStage;
+      }
+
+      // 2) استدعاء السيرفر
       final updatedStage = await _implantStageService.updateStageDate(
         patientId,
         stageName,
@@ -132,20 +168,44 @@ class ImplantStageController extends GetxController {
         time,
       );
 
-      // تحديث المرحلة في القائمة
-      final index = stages.indexWhere((s) => s.id == updatedStage.id);
-      if (index != -1) {
-        stages[index] = updatedStage;
+      // 3) استبدال المرحلة بالنسخة القادمة من السيرفر
+      final newIndex = stages.indexWhere((s) => s.id == updatedStage.id);
+      if (newIndex != -1) {
+        stages[newIndex] = updatedStage;
       }
 
       return true;
     } on ApiException catch (e) {
+      // Rollback
+      if (oldStage != null) {
+        final original = oldStage;
+        final index = stages.indexWhere((s) => s.id == original.id);
+        if (index != -1) {
+          stages[index] = original;
+        }
+      }
       errorMessage.value = e.message;
       print('❌ [ImplantStageController] ApiException: ${e.message}');
+
+      // في حالة مشاكل الشبكة نظهر دايلوج التحقق من الاتصال فقط
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      }
+
       return false;
     } catch (e) {
+      if (oldStage != null) {
+        final original = oldStage;
+        final index = stages.indexWhere((s) => s.id == original.id);
+        if (index != -1) {
+          stages[index] = original;
+        }
+      }
       errorMessage.value = 'فشل تحديث التاريخ: ${e.toString()}';
       print('❌ [ImplantStageController] Error: $e');
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      }
       return false;
     } finally {
       isLoading.value = false;
@@ -154,26 +214,74 @@ class ImplantStageController extends GetxController {
 
   // إكمال مرحلة
   Future<bool> completeStage(String patientId, String stageName) async {
+    ImplantStageModel? oldStage;
+
     try {
-      isLoading.value = true;
       errorMessage.value = '';
 
-      await _implantStageService.completeStage(
-        patientId,
-        stageName,
+      // 1) تحديث متفائل محلياً
+      final index = stages.indexWhere(
+        (s) => s.patientId == patientId && s.stageName == stageName,
       );
+      if (index != -1) {
+        oldStage = stages[index];
+        final optimisticStage = ImplantStageModel(
+          id: oldStage.id,
+          patientId: oldStage.patientId,
+          stageName: oldStage.stageName,
+          scheduledAt: oldStage.scheduledAt,
+          isCompleted: true,
+          appointmentId: oldStage.appointmentId,
+          createdAt: oldStage.createdAt,
+          updatedAt: DateTime.now(),
+        );
+        stages[index] = optimisticStage;
+      }
 
-      // إعادة تحميل جميع المراحل لأن المرحلة التالية قد تم إنشاؤها تلقائياً
-      await loadStages(patientId);
+      // 2) استدعاء السيرفر
+      final completedStage =
+          await _implantStageService.completeStage(patientId, stageName);
+
+      // 3) استبدال المرحلة بالنسخة القادمة من السيرفر أو إضافتها إذا لم تكن موجودة
+      final newIndex = stages.indexWhere((s) => s.id == completedStage.id);
+      if (newIndex != -1) {
+        stages[newIndex] = completedStage;
+      } else {
+        stages.add(completedStage);
+      }
 
       return true;
     } on ApiException catch (e) {
+      // Rollback
+      if (oldStage != null) {
+        final original = oldStage;
+        final index = stages.indexWhere((s) => s.id == original.id);
+        if (index != -1) {
+          stages[index] = original;
+        }
+      }
       errorMessage.value = e.message;
       print('❌ [ImplantStageController] ApiException: ${e.message}');
+
+      // في حالة مشاكل الشبكة نظهر دايلوج التحقق من الاتصال فقط
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      }
+
       return false;
     } catch (e) {
+      if (oldStage != null) {
+        final original = oldStage;
+        final index = stages.indexWhere((s) => s.id == original.id);
+        if (index != -1) {
+          stages[index] = original;
+        }
+      }
       errorMessage.value = 'فشل إكمال المرحلة: ${e.toString()}';
       print('❌ [ImplantStageController] Error: $e');
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      }
       return false;
     } finally {
       isLoading.value = false;
@@ -182,29 +290,71 @@ class ImplantStageController extends GetxController {
 
   // إلغاء إكمال مرحلة
   Future<bool> uncompleteStage(String patientId, String stageName) async {
+    ImplantStageModel? oldStage;
+
     try {
-      isLoading.value = true;
       errorMessage.value = '';
 
-      final uncompletedStage = await _implantStageService.uncompleteStage(
-        patientId,
-        stageName,
+      // 1) تحديث متفائل محلياً
+      final index = stages.indexWhere(
+        (s) => s.patientId == patientId && s.stageName == stageName,
       );
-
-      // تحديث المرحلة في القائمة
-      final index = stages.indexWhere((s) => s.id == uncompletedStage.id);
       if (index != -1) {
-        stages[index] = uncompletedStage;
+        oldStage = stages[index];
+        final optimisticStage = ImplantStageModel(
+          id: oldStage.id,
+          patientId: oldStage.patientId,
+          stageName: oldStage.stageName,
+          scheduledAt: oldStage.scheduledAt,
+          isCompleted: false,
+          appointmentId: oldStage.appointmentId,
+          createdAt: oldStage.createdAt,
+          updatedAt: DateTime.now(),
+        );
+        stages[index] = optimisticStage;
+      }
+
+      // 2) استدعاء السيرفر
+      final uncompletedStage =
+          await _implantStageService.uncompleteStage(patientId, stageName);
+
+      // 3) استبدال المرحلة بالنسخة القادمة من السيرفر
+      final newIndex = stages.indexWhere((s) => s.id == uncompletedStage.id);
+      if (newIndex != -1) {
+        stages[newIndex] = uncompletedStage;
       }
 
       return true;
     } on ApiException catch (e) {
+      if (oldStage != null) {
+        final original = oldStage;
+        final index = stages.indexWhere((s) => s.id == original.id);
+        if (index != -1) {
+          stages[index] = original;
+        }
+      }
       errorMessage.value = e.message;
       print('❌ [ImplantStageController] ApiException: ${e.message}');
+
+      // في حالة مشاكل الشبكة نظهر دايلوج التحقق من الاتصال فقط
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      }
+
       return false;
     } catch (e) {
+      if (oldStage != null) {
+        final original = oldStage;
+        final index = stages.indexWhere((s) => s.id == original.id);
+        if (index != -1) {
+          stages[index] = original;
+        }
+      }
       errorMessage.value = 'فشل إلغاء إكمال المرحلة: ${e.toString()}';
       print('❌ [ImplantStageController] Error: $e');
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      }
       return false;
     } finally {
       isLoading.value = false;

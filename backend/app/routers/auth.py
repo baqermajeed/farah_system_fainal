@@ -10,6 +10,7 @@ from app.services.auth_service import (
     request_otp,
     verify_otp_and_login,
     staff_login_with_password,
+    refresh_access_token,
 )
 from app.services.admin_service import create_patient
 from app.security import create_access_token
@@ -55,7 +56,7 @@ async def route_request_otp(request: Request, payload: OTPRequestIn):
 @limiter.limit("10/minute")
 async def route_verify_otp(request: Request, payload: OTPVerifyIn):
     """التحقق من رمز OTP فقط - لا ينشئ حساب جديد.
-    يرجع {account_exists: true/false, token: ...} أو {account_exists: false}
+    يرجع {account_exists: true/false, token: Token} أو {account_exists: false}
     Rate limit: 10 requests per minute per IP.
     """
     print("=" * 60)
@@ -65,21 +66,28 @@ async def route_verify_otp(request: Request, payload: OTPVerifyIn):
     
     try:
         print("   ⏳ Calling verify_otp_and_login...")
-        token, user = await verify_otp_and_login(
+        tokens, user = await verify_otp_and_login(
             phone=payload.phone,
             code=payload.code,
         )
         
-        if token is None or user is None:
+        if tokens is None or user is None:
             print("   ⚠️ OTP verified but account does not exist")
             print("=" * 60)
             return {"account_exists": False}
         
+        access_token, refresh_token = tokens
         print("   ✅ OTP verified successfully")
         print(f"   👤 User: {user.name} ({user.role.value})")
         print(f"   🆔 User ID: {user.id}")
         print("=" * 60)
-        return {"account_exists": True, "token": token}
+        return {
+            "account_exists": True,
+            "token": Token(
+                access_token=access_token,
+                refresh_token=refresh_token,
+            ).dict()
+        }
     except Exception as e:
         print(f"   ❌ OTP verification failed: {e}")
         print(f"   🔴 Error type: {type(e).__name__}")
@@ -129,16 +137,20 @@ async def route_create_patient_account(request: Request, payload: PatientCreate)
         print(f"   👤 User: {user.name} ({user.role.value})")
         print(f"   🆔 User ID: {user.id}")
         
-        # إنشاء token
-        token = create_access_token(
-            {
-                "sub": str(user.id),
-                "role": user.role,
-                "phone": user.phone,
-            }
-        )
+        # إنشاء access_token و refresh_token
+        from app.security import create_refresh_token
+        token_data = {
+            "sub": str(user.id),
+            "role": user.role,
+            "phone": user.phone,
+        }
+        access_token = create_access_token(token_data)
+        refresh_token = create_refresh_token(token_data)
         print("=" * 60)
-        return Token(access_token=token)
+        return Token(
+            access_token=access_token,
+            refresh_token=refresh_token,
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -161,18 +173,52 @@ async def route_staff_login(form_data: OAuth2PasswordRequestForm = Depends()):
     
     try:
         print("   ⏳ Calling staff_login_with_password...")
-        token, user = await staff_login_with_password(
+        tokens, user = await staff_login_with_password(
             username=form_data.username,
             password=form_data.password,
         )
+        access_token, refresh_token = tokens
         print("   ✅ Login successful")
         print(f"   👤 User: {user.name} ({user.role.value})")
         print(f"   🆔 User ID: {user.id}")
-        print(f"   🎫 Token generated: {token[:30]}...")
+        print(f"   🎫 Access token generated: {access_token[:30]}...")
+        print(f"   🔄 Refresh token generated: {refresh_token[:30]}...")
         print("=" * 60)
-        return Token(access_token=token)
+        return Token(
+            access_token=access_token,
+            refresh_token=refresh_token,
+        )
     except Exception as e:
         print(f"   ❌ Login failed: {e}")
+        print(f"   🔴 Error type: {type(e).__name__}")
+        import traceback
+        print(f"   📋 Traceback: {traceback.format_exc()}")
+        print("=" * 60)
+        raise
+
+
+@router.post("/refresh", response_model=Token)
+async def route_refresh(refresh_token: str = Body(..., embed=True)):
+    """تجديد Access Token باستخدام Refresh Token.
+    يرجع access_token و refresh_token جديدين.
+    """
+    print("=" * 60)
+    print("🔄 [AUTH ROUTER] /auth/refresh endpoint called")
+    print(f"   🔄 Refresh token: {refresh_token[:30]}...")
+    
+    try:
+        print("   ⏳ Calling refresh_access_token...")
+        new_access_token, new_refresh_token = await refresh_access_token(refresh_token)
+        print("   ✅ Tokens refreshed successfully")
+        print(f"   🎫 New access token: {new_access_token[:30]}...")
+        print(f"   🔄 New refresh token: {new_refresh_token[:30]}...")
+        print("=" * 60)
+        return Token(
+            access_token=new_access_token,
+            refresh_token=new_refresh_token,
+        )
+    except Exception as e:
+        print(f"   ❌ Token refresh failed: {e}")
         print(f"   🔴 Error type: {type(e).__name__}")
         import traceback
         print(f"   📋 Traceback: {traceback.format_exc()}")

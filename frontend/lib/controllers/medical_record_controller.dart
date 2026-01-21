@@ -1,8 +1,10 @@
 import 'dart:io';
 import 'package:get/get.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:farah_sys_final/models/medical_record_model.dart';
 import 'package:farah_sys_final/services/doctor_service.dart';
 import 'package:farah_sys_final/core/network/api_exception.dart';
+import 'package:farah_sys_final/core/utils/network_utils.dart';
 
 class MedicalRecordController extends GetxController {
   final _doctorService = DoctorService();
@@ -14,14 +16,53 @@ class MedicalRecordController extends GetxController {
   Future<void> loadPatientRecords(String patientId) async {
     try {
       isLoading.value = true;
+
+      // 1) محاولة التحميل من الكاش أولاً (Hive)
+      final box = Hive.box('medicalRecords');
+      final cacheKey = 'patient_$patientId';
+      
+      final cachedList = box.get(cacheKey);
+      if (cachedList != null && cachedList is List) {
+        try {
+          final cachedRecords = cachedList
+              .map(
+                (json) => MedicalRecordModel.fromJson(
+                  Map<String, dynamic>.from(json as Map),
+                ),
+              )
+              .toList();
+          records.value = cachedRecords;
+          print('✅ [MedicalRecordController] Loaded ${records.length} records from cache');
+        } catch (e) {
+          print('❌ [MedicalRecordController] Error parsing cached records: $e');
+        }
+      }
+
       final recordsList = await _doctorService.getPatientNotes(
         patientId: patientId,
       );
       records.value = recordsList;
+
+      // 2) تحديث الكاش بعد نجاح الجلب من API
+      try {
+        await box.put(cacheKey, records.map((r) => r.toJson()).toList());
+        await box.put('${cacheKey}_lastUpdated', DateTime.now().toIso8601String());
+        print('💾 [MedicalRecordController] Cache updated with ${records.length} records');
+      } catch (e) {
+        print('❌ [MedicalRecordController] Error updating cache: $e');
+      }
     } on ApiException catch (e) {
-      Get.snackbar('خطأ', e.message);
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', e.message);
+      }
     } catch (e) {
-      Get.snackbar('خطأ', 'حدث خطأ أثناء تحميل السجلات');
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', 'حدث خطأ أثناء تحميل السجلات');
+      }
     } finally {
       isLoading.value = false;
     }
@@ -33,24 +74,64 @@ class MedicalRecordController extends GetxController {
     String? note,
     List<File>? imageFiles,
   }) async {
+    MedicalRecordModel? tempRecord;
+
     try {
-      isLoading.value = true;
+      // 1) إنشاء سجل مؤقت (تحديث متفائل)
+      tempRecord = MedicalRecordModel(
+        id: 'temp-${DateTime.now().millisecondsSinceEpoch}',
+        patientId: patientId,
+        doctorId: '',
+        date: DateTime.now(),
+        treatmentType: '',
+        diagnosis: note ?? '',
+        images: null,
+        notes: note,
+      );
+
+      records.insert(0, tempRecord);
+
+      // 2) استدعاء السيرفر
       final newRecord = await _doctorService.addNote(
         patientId: patientId,
         note: note,
         imageFiles: imageFiles,
       );
-      // إضافة السجل الجديد في البداية (الأحدث أولاً)
-      records.insert(0, newRecord);
+
+      // 3) استبدال السجل المؤقت بالسجل الحقيقي
+      final index = records.indexWhere((r) => r.id == tempRecord!.id);
+      if (index != -1) {
+        records[index] = newRecord;
+      } else {
+        records.insert(0, newRecord);
+      }
+
       Get.snackbar('نجح', 'تم إضافة السجل بنجاح');
     } on ApiException catch (e) {
-      Get.snackbar('خطأ', e.message);
+      // Rollback
+      if (tempRecord != null) {
+        records.removeWhere((r) => r.id == tempRecord!.id);
+      }
+
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', e.message);
+      }
       rethrow;
     } catch (e) {
-      Get.snackbar('خطأ', 'حدث خطأ أثناء إضافة السجل');
+      if (tempRecord != null) {
+        records.removeWhere((r) => r.id == tempRecord!.id);
+      }
+
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', 'حدث خطأ أثناء إضافة السجل');
+      }
       rethrow;
     } finally {
-      isLoading.value = false;
+      // لا نستخدم isLoading هنا حتى لا نظهر تحميل عام على كامل الشاشة
     }
   }
 
@@ -76,10 +157,18 @@ class MedicalRecordController extends GetxController {
       }
       Get.snackbar('نجح', 'تم تحديث السجل بنجاح');
     } on ApiException catch (e) {
-      Get.snackbar('خطأ', e.message);
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', e.message);
+      }
       rethrow;
     } catch (e) {
-      Get.snackbar('خطأ', 'حدث خطأ أثناء تحديث السجل');
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', 'حدث خطأ أثناء تحديث السجل');
+      }
       rethrow;
     } finally {
       isLoading.value = false;
@@ -101,10 +190,18 @@ class MedicalRecordController extends GetxController {
       records.removeWhere((r) => r.id == recordId);
       Get.snackbar('نجح', 'تم حذف السجل بنجاح');
     } on ApiException catch (e) {
-      Get.snackbar('خطأ', e.message);
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', e.message);
+      }
       rethrow;
     } catch (e) {
-      Get.snackbar('خطأ', 'حدث خطأ أثناء حذف السجل');
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', 'حدث خطأ أثناء حذف السجل');
+      }
       rethrow;
     } finally {
       isLoading.value = false;

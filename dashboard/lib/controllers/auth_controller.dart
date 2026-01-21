@@ -50,10 +50,13 @@ class AuthController extends GetxController {
     loggingIn.value = true;
     error.value = null;
     try {
-      final t = await _authService.staffLogin(username: username, password: password);
-      token.value = t;
-      ApiClient.instance.setToken(t);
-      await _storage.writeToken(t);
+      final tokens = await _authService.staffLogin(username: username, password: password);
+      final accessToken = tokens['access_token']!;
+      final refreshToken = tokens['refresh_token']!;
+      
+      token.value = accessToken;
+      ApiClient.instance.setToken(accessToken);
+      await _storage.writeTokens(accessToken, refreshToken);
 
       final user = await _authService.me();
       if (!user.isAdmin) {

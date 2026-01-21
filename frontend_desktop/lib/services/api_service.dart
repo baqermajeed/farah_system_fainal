@@ -13,6 +13,8 @@ class ApiService {
 
   late Dio _dio;
   final _storage = const FlutterSecureStorage();
+  bool _isRefreshing = false;
+  final List<_PendingRequest> _pendingRequests = [];
 
   ApiService._internal() {
     _dio = Dio(
@@ -50,11 +52,45 @@ class ApiService {
           return handler.next(options);
         },
         onError: (error, handler) async {
+          // Handle errors globally
           if (error.response?.statusCode == 401) {
-            try {
+            // Token expired - try to refresh
+            final requestOptions = error.requestOptions;
+            
+            // إذا كان الطلب هو refresh token نفسه، لا نعيد المحاولة
+            if (requestOptions.path.contains('/auth/refresh')) {
               await _handleUnauthorized();
-            } catch (e) {
-              // Ignore
+              return handler.next(error);
+            }
+            
+            // إذا كنا نعيد التجديد حالياً، نضيف الطلب للقائمة المعلقة
+            if (_isRefreshing) {
+              return _addPendingRequest(requestOptions, handler);
+            }
+            
+            // محاولة تجديد الـ token
+            _isRefreshing = true;
+            final refreshed = await _refreshAccessToken();
+            
+            if (refreshed) {
+              // نجح التجديد - إعادة المحاولة للطلبات المعلقة
+              _isRefreshing = false;
+              await _retryPendingRequests();
+              
+              // إعادة المحاولة للطلب الأصلي
+              final opts = requestOptions;
+              final newToken = await getToken();
+              if (newToken != null && newToken.isNotEmpty) {
+                opts.headers['Authorization'] = 'Bearer $newToken';
+              }
+              final response = await _dio.fetch(opts);
+              return handler.resolve(response);
+            } else {
+              // فشل التجديد - مسح tokens وlogout
+              _isRefreshing = false;
+              _pendingRequests.clear();
+              await _handleUnauthorized();
+              return handler.next(error);
             }
           }
           return handler.next(error);
@@ -66,9 +102,85 @@ class ApiService {
   Future<void> _handleUnauthorized() async {
     try {
       await _storage.delete(key: ApiConstants.tokenKey);
+      await _storage.delete(key: ApiConstants.refreshTokenKey);
       await _storage.delete(key: ApiConstants.userKey);
     } catch (e) {
       print('Warning: Could not clear storage: $e');
+    }
+  }
+
+  // إضافة طلب للقائمة المعلقة
+  void _addPendingRequest(
+    RequestOptions requestOptions,
+    ErrorInterceptorHandler handler,
+  ) {
+    _pendingRequests.add(_PendingRequest(
+      requestOptions: requestOptions,
+      handler: handler,
+    ));
+  }
+
+  // إعادة المحاولة للطلبات المعلقة
+  Future<void> _retryPendingRequests() async {
+    final token = await getToken();
+    if (token == null) return;
+
+    for (final pending in _pendingRequests) {
+      try {
+        pending.requestOptions.headers['Authorization'] = 'Bearer $token';
+        final response = await _dio.fetch(pending.requestOptions);
+        pending.handler.resolve(response);
+      } catch (e) {
+        pending.handler.reject(
+          DioException(
+            requestOptions: pending.requestOptions,
+            error: e,
+          ),
+        );
+      }
+    }
+    _pendingRequests.clear();
+  }
+
+  /// تجديد Access Token باستخدام Refresh Token (يُستخدم داخلياً من الـ interceptor)
+  Future<bool> _refreshAccessToken() async {
+    try {
+      print('🔄 [ApiService] Starting token refresh...');
+      final refreshToken = await getRefreshToken();
+
+      if (refreshToken == null || refreshToken.isEmpty) {
+        print('❌ [ApiService] No refresh token found');
+        return false;
+      }
+
+      final response = await _dio.post(
+        ApiConstants.authRefresh,
+        data: {'refresh_token': refreshToken},
+      );
+
+      print(
+        '🔄 [ApiService] Refresh response: ${response.statusCode} ${response.data}',
+      );
+
+      if (response.statusCode != null &&
+          response.statusCode! >= 200 &&
+          response.statusCode! < 300) {
+        final data = response.data as Map<String, dynamic>;
+        final accessToken = data['access_token'] as String?;
+        final newRefreshToken = data['refresh_token'] as String?;
+
+        if (accessToken != null && newRefreshToken != null) {
+          await saveTokens(accessToken, newRefreshToken);
+          print('✅ [ApiService] Tokens refreshed and saved successfully');
+          return true;
+        }
+      }
+
+      print('❌ [ApiService] Failed to refresh token');
+      return false;
+    } catch (e) {
+      print('❌ [ApiService] Refresh token error: $e');
+      return false;
     }
   }
 
@@ -297,12 +409,33 @@ class ApiService {
     return await _storage.read(key: ApiConstants.tokenKey);
   }
 
+  Future<String?> getRefreshToken() async {
+    return await _storage.read(key: ApiConstants.refreshTokenKey);
+  }
+
   Future<void> saveToken(String token) async {
     await _storage.write(key: ApiConstants.tokenKey, value: token);
   }
 
+  Future<void> saveTokens(String accessToken, String refreshToken) async {
+    await _storage.write(key: ApiConstants.tokenKey, value: accessToken);
+    await _storage.write(key: ApiConstants.refreshTokenKey, value: refreshToken);
+  }
+
   Future<void> clearToken() async {
     await _storage.delete(key: ApiConstants.tokenKey);
+    await _storage.delete(key: ApiConstants.refreshTokenKey);
     await _storage.delete(key: ApiConstants.userKey);
   }
+}
+
+// Helper class للطلبات المعلقة أثناء refresh
+class _PendingRequest {
+  final RequestOptions requestOptions;
+  final ErrorInterceptorHandler handler;
+
+  _PendingRequest({
+    required this.requestOptions,
+    required this.handler,
+  });
 }

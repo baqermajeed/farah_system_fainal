@@ -38,6 +38,7 @@ class ApiConstants {
   static const String authCreatePatientAccount = '/auth/create-patient-account';
   static const String authStaffLogin = '/auth/staff-login';
   static const String authMe = '/auth/me';
+  static const String authRefresh = '/auth/refresh';
   static const String authUpdateProfile = '/auth/me';
   static const String authUploadImage = '/auth/me/upload-image';
 
@@ -128,5 +129,6 @@ class ApiConstants {
 
   // Storage Keys
   static const String tokenKey = 'auth_token';
+  static const String refreshTokenKey = 'refresh_token';
   static const String userKey = 'current_user';
 }

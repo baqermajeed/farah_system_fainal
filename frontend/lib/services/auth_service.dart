@@ -52,15 +52,41 @@ class AuthService {
     }
   }
 
+  // Helper to save refresh token
+  Future<void> _saveRefreshToken(String refreshToken) async {
+    try {
+      await _storage.write(key: ApiConstants.refreshTokenKey, value: refreshToken);
+    } catch (e) {
+      print('⚠️ Warning: Could not save refresh token to storage: $e');
+    }
+  }
+
+  // Helper to get refresh token
+  Future<String?> _getRefreshToken() async {
+    try {
+      return await _storage.read(key: ApiConstants.refreshTokenKey);
+    } catch (e) {
+      print('⚠️ Warning: Could not read refresh token from storage: $e');
+      return null;
+    }
+  }
+
   // Public method to save token (for restoring doctor/receptionist token)
   Future<void> saveToken(String token) async {
     await _saveToken(token);
+  }
+
+  // Helper to save both tokens
+  Future<void> _saveTokens(String accessToken, String refreshToken) async {
+    await _saveToken(accessToken);
+    await _saveRefreshToken(refreshToken);
   }
 
   // Helper to clear token
   Future<void> _clearToken() async {
     try {
       await _storage.delete(key: ApiConstants.tokenKey);
+      await _storage.delete(key: ApiConstants.refreshTokenKey);
       await _storage.delete(key: ApiConstants.userKey);
     } catch (e) {
       print('⚠️ Warning: Could not clear storage: $e');
@@ -175,18 +201,22 @@ class AuthService {
       if (response.statusCode >= 200 && response.statusCode < 300) {
         print('✅ VERIFY OTP SUCCESS');
         final accountExists = decoded['account_exists'] as bool? ?? false;
-        final token = decoded['token'] as String?;
+        final tokenObj = decoded['token'] as Map<String, dynamic>?;
         
-        if (accountExists && token != null) {
-          await _saveToken(token);
-          print('✅ Token saved successfully');
+        if (accountExists && tokenObj != null) {
+          final accessToken = tokenObj['access_token'] as String?;
+          final refreshToken = tokenObj['refresh_token'] as String?;
+          if (accessToken != null && refreshToken != null) {
+            await _saveTokens(accessToken, refreshToken);
+            print('✅ Tokens saved successfully');
+          }
         }
         
         return {
           'ok': true,
           'data': decoded,
           'accountExists': accountExists,
-          'token': token,
+          'token': tokenObj,
         };
       }
 
@@ -254,10 +284,11 @@ class AuthService {
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         print('✅ CREATE PATIENT ACCOUNT SUCCESS');
-        final token = decoded['access_token'] as String?;
-        if (token != null) {
-          await _saveToken(token);
-          print('✅ Token saved successfully');
+        final accessToken = decoded['access_token'] as String?;
+        final refreshToken = decoded['refresh_token'] as String?;
+        if (accessToken != null && refreshToken != null) {
+          await _saveTokens(accessToken, refreshToken);
+          print('✅ Tokens saved successfully');
         }
         return {'ok': true, 'data': decoded};
       }
@@ -336,10 +367,11 @@ class AuthService {
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         print('✅ STAFF LOGIN SUCCESS');
-        final token = decoded['access_token'] as String?;
-        if (token != null) {
-          await _saveToken(token);
-          print('✅ Token saved successfully');
+        final accessToken = decoded['access_token'] as String?;
+        final refreshToken = decoded['refresh_token'] as String?;
+        if (accessToken != null && refreshToken != null) {
+          await _saveTokens(accessToken, refreshToken);
+          print('✅ Tokens saved successfully');
         }
         return {'ok': true, 'data': decoded};
       }
@@ -529,6 +561,63 @@ class AuthService {
         throw Exception('انتهت مهلة الاتصال. يرجى التحقق من الاتصال بالإنترنت');
       }
       rethrow;
+    }
+  }
+
+  // تجديد Access Token باستخدام Refresh Token
+  Future<bool> refreshAccessToken() async {
+    try {
+      print('🔄 ========== API REFRESH TOKEN ==========');
+      final refreshToken = await _getRefreshToken();
+      
+      if (refreshToken == null || refreshToken.isEmpty) {
+        print('❌ No refresh token found');
+        return false;
+      }
+      
+      final uri = Uri.parse(_getFullUrl(ApiConstants.authRefresh));
+      print('🔄 URL: $uri');
+      print('🔄 Refresh token: ${refreshToken.substring(0, 30)}...');
+      print('🔄 =====================================');
+      
+      final response = await http
+          .post(
+            uri,
+            headers: await _getHeaders(),
+            body: jsonEncode({'refresh_token': refreshToken}),
+          )
+          .timeout(
+            const Duration(seconds: 15),
+            onTimeout: () {
+              print('❌ REFRESH TOKEN TIMEOUT');
+              throw Exception('انتهت مهلة الاتصال. يرجى المحاولة مرة أخرى');
+            },
+          );
+      
+      print('🔄 ========== API REFRESH TOKEN RESPONSE ==========');
+      print('🔄 Status Code: ${response.statusCode}');
+      print('🔄 Response Body: ${response.body}');
+      print('🔄 ================================================');
+      
+      final decoded = _decodeBody(response.bodyBytes);
+      
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        print('✅ REFRESH TOKEN SUCCESS');
+        final accessToken = decoded['access_token'] as String?;
+        final newRefreshToken = decoded['refresh_token'] as String?;
+        if (accessToken != null && newRefreshToken != null) {
+          await _saveTokens(accessToken, newRefreshToken);
+          print('✅ New tokens saved successfully');
+          return true;
+        }
+        return false;
+      }
+      
+      print('❌ REFRESH TOKEN FAILED: ${decoded['detail'] ?? 'Unknown error'}');
+      return false;
+    } catch (e) {
+      print('❌ REFRESH TOKEN ERROR: $e');
+      return false;
     }
   }
 
