@@ -6,6 +6,7 @@ import re
 
 from app.schemas import (
     PatientOut,
+    DoctorOut,
     GalleryOut,
     GalleryCreate,
     NoteOut,
@@ -14,6 +15,7 @@ from app.schemas import (
     AppointmentStatusUpdate,
     PatientUpdate,
     PatientCreate,
+    PatientTransferIn,
 )
 from app.database import get_db
 from app.security import require_roles, get_current_user
@@ -25,6 +27,7 @@ from app.utils.r2_clinic import upload_clinic_image
 from app.models import Doctor, User, Patient
 from app.utils.logger import get_logger
 from app.utils.patient_profile import build_doctor_profile_map, get_doctor_profile
+from beanie.operators import In
 from beanie import PydanticObjectId as OID
 
 logger = get_logger("doctor_router")
@@ -62,6 +65,16 @@ async def _get_current_doctor_id(current) -> str:
     return str(doctor.id)
 
 
+async def _require_doctor_manager(current) -> str:
+    """Ensure current doctor has manager privileges. Returns doctor_id."""
+    doctor = await Doctor.find_one(Doctor.user_id == current.id)
+    if not doctor:
+        raise HTTPException(status_code=404, detail="Doctor profile not found")
+    if not getattr(doctor, "is_manager", False):
+        raise HTTPException(status_code=403, detail="Doctor manager privileges required")
+    return str(doctor.id)
+
+
 def _build_doctor_patient_out(patient: Patient, user: User, doctor_id: str) -> PatientOut:
     doctor_profiles = build_doctor_profile_map(patient, doctor_id=doctor_id)
     doctor_profile = get_doctor_profile(patient, doctor_id=doctor_id, profiles=doctor_profiles)
@@ -75,6 +88,7 @@ def _build_doctor_patient_out(patient: Patient, user: User, doctor_id: str) -> P
         age=user.age,
         city=user.city,
         treatment_type=treatment_type,
+        visit_type=getattr(patient, "visit_type", None),
         doctor_ids=[str(did) for did in patient.doctor_ids],
         doctor_profiles=doctor_profiles,
         qr_code_data=patient.qr_code_data,
@@ -125,6 +139,7 @@ async def add_patient(
         gender=payload.gender,
         age=payload.age,
         city=payload.city,
+        visit_type=payload.visit_type,
     )
     logger.info(f"Patient created: {patient.id}, user_id: {patient.user_id}")
     
@@ -147,6 +162,96 @@ async def add_patient(
     logger.info(f"Final patient state - doctor_ids: {patient.doctor_ids}")
     
     return _build_doctor_patient_out(patient, u, doctor_id)
+
+
+@router.post("/patients/{patient_id}/transfer", response_model=PatientOut)
+async def transfer_patient(
+    patient_id: str,
+    payload: PatientTransferIn,
+    current=Depends(get_current_user),
+):
+    """تحويل مريض إلى طبيب آخر (للطبيب المدير فقط).
+
+    - shared: يبقى المريض مشتركا بين الطبيب المدير والطبيب الهدف.
+    - move: يُحذف المريض من قائمة الطبيب المدير ويُضاف للطبيب الهدف (ويبقى أي أطباء آخرين كما هم).
+    """
+    manager_doctor_id = await _require_doctor_manager(current)
+
+    patient = await Patient.get(OID(patient_id))
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    # يجب أن يكون المريض ضمن قائمة هذا الطبيب المدير حتى يستطيع تحويله
+    if OID(manager_doctor_id) not in (patient.doctor_ids or []):
+        raise HTTPException(status_code=403, detail="Not your patient")
+
+    target_id = payload.target_doctor_id
+    if not target_id:
+        raise HTTPException(status_code=400, detail="target_doctor_id is required")
+    if target_id == manager_doctor_id:
+        # لا تغيير
+        u = await User.get(patient.user_id)
+        if not u:
+            raise HTTPException(status_code=404, detail="User not found")
+        return _build_doctor_patient_out(patient, u, manager_doctor_id)
+
+    # تحقق أن الطبيب الهدف موجود
+    target_doctor = await Doctor.get(OID(target_id))
+    if not target_doctor:
+        raise HTTPException(status_code=404, detail="Target doctor not found")
+
+    current_doctor_ids = [str(did) for did in (patient.doctor_ids or [])]
+
+    if payload.mode == "shared":
+        if manager_doctor_id not in current_doctor_ids:
+            current_doctor_ids.append(manager_doctor_id)
+        if target_id not in current_doctor_ids:
+            current_doctor_ids.append(target_id)
+    elif payload.mode == "move":
+        # إزالة الطبيب المدير من القائمة، وإضافة الطبيب الهدف
+        current_doctor_ids = [d for d in current_doctor_ids if d != manager_doctor_id]
+        if target_id not in current_doctor_ids:
+            current_doctor_ids.append(target_id)
+    else:
+        raise HTTPException(status_code=400, detail="Invalid transfer mode")
+
+    updated = await assign_patient_doctors(
+        patient_id=str(patient.id),
+        doctor_ids=current_doctor_ids,
+        assigned_by_user_id=str(current.id),
+    )
+
+    u = await User.get(updated.user_id)
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    return _build_doctor_patient_out(updated, u, manager_doctor_id)
+
+
+@router.get("/doctors", response_model=List[DoctorOut])
+async def list_doctors_for_manager(current=Depends(get_current_user)):
+    """قائمة جميع الأطباء - متاحة للطبيب المدير فقط (لاختيار طبيب عند التحويل)."""
+    _ = await _require_doctor_manager(current)
+
+    doctors = await Doctor.find({}).to_list()
+    user_ids = list({d.user_id for d in doctors if d.user_id})
+    users = await User.find(In(User.id, user_ids)).to_list() if user_ids else []
+    user_map = {u.id: u for u in users}
+
+    out: List[DoctorOut] = []
+    for d in doctors:
+        u = user_map.get(d.user_id)
+        if not u:
+            continue
+        out.append(
+            DoctorOut(
+                id=str(d.id),
+                user_id=str(d.user_id),
+                name=u.name,
+                phone=u.phone,
+                imageUrl=u.imageUrl,
+            )
+        )
+    return out
 
 
 @router.post("/patients/{patient_id}/upload-image", response_model=PatientOut)

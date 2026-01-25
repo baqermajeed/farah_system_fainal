@@ -142,44 +142,57 @@ class ApiService {
     _pendingRequests.clear();
   }
 
-  /// تجديد Access Token باستخدام Refresh Token (يُستخدم داخلياً من الـ interceptor)
+  // تجديد Access Token باستخدام Refresh Token
   Future<bool> _refreshAccessToken() async {
     try {
-      print('🔄 [ApiService] Starting token refresh...');
+      print('🔄 ========== API REFRESH TOKEN ==========');
       final refreshToken = await getRefreshToken();
-
+      
       if (refreshToken == null || refreshToken.isEmpty) {
-        print('❌ [ApiService] No refresh token found');
+        print('❌ No refresh token found');
         return false;
       }
-
-      final response = await _dio.post(
-        ApiConstants.authRefresh,
-        data: {'refresh_token': refreshToken},
+      
+      final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.authRefresh}');
+      print('🔄 URL: $uri');
+      print('🔄 Refresh token: ${refreshToken.substring(0, 30)}...');
+      print('🔄 =====================================');
+      
+      final response = await Dio().post(
+        uri.toString(),
+        options: dio.Options(
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+        ),
+        data: jsonEncode({'refresh_token': refreshToken}),
       );
-
-      print(
-        '🔄 [ApiService] Refresh response: ${response.statusCode} ${response.data}',
-      );
-
+      
+      print('🔄 ========== API REFRESH TOKEN RESPONSE ==========');
+      print('🔄 Status Code: ${response.statusCode}');
+      print('🔄 Response Body: ${response.data}');
+      print('🔄 ================================================');
+      
       if (response.statusCode != null &&
           response.statusCode! >= 200 &&
           response.statusCode! < 300) {
+        print('✅ REFRESH TOKEN SUCCESS');
         final data = response.data as Map<String, dynamic>;
         final accessToken = data['access_token'] as String?;
         final newRefreshToken = data['refresh_token'] as String?;
-
         if (accessToken != null && newRefreshToken != null) {
           await saveTokens(accessToken, newRefreshToken);
-          print('✅ [ApiService] Tokens refreshed and saved successfully');
+          print('✅ New tokens saved successfully');
           return true;
         }
+        return false;
       }
-
-      print('❌ [ApiService] Failed to refresh token');
+      
+      print('❌ REFRESH TOKEN FAILED: ${response.data}');
       return false;
     } catch (e) {
-      print('❌ [ApiService] Refresh token error: $e');
+      print('❌ REFRESH TOKEN ERROR: $e');
       return false;
     }
   }

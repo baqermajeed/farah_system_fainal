@@ -80,6 +80,7 @@ class PatientService {
     required String gender,
     required int age,
     required String city,
+    String? visitType,
   }) async {
     try {
       final response = await _api.post(
@@ -90,6 +91,7 @@ class PatientService {
           'gender': gender,
           'age': age,
           'city': city,
+          if (visitType != null) 'visit_type': visitType,
         },
       );
 
@@ -107,7 +109,8 @@ class PatientService {
   }
 
   // رفع صورة بروفايل للمريض (للاستقبال)
-  Future<void> uploadPatientImageForReception({
+  // بعض نسخ الباك-إند ترجع المريض بعد الرفع، وبعضها ترجع 200 بدون جسم.
+  Future<PatientModel?> uploadPatientImageForReception({
     required String patientId,
     File? imageFile,
     Uint8List? imageBytes,
@@ -125,7 +128,19 @@ class PatientService {
         formData: dio.FormData.fromMap({'image': multipartFile}),
       );
 
-      if (response.statusCode == 200) return;
+      if (response.statusCode == 200) {
+        final data = response.data;
+        if (data is Map) {
+          final map = data.cast<String, dynamic>();
+          if (map['patient'] is Map) {
+            return _mapPatientOutToModel(
+              (map['patient'] as Map).cast<String, dynamic>(),
+            );
+          }
+          return _mapPatientOutToModel(map);
+        }
+        return null;
+      }
       throw ApiException('فشل رفع صورة المريض');
     } catch (e) {
       if (e is ApiException) rethrow;
@@ -453,6 +468,7 @@ class PatientService {
       gender: json['gender'] ?? '',
       age: json['age'] ?? 0,
       city: json['city'] ?? '',
+      visitType: json['visit_type'] ?? json['visitType'],
       imageUrl: json['imageUrl'] ?? json['image_url'],
       doctorIds: doctorIds,
       treatmentHistory: json['treatment_type'] != null

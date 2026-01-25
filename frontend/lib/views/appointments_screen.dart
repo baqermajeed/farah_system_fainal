@@ -353,20 +353,38 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
     final timeText = '$displayHour:$minute';
     final periodText = isPM ? 'مساءاً' : 'صباحاً';
 
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(5.w),
-      decoration: BoxDecoration(
-        color: AppColors.white,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         borderRadius: BorderRadius.circular(12.r),
-        border: Border.all(
-          color: strokeColor,
-          width: 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+        onTap: isReceptionist
+            ? null
+            : () {
+                if (appointment.patientId.trim().isEmpty) return;
+                Get.toNamed(
+                  AppRoutes.patientDetails,
+                  arguments: {
+                    'patientId': appointment.patientId,
+                    // Pass both, so patient file can still show it even if list isn't loaded yet.
+                    'appointmentId': appointment.id,
+                    'appointment': appointment,
+                  },
+                );
+              },
+        child: Container(
+          width: double.infinity,
+          padding: EdgeInsets.all(5.w),
+          decoration: BoxDecoration(
+            color: AppColors.white,
+            borderRadius: BorderRadius.circular(12.r),
+            border: Border.all(
+              color: strokeColor,
+              width: 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
           Row(
             children: [
               // Patient Image (on the right in RTL)
@@ -592,7 +610,9 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
               ],
             ),
           ),
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }

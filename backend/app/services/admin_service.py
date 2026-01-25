@@ -48,6 +48,7 @@ async def create_patient(
     gender: Optional[str],
     age: Optional[int],
     city: Optional[str],
+    visit_type: Optional[str] = None,
 ) -> Patient:
     """Create a full patient (User + Patient profile) for reception/admin flows."""
     # تأكد أن رقم الهاتف غير مستخدم
@@ -69,7 +70,7 @@ async def create_patient(
     from os import urandom
 
     tmp_qr = f"tmp-{urandom(8).hex()}"
-    patient = Patient(user_id=user.id, qr_code_data=tmp_qr)
+    patient = Patient(user_id=user.id, qr_code_data=tmp_qr, visit_type=visit_type)
     await patient.insert()
     await ensure_patient_qr(patient)
     return patient

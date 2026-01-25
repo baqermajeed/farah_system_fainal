@@ -35,6 +35,38 @@ class WorkingHoursService {
     }
   }
 
+  /// جلب أوقات عمل طبيب محدد (للاستقبال/الادمن)
+  Future<List<WorkingHoursModel>> getDoctorWorkingHoursForReception(
+    String doctorId,
+  ) async {
+    try {
+      print(
+        '📋 [WorkingHoursService] (Reception) Fetching working hours for doctor: $doctorId',
+      );
+      final response = await _api.get(
+        ApiConstants.receptionDoctorWorkingHours(doctorId),
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = response.data;
+        final List<WorkingHoursModel> workingHours =
+            data.map((json) => WorkingHoursModel.fromJson(json)).toList();
+        print(
+          '✅ [WorkingHoursService] (Reception) Fetched ${workingHours.length} working hours',
+        );
+        return workingHours;
+      } else {
+        throw ApiException('فشل جلب أوقات العمل');
+      }
+    } catch (e) {
+      print('❌ [WorkingHoursService] (Reception) Error fetching working hours: $e');
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('فشل جلب أوقات العمل: ${e.toString()}');
+    }
+  }
+
   /// حفظ أوقات عمل الطبيب
   Future<List<WorkingHoursModel>> setWorkingHours(
     String doctorId,
@@ -122,6 +154,38 @@ class WorkingHoursService {
       }
     } catch (e) {
       print('❌ [WorkingHoursService] Error fetching available slots: $e');
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('فشل جلب الأوقات المتاحة: ${e.toString()}');
+    }
+  }
+
+  /// جلب الأوقات المتاحة لطبيب محدد في يوم معين (للاستقبال/الادمن)
+  Future<List<String>> getAvailableSlotsForReception(
+    String doctorId,
+    String date,
+  ) async {
+    try {
+      print(
+        '📅 [WorkingHoursService] (Reception) Fetching available slots for doctor: $doctorId, date: $date',
+      );
+      final response = await _api.get(
+        ApiConstants.receptionDoctorAvailableSlots(doctorId, date),
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = response.data;
+        final List<String> slots = data.map((slot) => slot.toString()).toList();
+        print(
+          '✅ [WorkingHoursService] (Reception) Found ${slots.length} available slots',
+        );
+        return slots;
+      } else {
+        throw ApiException('فشل جلب الأوقات المتاحة');
+      }
+    } catch (e) {
+      print('❌ [WorkingHoursService] (Reception) Error fetching available slots: $e');
       if (e is ApiException) {
         rethrow;
       }

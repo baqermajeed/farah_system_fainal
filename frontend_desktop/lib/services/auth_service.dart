@@ -340,63 +340,6 @@ class AuthService {
     }
   }
 
-  // تجديد Access Token باستخدام Refresh Token
-  Future<bool> refreshAccessToken() async {
-    try {
-      print('🔄 ========== API REFRESH TOKEN ==========');
-      final refreshToken = await _api.getRefreshToken();
-      
-      if (refreshToken == null || refreshToken.isEmpty) {
-        print('❌ No refresh token found');
-        return false;
-      }
-      
-      final uri = Uri.parse(_getFullUrl(ApiConstants.authRefresh));
-      print('🔄 URL: $uri');
-      print('🔄 Refresh token: ${refreshToken.substring(0, 30)}...');
-      print('🔄 =====================================');
-      
-      final response = await http
-          .post(
-            uri,
-            headers: await _getHeaders(includeContentType: true),
-            body: jsonEncode({'refresh_token': refreshToken}),
-          )
-          .timeout(
-            const Duration(seconds: 15),
-            onTimeout: () {
-              print('❌ REFRESH TOKEN TIMEOUT');
-              throw Exception('Timeout');
-            },
-          );
-      
-      print('🔄 ========== API REFRESH TOKEN RESPONSE ==========');
-      print('🔄 Status Code: ${response.statusCode}');
-      print('🔄 Response Body: ${response.body}');
-      print('🔄 ================================================');
-      
-      final decoded = _decodeBody(response.bodyBytes);
-      
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        print('✅ REFRESH TOKEN SUCCESS');
-        final accessToken = decoded['access_token'] as String?;
-        final newRefreshToken = decoded['refresh_token'] as String?;
-        if (accessToken != null && newRefreshToken != null) {
-          await _api.saveTokens(accessToken, newRefreshToken);
-          print('✅ New tokens saved successfully');
-          return true;
-        }
-        return false;
-      }
-      
-      print('❌ REFRESH TOKEN FAILED: ${decoded['detail'] ?? 'Unknown error'}');
-      return false;
-    } catch (e) {
-      print('❌ REFRESH TOKEN ERROR: $e');
-      return false;
-    }
-  }
-
   // تسجيل الخروج
   Future<void> logout() async {
     await _api.clearToken();

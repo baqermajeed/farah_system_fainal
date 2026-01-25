@@ -1,6 +1,11 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:pdf/pdf.dart';
+import 'package:printing/printing.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -11,6 +16,7 @@ import 'package:frontend_desktop/core/constants/app_colors.dart';
 import 'package:frontend_desktop/core/constants/app_strings.dart';
 import 'package:frontend_desktop/core/widgets/custom_text_field.dart';
 import 'package:frontend_desktop/core/widgets/gender_selector.dart';
+import 'package:frontend_desktop/core/widgets/visit_type_selector.dart';
 import 'package:frontend_desktop/core/utils/operation_dialog.dart';
 import 'package:frontend_desktop/core/network/api_exception.dart';
 import 'package:frontend_desktop/controllers/patient_controller.dart';
@@ -30,7 +36,6 @@ import 'package:frontend_desktop/core/utils/image_utils.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:frontend_desktop/services/patient_service.dart';
-import 'package:frontend_desktop/services/thermal_printer_service.dart';
 import 'package:frontend_desktop/models/doctor_model.dart';
 
 // Delegate for sticky TabBar
@@ -89,6 +94,29 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
   final RxBool _showAppointments =
       false.obs; // Track if appointments should be shown
   final TextEditingController _qrScanController = TextEditingController();
+  final GlobalKey _qrPrintKey = GlobalKey();
+
+  Future<void> _refreshData() async {
+    await _patientController.loadPatients();
+    await _appointmentController.loadDoctorAppointments();
+
+    final selected = _patientController.selectedPatient.value;
+    if (selected != null) {
+      await Future.wait([
+        _medicalRecordController.loadPatientRecords(selected.id),
+        _galleryController.loadGallery(selected.id),
+        _appointmentController.loadPatientAppointmentsById(selected.id),
+      ]);
+
+      // Refresh implant stages if implant treatment
+      if (selected.treatmentHistory != null &&
+          selected.treatmentHistory!.isNotEmpty &&
+          selected.treatmentHistory!.last == 'زراعة') {
+        final implantStageController = Get.put(ImplantStageController());
+        await implantStageController.loadStages(selected.id);
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -197,14 +225,39 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
 
   // --- Widgets Components ---
 
+  /// تحويل كود الباركود إذا تم مسحه ولوحة المفاتيح باللغة العربية
+  String _normalizeQrCode(String code) {
+    // خريطة تحويل الحروف العربية المقابلة للحروف الإنجليزية في لوحة المفاتيح القياسية
+    final Map<String, String> arabicToEnglish = {
+      'ض': 'q', 'ص': 'w', 'ث': 'e', 'ق': 'r', 'ف': 't', 'غ': 'y', 'ع': 'u', 'ه': 'i', 'خ': 'o', 'ح': 'p',
+      'ش': 'a', 'س': 's', 'ي': 'd', 'ب': 'f', 'ل': 'g', 'ا': 'h', 'ت': 'j', 'ن': 'k', 'م': 'l',
+      'ئ': 'z', 'ء': 'x', 'ؤ': 'c', 'ر': 'v', 'لا': 'b', 'ى': 'n', 'ة': 'm',
+      '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4', '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9',
+    };
+
+    String normalized = '';
+    // التعامل مع "لا" كحالة خاصة لأنها حرفين في لغة البرمجة ولكن حرف واحد في لوحة المفاتيح
+    String tempCode = code.replaceAll('لا', 'b');
+
+    for (int i = 0; i < tempCode.length; i++) {
+      String char = tempCode[i];
+      normalized += arabicToEnglish[char] ?? char;
+    }
+    return normalized;
+  }
+
   /// معالجة كود الباركود القادم من جهاز قارئ خارجي (نفس منطق الموبايل)
   Future<void> _handleDesktopQrScan(String code) async {
     try {
       _qrScanController.clear();
 
+      // تحويل الكود إذا كان مكتوباً بالعربي بالخطأ بسبب لغة لوحة المفاتيح
+      final normalizedCode = _normalizeQrCode(code.trim());
+      print('🔍 [QR Scan] Original: $code -> Normalized: $normalizedCode');
+
       // جلب بيانات المريض والأطباء المرتبطين به
       final result =
-          await _patientService.getPatientByQrCodeWithDoctors(code);
+          await _patientService.getPatientByQrCodeWithDoctors(normalizedCode);
 
       if (result == null || result['patient'] == null) {
         Get.snackbar(
@@ -224,8 +277,10 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
       final userId = _authController.currentUser.value?.id;
 
       // التحقق إن كان هذا المريض تابعاً للطبيب الحالي
+      // نتحقق من userId الموجود داخل موديل الطبيب (DoctorModel)
+      // أو نتحقق إذا كان userId الخاص بالمستخدم موجود في قائمة doctorIds للمريض (في حال كانت القائمة تخزن user_id)
       final isMyPatient = userId != null &&
-          (doctors.any((d) => d.id == userId) ||
+          (doctors.any((d) => d.userId == userId || d.id == userId) ||
               patient.doctorIds.contains(userId));
 
       if (isMyPatient) {
@@ -233,23 +288,280 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
         _patientController.selectPatient(patient);
         _showAppointments.value = false;
       } else {
-        // إظهار رسالة بأن المريض محوّل لطبيب آخر (سلوك مبسط مشابه للموبايل)
+        // إظهار دايلوج بأن المريض محوّل لطبيب آخر
         final assignedDoctor = doctors.isNotEmpty ? doctors.first : null;
-        final doctorName = assignedDoctor?.name ?? 'طبيب آخر';
-
-        Get.snackbar(
-          'تنبيه',
-          'هذا المريض مرتبط بالطبيب: $doctorName',
-          snackPosition: SnackPosition.TOP,
-          backgroundColor: AppColors.primary,
-          colorText: AppColors.white,
-          duration: const Duration(seconds: 3),
-        );
+        _showPatientTransferredDialog(patient, assignedDoctor);
       }
     } catch (e) {
       Get.snackbar(
         'خطأ',
         'حدث خطأ أثناء البحث عن المريض: ${e.toString()}',
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: AppColors.error,
+        colorText: AppColors.white,
+      );
+    }
+  }
+
+  /// عرض dialog للمريض المحول (للطبيب)
+  void _showPatientTransferredDialog(
+    PatientModel patient,
+    DoctorModel? assignedDoctor,
+  ) {
+    final patientImageUrl = ImageUtils.convertToValidUrl(patient.imageUrl);
+    final doctorImageUrl = assignedDoctor?.imageUrl != null
+        ? ImageUtils.convertToValidUrl(assignedDoctor!.imageUrl)
+        : null;
+
+    Get.dialog(
+      Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20.r),
+        ),
+        child: Container(
+          width: 400.w,
+          padding: EdgeInsets.all(24.w),
+          decoration: BoxDecoration(
+            color: AppColors.white,
+            borderRadius: BorderRadius.circular(20.r),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // صورة المريض
+              _buildPatientImageForDialog(patientImageUrl),
+              SizedBox(height: 16.h),
+              // اسم المريض
+              Text(
+                patient.name,
+                style: TextStyle(
+                  fontSize: 20.sp,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 8.h),
+              Text(
+                'هذا المريض محوّل لطبيب آخر',
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  color: AppColors.error,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              if (assignedDoctor != null) ...[
+                SizedBox(height: 24.h),
+                _buildAssignedDoctorInfoForDialog(assignedDoctor, doctorImageUrl),
+              ],
+              SizedBox(height: 24.h),
+              // زر الإغلاق
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Get.back(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    padding: EdgeInsets.symmetric(vertical: 14.h),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12.r),
+                    ),
+                  ),
+                  child: Text(
+                    'حسناً',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// بناء صورة المريض للدايلوج
+  Widget _buildPatientImageForDialog(String? imageUrl) {
+    return Container(
+      width: 120.w,
+      height: 120.w,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: AppColors.background,
+        border: Border.all(color: AppColors.primary.withOpacity(0.2), width: 4),
+      ),
+      child: ClipOval(
+        child: (imageUrl != null && ImageUtils.isValidImageUrl(imageUrl))
+            ? CachedNetworkImage(
+                imageUrl: imageUrl,
+                fit: BoxFit.cover,
+                placeholder: (context, url) =>
+                    const Center(child: CircularProgressIndicator()),
+                errorWidget: (context, url, error) => Icon(
+                  Icons.person,
+                  size: 60.sp,
+                  color: AppColors.textHint,
+                ),
+              )
+            : Icon(
+                Icons.person,
+                size: 60.sp,
+                color: AppColors.textHint,
+              ),
+      ),
+    );
+  }
+
+  /// بناء معلومات الطبيب المرتبط
+  Widget _buildAssignedDoctorInfoForDialog(DoctorModel doctor, String? imageUrl) {
+    return Container(
+      padding: EdgeInsets.all(16.w),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(16.r),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: Row(
+        children: [
+          // صورة الطبيب
+          Container(
+            width: 50.w,
+            height: 50.w,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+            ),
+            child: ClipOval(
+              child: (imageUrl != null && ImageUtils.isValidImageUrl(imageUrl))
+                  ? CachedNetworkImage(
+                      imageUrl: imageUrl,
+                      fit: BoxFit.cover,
+                      errorWidget: (context, url, error) => Icon(
+                        Icons.local_hospital,
+                        size: 25.sp,
+                        color: AppColors.primary,
+                      ),
+                    )
+                  : Icon(
+                      Icons.local_hospital,
+                      size: 25.sp,
+                      color: AppColors.primary,
+                    ),
+            ),
+          ),
+          SizedBox(width: 12.w),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'الطبيب المسؤول:',
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                Text(
+                  doctor.name ?? 'طبيب آخر',
+                  style: TextStyle(
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _printPatientQrCode() async {
+    try {
+      final boundary = _qrPrintKey.currentContext?.findRenderObject()
+          as RenderRepaintBoundary?;
+      if (boundary == null) {
+        Get.snackbar(
+          'تنبيه',
+          'تعذر الوصول إلى صورة الباركود للطباعة',
+          snackPosition: SnackPosition.TOP,
+          backgroundColor: AppColors.error,
+          colorText: AppColors.white,
+        );
+        return;
+      }
+
+      // التقاط صورة الـ QR بجودة عالية لتناسب الطباعة على الليبل
+      final ui.Image image = await boundary.toImage(pixelRatio: 4.0);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) {
+        Get.snackbar(
+          'تنبيه',
+          'تعذر تجهيز صورة الباركود للطباعة',
+          snackPosition: SnackPosition.TOP,
+          backgroundColor: AppColors.error,
+          colorText: AppColors.white,
+        );
+        return;
+      }
+
+      final pngBytes = byteData.buffer.asUint8List();
+
+      final pdf = pw.Document();
+      final pdfImage = pw.MemoryImage(pngBytes);
+
+      // صفحة الطباعة بحجم الليبل: 6 سم × 4 سم (العرض × الارتفاع) بدون هوامش
+      final labelFormat = PdfPageFormat(
+        6 * PdfPageFormat.cm, // العرض
+        4 * PdfPageFormat.cm, // الارتفاع
+        marginAll: 0, // بدون هوامش - يبدأ من 0
+      );
+
+      pdf.addPage(
+        pw.Page(
+          pageFormat: labelFormat,
+          build: (pw.Context context) {
+            // استخدام المساحة الكاملة للصفحة بدون خصم هوامش
+            final minAvailable = labelFormat.height < labelFormat.width
+                ? labelFormat.height
+                : labelFormat.width;
+
+            // حجم الـ QR (حوالي 70% من أصغر بُعد) لضمان عدم القص
+            final qrSize = minAvailable * 0.7;
+
+            // نضع الباركود في منتصف الارتفاع، مع محاذاة يمين
+            // ثم نزيحه قليلاً جداً لليسار داخل صفحة الـ PDF ليبتعد عن حافة القص
+            return pw.Transform.translate(
+              offset: PdfPoint(-0.1 * PdfPageFormat.cm, 0),
+              child: pw.Align(
+                alignment: pw.Alignment.centerRight,
+                child: pw.SizedBox(
+                  width: qrSize,
+                  height: qrSize,
+                  child: pw.Image(
+                    pdfImage,
+                    width: qrSize,
+                    height: qrSize,
+                    fit: pw.BoxFit.contain,
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      );
+
+      await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async => pdf.save(),
+      );
+    } catch (e) {
+      Get.snackbar(
+        'خطأ',
+        'حدث خطأ أثناء طباعة الباركود',
         snackPosition: SnackPosition.TOP,
         backgroundColor: AppColors.error,
         colorText: AppColors.white,
@@ -688,39 +1000,60 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
   Widget _buildPatientsListContent() {
     return Container(
       color: const Color(0xFFF4FEFF),
-      child: Obx(() {
-        if (_patientController.isLoading.value) {
-          return const Center(child: CircularProgressIndicator());
-        }
+      child: RefreshIndicator(
+        onRefresh: _refreshData,
+        child: Obx(() {
+          final isLoading = _patientController.isLoading.value;
+          final patients = _patientController.patients;
+          final query = _searchController.text.toLowerCase();
+          final filteredPatients = patients.where((p) {
+            return p.name.toLowerCase().contains(query) ||
+                p.phoneNumber.contains(query);
+          }).toList();
 
-        final patients = _patientController.patients;
-        final query = _searchController.text.toLowerCase();
-        final filteredPatients = patients.where((p) {
-          return p.name.toLowerCase().contains(query) ||
-              p.phoneNumber.contains(query);
-        }).toList();
-        
-        // ترتيب المرضى من الأحدث إلى الأقدم حسب الـ id
-        filteredPatients.sort((a, b) => b.id.compareTo(a.id));
+          // ترتيب المرضى من الأحدث إلى الأقدم حسب الـ id
+          filteredPatients.sort((a, b) => b.id.compareTo(a.id));
 
-        if (filteredPatients.isEmpty) {
-          return Center(
-            child: Text(
-              'لا يوجد مرضى',
-              style: TextStyle(fontSize: 16.sp, color: Colors.grey),
-            ),
+          if (isLoading) {
+            return ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: const [
+                SizedBox(
+                  height: 260,
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+              ],
+            );
+          }
+
+          if (filteredPatients.isEmpty) {
+            return ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                SizedBox(
+                  height: 260.h,
+                  child: Center(
+                    child: Text(
+                      'لا يوجد مرضى',
+                      style: TextStyle(fontSize: 16.sp, color: Colors.grey),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          }
+
+          return ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.all(20.w),
+            itemCount: filteredPatients.length,
+            itemBuilder: (context, index) {
+              final patient = filteredPatients[index];
+              return _buildPatientCard(patient: patient);
+            },
           );
-        }
-
-        return ListView.builder(
-          padding: EdgeInsets.all(20.w),
-          itemCount: filteredPatients.length,
-          itemBuilder: (context, index) {
-            final patient = filteredPatients[index];
-            return _buildPatientCard(patient: patient);
-          },
-        );
-      }),
+        }),
+      ),
     );
   }
 
@@ -1271,20 +1604,32 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                         ),
                       ),
                       SizedBox(height: 2.h),
-                      // Treatment Type
+                      // Treatment Type - عرض النوع الخاص بهذا الطبيب فقط
                       Align(
                         alignment: Alignment.centerRight,
-                        child: Text(
-                          'نوع العلاج : ${patient.treatmentHistory != null && patient.treatmentHistory!.isNotEmpty ? patient.treatmentHistory!.last : 'لا يوجد'}',
-                          style: TextStyle(
-                            fontSize: 13.sp,
-                            fontWeight: FontWeight.w600,
-                            color: const Color(0xFF505558),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.right,
-                        ),
+                        child: Obx(() {
+                          final myRecords = _medicalRecordController.records;
+                          String treatmentType = 'لا يوجد';
+                          if (myRecords.isNotEmpty) {
+                            treatmentType = myRecords.first.treatmentType;
+                            if (treatmentType.isEmpty) treatmentType = 'لا يوجد';
+                          } else if (patient.treatmentHistory != null &&
+                              patient.treatmentHistory!.isNotEmpty) {
+                            treatmentType = patient.treatmentHistory!.last;
+                          }
+
+                          return Text(
+                            'نوع العلاج : $treatmentType',
+                            style: TextStyle(
+                              fontSize: 13.sp,
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFF505558),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.right,
+                          );
+                        }),
                       ),
                     ],
                   ),
@@ -1461,6 +1806,27 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                   ),
                                 ),
                               ),
+                              if ((_authController.currentUser.value?.isDoctorManager ?? false)) ...[
+                                SizedBox(width: 8.w),
+                                // Transfer patient (doctor manager only)
+                                GestureDetector(
+                                  onTap: () =>
+                                      _showTransferPatientDialog(context, patient),
+                                  child: Container(
+                                    width: 40.w,
+                                    height: 40.w,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primaryLight,
+                                      borderRadius: BorderRadius.circular(8.r),
+                                    ),
+                                    child: Icon(
+                                      Icons.swap_horiz,
+                                      color: AppColors.primary,
+                                      size: 22.sp,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                           Spacer(),
@@ -1473,7 +1839,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                               children: [
                                 // Name at the top
                                 Text(
-                                  'الاسم : ${patient.name}',
+                                  'الاسم : ${patient.name}${(patient.visitType != null && patient.visitType!.trim().isNotEmpty) ? ' (${patient.visitType})' : ''}',
                                   style: GoogleFonts.cairo(
                                     fontSize: 14.sp,
                                     fontWeight: FontWeight.w700,
@@ -1531,18 +1897,30 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                                // Last item at the bottom
-                                Text(
-                                  'نوع العلاج : ${patient.treatmentHistory != null && patient.treatmentHistory!.isNotEmpty ? patient.treatmentHistory!.last : 'لا يوجد'}',
-                                  style: TextStyle(
-                                    fontSize: 12.sp,
-                                    fontWeight: FontWeight.w600,
-                                    color: const Color(0xFF505558),
-                                  ),
-                                  textAlign: TextAlign.right,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                                // Last item at the bottom - عرض النوع الخاص بهذا الطبيب فقط
+                                Obx(() {
+                                  final myRecords = _medicalRecordController.records;
+                                  String treatmentType = 'لا يوجد';
+                                  if (myRecords.isNotEmpty) {
+                                    treatmentType = myRecords.first.treatmentType;
+                                    if (treatmentType.isEmpty) treatmentType = 'لا يوجد';
+                                  } else if (patient.treatmentHistory != null &&
+                                      patient.treatmentHistory!.isNotEmpty) {
+                                    treatmentType = patient.treatmentHistory!.last;
+                                  }
+
+                                  return Text(
+                                    'نوع العلاج : $treatmentType',
+                                    style: TextStyle(
+                                      fontSize: 12.sp,
+                                      fontWeight: FontWeight.w600,
+                                      color: const Color(0xFF505558),
+                                    ),
+                                    textAlign: TextAlign.right,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  );
+                                }),
                               ],
                             ),
                           ),
@@ -1558,32 +1936,43 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                               ),
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(8.r),
-                                child: patient.imageUrl != null
-                                    ? Image.network(
-                                        patient.imageUrl!,
+                                child: Builder(
+                                  builder: (context) {
+                                    final validImageUrl =
+                                        ImageUtils.convertToValidUrl(patient.imageUrl);
+                                    if (validImageUrl != null &&
+                                        ImageUtils.isValidImageUrl(validImageUrl)) {
+                                      return CachedNetworkImage(
+                                        imageUrl: validImageUrl,
                                         width: 110.w,
                                         height: 156.h,
                                         fit: BoxFit.cover,
-                                        errorBuilder:
-                                            (context, error, stackTrace) {
-                                              return Container(
-                                                color: AppColors.primaryLight,
-                                                child: Center(
-                                                  child: Text(
-                                                    patient.name.isNotEmpty
-                                                        ? patient.name[0]
-                                                        : '?',
-                                                    style: TextStyle(
-                                                      color: AppColors.primary,
-                                                      fontSize: 40.sp,
-                                                      fontWeight: FontWeight.bold,
-                                                    ),
-                                                  ),
-                                                ),
-                                              );
-                                            },
-                                      )
-                                    : Container(
+                                        fadeInDuration: Duration.zero,
+                                        fadeOutDuration: Duration.zero,
+                                        placeholder: (context, url) => Container(
+                                          color: AppColors.primaryLight,
+                                          child: const Center(
+                                            child: CircularProgressIndicator(),
+                                          ),
+                                        ),
+                                        errorWidget: (context, url, error) => Container(
+                                          color: AppColors.primaryLight,
+                                          child: Center(
+                                            child: Text(
+                                              patient.name.isNotEmpty
+                                                  ? patient.name[0]
+                                                  : '?',
+                                              style: TextStyle(
+                                                color: AppColors.primary,
+                                                fontSize: 40.sp,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                    return Container(
                                         color: AppColors.primaryLight,
                                         child: Center(
                                           child: Text(
@@ -1597,7 +1986,9 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                             ),
                                           ),
                                         ),
-                                      ),
+                                      );
+                                  },
+                                ),
                               ),
                             ),
                           ),
@@ -1912,6 +2303,10 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
       return _buildImplantStagesView(patient);
     }
 
+    // Ensure patient appointments are loaded at least once (prevents "disappearing"
+    // when the global appointments list is replaced by doctor appointments).
+    _appointmentController.ensurePatientAppointmentsLoadedById(patient.id);
+
     return Obx(() {
       if (_appointmentController.isLoading.value) {
         return Container(
@@ -1922,9 +2317,14 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
         );
       }
 
-      final appointments = _appointmentController.appointments
-          .where((apt) => apt.patientId == patient.id)
-          .toList();
+      final cached = _appointmentController.getCachedPatientAppointments(
+        patient.id,
+      );
+      final appointments = cached.isNotEmpty
+          ? List<AppointmentModel>.from(cached)
+          : _appointmentController.appointments
+              .where((apt) => apt.patientId == patient.id)
+              .toList();
 
       if (appointments.isEmpty) {
         return Container(
@@ -2472,8 +2872,35 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
     }
 
     return Obx(() {
-      // Only consider stages for this patient (controller may hold stages for multiple patients)
-      final patientStages = implantStageController.stagesForPatient(patient.id);
+      // Only consider stages for this patient
+      final allPatientStages = implantStageController.stagesForPatient(patient.id);
+      var patientStages = allPatientStages;
+      
+      // عزل مراحل الزراعة: إظهار المراحل المرتبطة بمواعيد هذا الطبيب فقط
+      final authController = Get.find<AuthController>();
+      final currentUserId = authController.currentUser.value?.id;
+      
+      if (currentUserId != null) {
+        // نجلب معرفات المواعيد الخاصة بالطبيب الحالي
+        final myAppointmentIds = _appointmentController.appointments
+            .where((apt) => apt.doctorId == currentUserId)
+            .map((apt) => apt.id)
+            .toSet();
+            
+        // نفلتر المراحل لتظهر فقط المرتبطة بمواعيده أو التي ليس لها موعد بعد (إذا كان هو من أنشأها)
+        final filtered = patientStages.where((stage) {
+          final apptId = stage.appointmentId?.trim();
+          return apptId == null || apptId.isEmpty || myAppointmentIds.contains(apptId);
+        }).toList();
+
+        // إذا كانت هناك مراحل للمريض لكن الفلترة أخفتها كلها (مثلاً: المواعيد لم تُحمّل بعد
+        // أو appointmentId غير مطابق)، نعرض المراحل بدل أن نظهر شاشة "لا توجد مراحل".
+        if (filtered.isEmpty && allPatientStages.isNotEmpty) {
+          patientStages = allPatientStages;
+        } else {
+          patientStages = filtered;
+        }
+      }
       
       // Show loading only if no stages exist yet (initial load)
       if (implantStageController.isLoading.value && patientStages.isEmpty) {
@@ -2513,11 +2940,41 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                 SizedBox(height: 16.h),
                 ElevatedButton(
                   onPressed: () async {
-                    try {
                       await implantStageController.initializeStages(patient.id);
-                      // After initialization, ensure we have fresh data
+                    if (implantStageController.errorMessage.value.isNotEmpty) {
+                      Get.snackbar(
+                        'خطأ',
+                        implantStageController.errorMessage.value,
+                        snackPosition: SnackPosition.TOP,
+                        backgroundColor: AppColors.error,
+                        colorText: AppColors.white,
+                      );
+                      return;
+                    }
+
+                    // After initialization, ensure we have fresh data from backend
                       await implantStageController.loadStages(patient.id);
-                    } catch (_) {}
+                    if (implantStageController.errorMessage.value.isNotEmpty) {
+                      Get.snackbar(
+                        'خطأ',
+                        implantStageController.errorMessage.value,
+                        snackPosition: SnackPosition.TOP,
+                        backgroundColor: AppColors.error,
+                        colorText: AppColors.white,
+                      );
+                      return;
+                    }
+
+                    // إذا رجع السيرفر بدون مراحل، نوضح للمستخدم بدل الرجوع الصامت للزر
+                    if (implantStageController.stagesForPatient(patient.id).isEmpty) {
+                      Get.snackbar(
+                        'تنبيه',
+                        'تمت محاولة تهيئة المراحل لكن لم يتم إرجاع أي مراحل من السيرفر',
+                        snackPosition: SnackPosition.TOP,
+                        backgroundColor: Colors.orange,
+                        colorText: AppColors.white,
+                      );
+                    }
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
@@ -2808,223 +3265,171 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
     String stageName,
     DateTime currentDate,
   ) {
-    DateTime? selectedDate = currentDate;
-    String? selectedTime;
+    DateTime? selectedDate = DateTime(
+      currentDate.year,
+      currentDate.month,
+      currentDate.day,
+    );
+    String? selectedTime = _convertTo12Hour(
+      '${currentDate.hour.toString().padLeft(2, '0')}:${currentDate.minute.toString().padLeft(2, '0')}',
+    );
+
+    // Resolve doctorId from patient
+    final patient = _patientController.getPatientById(patientId);
+    final doctorIds = patient?.doctorIds ?? [];
+    final doctorId = doctorIds.isNotEmpty ? doctorIds.first : null;
+
+    final workingHoursController = Get.put(WorkingHoursController());
+    if (doctorId != null) {
+      workingHoursController.loadWorkingHours(doctorId: doctorId);
+    }
+
+    List<String> availableSlots = [];
+    bool isLoadingSlots = false;
+    bool didInitSlots = false;
 
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            if (!didInitSlots && selectedDate != null && doctorId != null) {
+              didInitSlots = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) async {
+                try {
+                  setDialogState(() {
+                    isLoadingSlots = true;
+                  });
+                  final date = selectedDate!;
+                  final dateStr =
+                      '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+                  final slots =
+                      await _workingHoursService.getAvailableSlots(doctorId, dateStr);
+                  setDialogState(() {
+                    availableSlots = slots;
+                    isLoadingSlots = false;
+                  });
+                } catch (_) {
+                  setDialogState(() {
+                    availableSlots = [];
+                    isLoadingSlots = false;
+                  });
+                }
+              });
+            }
+
             return Dialog(
               backgroundColor: Colors.transparent,
               child: Container(
                 constraints: BoxConstraints(
-                  maxWidth: MediaQuery.of(context).size.width * 0.5,
+                  maxHeight: MediaQuery.of(context).size.height * 0.9,
+                  maxWidth: 400.w,
                 ),
+                width: 400.w,
                 padding: EdgeInsets.all(24.w),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: AppColors.white,
                   borderRadius: BorderRadius.circular(20.r),
                 ),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'تعديل تاريخ المرحلة',
-                        style: TextStyle(
-                          fontSize: 18.sp,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      SizedBox(height: 24.h),
-                      // Date picker
-                      GestureDetector(
-                        onTap: () async {
-                          final picked = await showDatePicker(
-                            context: context,
-                            initialDate: selectedDate ?? DateTime.now(),
-                            firstDate: DateTime.now(),
-                            lastDate: DateTime.now().add(
-                              const Duration(days: 365),
-                            ),
-                          );
-                          if (picked != null) {
-                            setDialogState(() {
-                              selectedDate = picked;
-                            });
-                          }
-                        },
-                        child: Container(
-                          padding: EdgeInsets.all(16.w),
-                          decoration: BoxDecoration(
-                            color: AppColors.divider.withOpacity(0.3),
-                            borderRadius: BorderRadius.circular(12.r),
-                            border: Border.all(color: AppColors.divider),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                selectedDate != null
-                                    ? DateFormat(
-                                        'dd/MM/yyyy',
-                                        'ar',
-                                      ).format(selectedDate!)
-                                    : 'اختر التاريخ',
-                                style: TextStyle(
-                                  fontSize: 14.sp,
-                                  color: AppColors.textPrimary,
-                                ),
-                              ),
-                              Icon(
-                                Icons.calendar_today,
-                                color: AppColors.primary,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: 16.h),
-                      // Time picker
-                      GestureDetector(
-                        onTap: () async {
-                          final picked = await showTimePicker(
-                            context: context,
-                            initialTime: TimeOfDay.fromDateTime(
-                              selectedDate ?? DateTime.now(),
-                            ),
-                          );
-                          if (picked != null) {
-                            setDialogState(() {
-                              selectedTime =
-                                  '${picked.hour}:${picked.minute.toString().padLeft(2, '0')}';
-                            });
-                          }
-                        },
-                        child: Container(
-                          padding: EdgeInsets.all(16.w),
-                          decoration: BoxDecoration(
-                            color: AppColors.divider.withOpacity(0.3),
-                            borderRadius: BorderRadius.circular(12.r),
-                            border: Border.all(color: AppColors.divider),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                selectedTime ?? 'اختر الوقت',
-                                style: TextStyle(
-                                  fontSize: 14.sp,
-                                  color: AppColors.textPrimary,
-                                ),
-                              ),
-                              Icon(Icons.access_time, color: AppColors.primary),
-                            ],
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: 24.h),
-                      // Buttons
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextButton(
-                              onPressed: () => Navigator.of(context).pop(),
-                              style: TextButton.styleFrom(
-                                padding: EdgeInsets.symmetric(vertical: 12.h),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12.r),
-                                  side: BorderSide(color: AppColors.divider),
-                                ),
-                              ),
-                              child: Text(
-                                'إلغاء',
-                                style: TextStyle(
-                                  fontSize: 16.sp,
-                                  color: AppColors.textSecondary,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
-                          SizedBox(width: 12.w),
-                          Expanded(
-                            child: ElevatedButton(
-                              onPressed: () async {
-                                if (selectedDate == null ||
-                                    selectedTime == null) {
-                                  Get.snackbar(
-                                    'تنبيه',
-                                    'يرجى اختيار التاريخ والوقت',
-                                    snackPosition: SnackPosition.BOTTOM,
-                                    backgroundColor: Colors.orange,
-                                    colorText: AppColors.white,
-                                  );
-                                  return;
-                                }
+                child: _buildStep1DateTimeSelection(
+                  context,
+                  selectedDate,
+                  selectedTime,
+                  availableSlots,
+                  isLoadingSlots,
+                  workingHoursController,
+                  doctorId,
+                  (date) async {
+                    setDialogState(() {
+                      selectedDate = date;
+                      selectedTime = null;
+                      isLoadingSlots = true;
+                    });
 
-                                final implantStageController = Get.put(
-                                  ImplantStageController(),
-                                );
-                                final success = await implantStageController
-                                    .updateStageDate(
-                                      patientId,
-                                      stageName,
-                                      selectedDate!,
-                                      selectedTime!,
-                                    );
+                    if (doctorId != null) {
+                      try {
+                        final dateStr =
+                            '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+                        final slots = await _workingHoursService.getAvailableSlots(
+                          doctorId,
+                          dateStr,
+                        );
+                        setDialogState(() {
+                          availableSlots = slots;
+                          isLoadingSlots = false;
+                        });
+                      } catch (e) {
+                        setDialogState(() {
+                          availableSlots = [];
+                          isLoadingSlots = false;
+                        });
+                        Get.snackbar(
+                          'خطأ',
+                          'فشل جلب الأوقات المتاحة',
+                          snackPosition: SnackPosition.BOTTOM,
+                          backgroundColor: Colors.red,
+                          colorText: AppColors.white,
+                        );
+                      }
+                    } else {
+                      setDialogState(() {
+                        availableSlots = [];
+                        isLoadingSlots = false;
+                      });
+                    }
+                  },
+                  (time) {
+                    setDialogState(() {
+                      selectedTime = time;
+                    });
+                  },
+                  () async {
+                    if (selectedDate == null || selectedTime == null) {
+                      Get.snackbar(
+                        'تنبيه',
+                        'يرجى اختيار التاريخ والوقت',
+                        snackPosition: SnackPosition.BOTTOM,
+                        backgroundColor: Colors.orange,
+                        colorText: AppColors.white,
+                      );
+                      return;
+                    }
 
-                                if (success) {
-                                  Navigator.of(context).pop();
-                                  Get.snackbar(
-                                    'نجح',
-                                    'تم تحديث تاريخ المرحلة بنجاح',
-                                    snackPosition: SnackPosition.BOTTOM,
-                                    backgroundColor: AppColors.primary,
-                                    colorText: AppColors.white,
-                                  );
-                                } else {
-                                  Get.snackbar(
-                                    'خطأ',
-                                    implantStageController
-                                            .errorMessage
-                                            .value
-                                            .isNotEmpty
-                                        ? implantStageController
-                                              .errorMessage
-                                              .value
-                                        : 'فشل تحديث تاريخ المرحلة',
-                                    snackPosition: SnackPosition.BOTTOM,
-                                    backgroundColor: Colors.red,
-                                    colorText: AppColors.white,
-                                  );
-                                }
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.primary,
-                                padding: EdgeInsets.symmetric(vertical: 12.h),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12.r),
-                                ),
-                              ),
-                              child: Text(
-                                'حفظ',
-                                style: TextStyle(
-                                  fontSize: 16.sp,
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                    final implantStageController = Get.put(ImplantStageController());
+                    final time24 = _convertFrom12HourTo24(selectedTime!);
+                    final success = await implantStageController.updateStageDate(
+                      patientId,
+                      stageName,
+                      selectedDate!,
+                      time24,
+                    );
+
+                    if (success) {
+                      Navigator.of(context).pop();
+                      Get.snackbar(
+                        'نجح',
+                        'تم تحديث تاريخ المرحلة بنجاح',
+                        snackPosition: SnackPosition.BOTTOM,
+                        backgroundColor: AppColors.primary,
+                        colorText: AppColors.white,
+                      );
+                    } else {
+                      Get.snackbar(
+                        'خطأ',
+                        implantStageController.errorMessage.value.isNotEmpty
+                            ? implantStageController.errorMessage.value
+                            : 'فشل تحديث تاريخ المرحلة',
+                        snackPosition: SnackPosition.BOTTOM,
+                        backgroundColor: Colors.red,
+                        colorText: AppColors.white,
+                      );
+                    }
+                  },
+                  () => Navigator.of(context).pop(),
+                  setDialogState,
+                  primaryButtonText: 'حفظ',
+                  hintText: 'لطفا قم بادخال الوقت والتاريخ لتعديل موعد المرحلة',
                 ),
               ),
             );
@@ -3169,67 +3574,98 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
   }
 
   Widget _buildRightSidebarNavigation() {
-    return Container(
-      width: 110.w,
-      decoration: BoxDecoration(
-        color: const Color(0xFF649FCC),
-      ),
-      child: Column(
-        children: [
-          SizedBox(height: 50.h),
-          // Logo Section
-          Image.asset(
-            'assets/images/logo.png',
-            width: 140.w,
-            height: 140.h,
-            fit: BoxFit.contain,
-          ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Make the sidebar robust on smaller screens by sizing relative to
+        // available height and scaling content down when needed.
+        final sidebarWidth =
+            (110.w).clamp(72.0, 130.0); // keep reasonable bounds
+        final h = constraints.maxHeight;
 
-          
+        final topPad = (h * 0.06).clamp(12.0, 50.0);
+        final bottomPad = (h * 0.08).clamp(16.0, 100.0);
+        final logoSize = (h * 0.18).clamp(64.0, 120.0);
+        final bottomIconSize = (h * 0.12).clamp(44.0, 80.0);
+        final gapAfterLogo = (h * 0.02).clamp(8.0, 16.0);
+        final gapBeforeBottom = (h * 0.03).clamp(10.0, 25.0);
 
-          // Vertical Text
-          Expanded(
-            child: RotatedBox(
-              quarterTurns: 3,
-              child: Center(
-                child: Text(
-                  'مركز فرح التخصصي لطب الاسنان',
-                  style: TextStyle(
-                    fontSize: 26.sp,
-                    color: Colors.white,
-                    fontWeight: FontWeight.w500,
+        return Container(
+          width: sidebarWidth,
+          color: const Color(0xFF649FCC),
+          child: Column(
+            children: [
+              SizedBox(height: topPad),
+
+              // Logo Section (scales down if height is tight)
+              SizedBox(
+                height: logoSize,
+                child: Center(
+                  child: FittedBox(
+                    fit: BoxFit.contain,
+                    child: Image.asset(
+                      'assets/images/logo.png',
+                      width: logoSize,
+                      height: logoSize,
+                      fit: BoxFit.contain,
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
 
-          SizedBox(height: 25.h),
+              SizedBox(height: gapAfterLogo),
 
-          // Bottom Icons
-          Column(
-            children: [
-              // Tooth Logo at bottom
-              Image.asset(
-                'assets/images/happy 2.png',
-                width: 80.w,
-                height: 80.h,
-                errorBuilder: (context, error, stackTrace) {
-                  return Icon(
-                    Icons.medical_services_outlined,
-                    color: Colors.white,
-                    size: 30.sp,
-                  );
-                },
+              // Vertical Text (force single line + scale down to avoid wrapping)
+              Expanded(
+                child: RotatedBox(
+                  quarterTurns: 3,
+                  child: Center(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        'مركز فرح التخصصي لطب الاسنان',
+                        maxLines: 1,
+                        softWrap: false,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 26.sp,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               ),
-              
-             
+
+              SizedBox(height: gapBeforeBottom),
+
+              // Bottom Icon (scales down)
+              SizedBox(
+                height: bottomIconSize,
+                child: Center(
+                  child: FittedBox(
+                    fit: BoxFit.contain,
+                    child: Image.asset(
+                      'assets/images/happy 2.png',
+                      width: bottomIconSize,
+                      height: bottomIconSize,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Icon(
+                          Icons.medical_services_outlined,
+                          color: Colors.white,
+                          size: 30.sp,
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+
+              SizedBox(height: bottomPad),
             ],
           ),
-
-          SizedBox(height: 100.h),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -3854,7 +4290,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
 
     // Load working hours when dialog opens
     if (doctorId != null) {
-      workingHoursController.loadWorkingHours();
+      workingHoursController.loadWorkingHours(doctorId: doctorId);
     }
 
     showDialog(
@@ -3894,8 +4330,10 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                             try {
                               final dateStr =
                                   '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-                              final slots = await _workingHoursService
-                                  .getAvailableSlots(doctorId, dateStr);
+                              final slots = await _workingHoursService.getAvailableSlots(
+                                doctorId,
+                                dateStr,
+                              );
                               setDialogState(() {
                                 availableSlots = slots;
                                 isLoadingSlots = false;
@@ -3967,24 +4405,11 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                         },
                         () async {
                           if (selectedDate != null && selectedTime != null) {
-                            // Parse time from 12-hour format (e.g., "2:30 م" or "9:00 ص")
-                            final isPM = selectedTime!.contains(' م');
-                            final timeStr = selectedTime!
-                                .replaceAll(' م', '')
-                                .replaceAll(' ص', '')
-                                .trim();
-                            final timeParts = timeStr.split(':');
-                            var hour = int.parse(timeParts[0]);
-                            final minute = timeParts.length > 1
-                                ? int.parse(timeParts[1])
-                                : 0;
-
-                            // Convert to 24-hour format
-                            if (isPM && hour != 12) {
-                              hour += 12;
-                            } else if (!isPM && hour == 12) {
-                              hour = 0;
-                            }
+                            final time24 = _convertFrom12HourTo24(selectedTime!);
+                            final timeParts = time24.split(':');
+                            final hour = int.parse(timeParts[0]);
+                            final minute =
+                                timeParts.length > 1 ? int.parse(timeParts[1]) : 0;
 
                             // Combine date and time
                             final appointmentDateTime = DateTime(
@@ -4056,6 +4481,27 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
     }
   }
 
+  /// Convert 12-hour time format with ص/م (e.g. "2:30 م") to 24-hour "HH:mm"
+  String _convertFrom12HourTo24(String time12) {
+    try {
+      final isPM = time12.contains(' م');
+      final cleaned = time12.replaceAll(' م', '').replaceAll(' ص', '').trim();
+      final parts = cleaned.split(':');
+      var hour = int.parse(parts[0]);
+      final minute = parts.length > 1 ? int.parse(parts[1]) : 0;
+
+      if (isPM && hour != 12) {
+        hour += 12;
+      } else if (!isPM && hour == 12) {
+        hour = 0;
+      }
+
+      return '${hour.toString().padLeft(2, '0')}:${minute.toString().padLeft(2, '0')}';
+    } catch (_) {
+      return time12;
+    }
+  }
+
   Widget _buildStep1DateTimeSelection(
     BuildContext context,
     DateTime? selectedDate,
@@ -4069,6 +4515,10 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
     VoidCallback onNext,
     VoidCallback onBack,
     StateSetter setState,
+    {
+      String primaryButtonText = 'حجز',
+      String hintText = 'لطفا قم بادخال الوقت والتاريخ لتسجيل موعد المريض',
+    }
   ) {
     // Day names in Arabic (0=Sunday, 6=Saturday)
     final weekDays = [
@@ -4358,7 +4808,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                     SizedBox(width: 8.w),
                     Expanded(
                       child: Text(
-                        'لطفا قم بادخال الوقت والتاريخ لتسجيل موعد المريض',
+                        hintText,
                         style: TextStyle(
                           fontSize: 12.sp,
                           color: AppColors.textPrimary,
@@ -4386,7 +4836,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                         padding: EdgeInsets.symmetric(vertical: 14.h),
                       ),
                       child: Text(
-                        'حجز',
+                        primaryButtonText,
                         style: TextStyle(
                           fontSize: 16.sp,
                           color: AppColors.white,
@@ -5235,49 +5685,39 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                     color: AppColors.white,
                     borderRadius: BorderRadius.circular(16.r),
                   ),
-                  child: QrImageView(
-                    data: patientId,
-                    version: QrVersions.auto,
-                    size: 220.w,
-                    backgroundColor: Colors.white,
+                  child: RepaintBoundary(
+                    key: _qrPrintKey,
+                    child: QrImageView(
+                      data: patientId,
+                      version: QrVersions.auto,
+                      size: 250.w,
+                      backgroundColor: Colors.white,
+                    ),
                   ),
                 ),
                 SizedBox(height: 24.h),
-                // Print button
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
-                    onPressed: () {
-                      try {
-                        ThermalPrinterService().printPatientLabel(patientId);
-                        Get.snackbar(
-                          'تم',
-                          'تم إرسال أمر الطباعة للطابعة الحرارية',
-                          snackPosition: SnackPosition.TOP,
-                          backgroundColor: AppColors.primary,
-                          colorText: AppColors.white,
-                        );
-                      } catch (e) {
-                        Get.snackbar(
-                          'خطأ في الطباعة',
-                          e.toString(),
-                          snackPosition: SnackPosition.TOP,
-                          backgroundColor: AppColors.error,
-                          colorText: AppColors.white,
-                        );
-                      }
-                    },
-                    icon: const Icon(Icons.print),
-                    label: const Text('طباعة لاصق المريض'),
+                    onPressed: () => _printPatientQrCode(),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.white,
-                      padding: EdgeInsets.symmetric(
-                        vertical: 12.h,
-                        horizontal: 16.w,
-                      ),
+                      padding: EdgeInsets.symmetric(vertical: 14.h),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12.r),
+                      ),
+                    ),
+                    icon: Icon(
+                      Icons.print,
+                      color: Colors.white,
+                      size: 20.sp,
+                    ),
+                    label: Text(
+                      'طباعة الباركود',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16.sp,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
@@ -5299,6 +5739,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
     
     // State variables
     String? selectedGender;
+    String? selectedVisitType = AppStrings.newPatient;
     String? selectedCity;
     bool _isLoading = false;
     Uint8List? _selectedPatientImageBytes;
@@ -5507,11 +5948,13 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
             }
 
             Future<void> _handleAddPatient() async {
+              bool didCloseDialog = false;
               final trimmedPhone = _phoneController.text.trim();
 
               if (_nameController.text.isEmpty ||
                   trimmedPhone.isEmpty ||
                   selectedGender == null ||
+                  selectedVisitType == null ||
                   selectedCity == null ||
                   _ageController.text.isEmpty) {
                 Get.snackbar(
@@ -5555,6 +5998,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                       name: _nameController.text.trim(),
                       phoneNumber: trimmedPhone,
                       gender: selectedGender!,
+                      visitType: selectedVisitType,
                       age: age,
                       city: selectedCity!,
                     );
@@ -5567,7 +6011,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                       context: dialogContext,
                       message: 'جارٍ الرفع',
                       action: () async {
-                        await _doctorService.uploadPatientImage(
+                        createdPatient = await _doctorService.uploadPatientImage(
                           patientId: createdPatient.id,
                           imageBytes: _selectedPatientImageBytes!,
                           fileName: _selectedPatientImageName ??
@@ -5595,9 +6039,13 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
 
                 // إغلاق الـ dialog أولاً
                 if (dialogContext.mounted) {
+                  didCloseDialog = true;
                   Navigator.of(dialogContext).pop();
                 }
                 
+                // ننتظر microtask لضمان أن إغلاق الـ dialog اكتمل قبل تحديث GetX/UI
+                await Future.microtask(() {});
+
                 // إضافة المريض مباشرة إلى قائمة المرضى وتعيينه كمحدد (تحديث حي)
                 _patientController.addPatient(createdPatient);
                 
@@ -5630,7 +6078,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                   );
                 }
               } finally {
-                if (dialogContext.mounted) {
+                // إذا أغلقنا الـ dialog بنجاح، لا نعمل setState بعد الإغلاق
+                if (!didCloseDialog && dialogContext.mounted) {
                   setDialogState(() {
                     _isLoading = false;
                   });
@@ -5773,6 +6222,29 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                   onGenderChanged: (gender) {
                                     setDialogState(() {
                                       selectedGender = gender;
+                                    });
+                                  },
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 24.h),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  AppStrings.visitType,
+                                  style: TextStyle(
+                                    fontSize: 16.sp,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                                SizedBox(height: 8.h),
+                                VisitTypeSelector(
+                                  selectedVisitType: selectedVisitType,
+                                  onVisitTypeChanged: (v) {
+                                    setDialogState(() {
+                                      selectedVisitType = v;
                                     });
                                   },
                                 ),
@@ -7152,6 +7624,264 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
     );
   }
 
+  void _showTransferPatientDialog(BuildContext context, PatientModel patient) {
+    final DoctorService doctorService = DoctorService();
+
+    bool didStartFetch = false;
+    bool isLoadingDoctors = true;
+    String? loadError;
+    List<DoctorModel> doctors = [];
+    String? selectedDoctorId;
+    String mode = 'shared'; // shared | move
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            if (!didStartFetch) {
+              didStartFetch = true;
+              Future(() async {
+                try {
+                  final list = await doctorService.getAllDoctorsForManager();
+                  setDialogState(() {
+                    doctors = list;
+                    isLoadingDoctors = false;
+                    loadError = null;
+                  });
+                } catch (e) {
+                  setDialogState(() {
+                    isLoadingDoctors = false;
+                    loadError = e.toString();
+                  });
+                }
+              });
+            }
+
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              child: Container(
+                width: 420.w,
+                padding: EdgeInsets.all(20.w),
+                decoration: BoxDecoration(
+                  color: AppColors.white,
+                  borderRadius: BorderRadius.circular(20.r),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'تحويل المريض',
+                          style: TextStyle(
+                            fontSize: 18.sp,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () => Navigator.of(dialogContext).pop(),
+                          child: Container(
+                            padding: EdgeInsets.all(6.w),
+                            decoration: BoxDecoration(
+                              color: AppColors.divider,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.close,
+                              size: 18.sp,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 12.h),
+                    Text(
+                      'اختر الطبيب الذي تريد تحويل المريض إليه، وهل يبقى مشتركا أم لا.',
+                      style: TextStyle(
+                        fontSize: 12.sp,
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      textAlign: TextAlign.right,
+                    ),
+                    SizedBox(height: 16.h),
+                    if (isLoadingDoctors)
+                      Center(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 12.h),
+                          child: SizedBox(
+                            width: 22.w,
+                            height: 22.w,
+                            child: const CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                      )
+                    else if (loadError != null)
+                      Text(
+                        'فشل جلب قائمة الأطباء: $loadError',
+                        style: TextStyle(
+                          fontSize: 12.sp,
+                          color: AppColors.error,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        textAlign: TextAlign.right,
+                      )
+                    else
+                      DropdownButtonFormField<String>(
+                        value: selectedDoctorId,
+                        isExpanded: true,
+                        decoration: InputDecoration(
+                          labelText: 'الطبيب',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12.r),
+                          ),
+                        ),
+                        items: doctors
+                            .map(
+                              (d) => DropdownMenuItem<String>(
+                                value: d.id,
+                                child: Align(
+                                  alignment: Alignment.centerRight,
+                                  child: Text(
+                                    d.name ?? d.phone,
+                                    textAlign: TextAlign.right,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) {
+                          setDialogState(() {
+                            selectedDoctorId = v;
+                          });
+                        },
+                      ),
+                    SizedBox(height: 12.h),
+                    Container(
+                      padding: EdgeInsets.all(12.w),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryLight,
+                        borderRadius: BorderRadius.circular(12.r),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          RadioListTile<String>(
+                            value: 'shared',
+                            groupValue: mode,
+                            onChanged: (v) {
+                              if (v == null) return;
+                              setDialogState(() => mode = v);
+                            },
+                            title: const Text('مشترك (يبقى عندي وعند الطبيب الآخر)'),
+                            dense: true,
+                          ),
+                          RadioListTile<String>(
+                            value: 'move',
+                            groupValue: mode,
+                            onChanged: (v) {
+                              if (v == null) return;
+                              setDialogState(() => mode = v);
+                            },
+                            title: const Text('غير مشترك (ينحذف من عندي ويصير عند الطبيب الآخر)'),
+                            dense: true,
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(height: 16.h),
+                    ElevatedButton(
+                      onPressed: (isLoadingDoctors || loadError != null)
+                          ? null
+                          : () async {
+                              if (selectedDoctorId == null ||
+                                  selectedDoctorId!.trim().isEmpty) {
+                                Get.snackbar(
+                                  'خطأ',
+                                  'يرجى اختيار طبيب',
+                                  snackPosition: SnackPosition.TOP,
+                                );
+                                return;
+                              }
+
+                              try {
+                                await runWithOperationDialog(
+                                  context: dialogContext,
+                                  message: 'جارٍ التحويل',
+                                  action: () async {
+                                    await doctorService.transferPatient(
+                                      patientId: patient.id,
+                                      targetDoctorId: selectedDoctorId!,
+                                      mode: mode,
+                                    );
+                                  },
+                                );
+
+                                // تحديث القائمة بعد التحويل
+                                await _patientController.loadPatients();
+
+                                if (dialogContext.mounted) {
+                                  Navigator.of(dialogContext).pop();
+                                }
+                                Get.snackbar(
+                                  'نجح',
+                                  'تم تحويل المريض بنجاح',
+                                  snackPosition: SnackPosition.TOP,
+                                  backgroundColor: AppColors.success,
+                                  colorText: AppColors.white,
+                                );
+                              } on ApiException catch (e) {
+                                Get.snackbar(
+                                  'خطأ',
+                                  e.message,
+                                  snackPosition: SnackPosition.TOP,
+                                  backgroundColor: AppColors.error,
+                                  colorText: AppColors.white,
+                                );
+                              } catch (e) {
+                                Get.snackbar(
+                                  'خطأ',
+                                  'فشل تحويل المريض',
+                                  snackPosition: SnackPosition.TOP,
+                                  backgroundColor: AppColors.error,
+                                  colorText: AppColors.white,
+                                );
+                              }
+                            },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.secondary,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12.r),
+                        ),
+                        padding: EdgeInsets.symmetric(vertical: 12.h),
+                        elevation: 0,
+                      ),
+                      child: Text(
+                        'تحويل',
+                        style: TextStyle(
+                          fontSize: 16.sp,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildTreatmentOption(
     String treatment,
     bool isSelected,
@@ -7275,10 +8005,6 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                     patientId,
                     appointment.id,
                     option['value'] as String,
-                  );
-                  // إعادة تحميل المواعيد
-                  await _appointmentController.loadPatientAppointmentsById(
-                    patientId,
                   );
                 } catch (e) {
                   // الخطأ معالج في Controller

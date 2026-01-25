@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Body
 from typing import List
 
 from app.schemas import UserOut, PatientOut, PatientCreate, PatientUpdate
@@ -47,7 +47,28 @@ async def create_staff(
         age=user.age,
         city=user.city,
         role=user.role,
+        doctor_manager=False if role == Role.DOCTOR else None,
     )
+
+
+@router.patch("/doctors/{doctor_id}/manager")
+async def set_doctor_manager(
+    doctor_id: str,
+    is_manager: bool = Body(..., embed=True),
+):
+    """تعيين/إلغاء صلاحية "الطبيب المدير" لطبيب معيّن."""
+    try:
+        did = OID(doctor_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid doctor_id")
+
+    d = await Doctor.get(did)
+    if not d:
+        raise HTTPException(status_code=404, detail="Doctor not found")
+
+    d.is_manager = bool(is_manager)
+    await d.save()
+    return {"ok": True, "doctor_id": str(d.id), "is_manager": d.is_manager}
 
 @router.post("/assign", summary="تعيين مريض لأطباء")
 async def admin_assign(patient_id: str, doctor_ids: List[str] = [], current=Depends(get_current_user)):
@@ -168,6 +189,7 @@ async def admin_doctor_patients(
             age=u.age,
             city=u.city,
             treatment_type=p.treatment_type,
+            visit_type=getattr(p, "visit_type", None),
             doctor_ids=[str(did) for did in (p.doctor_ids or [])],
             doctor_profiles=build_doctor_profile_map(p),
             qr_code_data=p.qr_code_data,
@@ -187,6 +209,7 @@ async def create_patient_admin(payload: PatientCreate):
         gender=payload.gender,
         age=payload.age,
         city=payload.city,
+        visit_type=payload.visit_type,
     )
     # جلب بيانات المستخدم المرتبط بالمريض
     from app.models import User
@@ -201,6 +224,7 @@ async def create_patient_admin(payload: PatientCreate):
         age=u.age if u else None,
         city=u.city if u else None,
         treatment_type=p.treatment_type,
+        visit_type=getattr(p, "visit_type", None),
         doctor_ids=[str(did) for did in p.doctor_ids],
         doctor_profiles=build_doctor_profile_map(p),
         qr_code_data=p.qr_code_data,
@@ -246,6 +270,7 @@ async def update_patient_admin(patient_id: str, payload: PatientUpdate):
         age=u.age,
         city=u.city,
         treatment_type=p.treatment_type,
+        visit_type=getattr(p, "visit_type", None),
         doctor_ids=[str(did) for did in p.doctor_ids],
         doctor_profiles=build_doctor_profile_map(p),
         qr_code_data=p.qr_code_data,

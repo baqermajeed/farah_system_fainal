@@ -27,6 +27,9 @@ class Patient(Document):
     treatment_type: str | None = None
     doctor_profiles: dict[str, DoctorPatientProfile] = Field(default_factory=dict)
 
+    # هل المريض جديد أم مراجع قديم (يُحدد عند الإنشاء من الاستقبال/الطبيب)
+    visit_type: str | None = None
+
     qr_code_data: Indexed(str, unique=True) = ""
     qr_image_path: str | None = None
 

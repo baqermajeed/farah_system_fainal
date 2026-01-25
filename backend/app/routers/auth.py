@@ -6,6 +6,7 @@ from app.rate_limit import limiter
 from app.schemas import OTPRequestIn, OTPVerifyIn, Token, UserOut, StaffLoginIn, PatientCreate
 from app.models.user import User
 from app.security import get_current_user
+from app.constants import Role
 from app.services.auth_service import (
     request_otp,
     verify_otp_and_login,
@@ -128,6 +129,7 @@ async def route_create_patient_account(request: Request, payload: PatientCreate)
             gender=payload.gender,
             age=payload.age,
             city=payload.city,
+            visit_type=payload.visit_type,
         )
         
         # جلب User المرتبط
@@ -233,6 +235,15 @@ async def route_me(current: User = Depends(get_current_user)):
     نعيد UserOut بشكل صريح مع تحويل ObjectId إلى str لتجنّب
     ResponseValidationError من FastAPI/Pydantic.
     """
+    doctor_manager = None
+    try:
+        if current.role == Role.DOCTOR:
+            from app.models import Doctor
+            d = await Doctor.find_one(Doctor.user_id == current.id)
+            doctor_manager = bool(getattr(d, "is_manager", False)) if d else False
+    except Exception:
+        doctor_manager = None
+
     return UserOut(
         id=str(current.id),
         name=current.name,
@@ -242,6 +253,7 @@ async def route_me(current: User = Depends(get_current_user)):
         city=current.city,
         role=current.role,
         imageUrl=current.imageUrl,
+        doctor_manager=doctor_manager,
     )
 
 
@@ -266,6 +278,15 @@ async def route_update_me(
     current.updated_at = datetime.now(timezone.utc)
     await current.save()
     
+    doctor_manager = None
+    try:
+        if current.role == Role.DOCTOR:
+            from app.models import Doctor
+            d = await Doctor.find_one(Doctor.user_id == current.id)
+            doctor_manager = bool(getattr(d, "is_manager", False)) if d else False
+    except Exception:
+        doctor_manager = None
+
     return UserOut(
         id=str(current.id),
         name=current.name,
@@ -275,6 +296,7 @@ async def route_update_me(
         city=current.city,
         role=current.role,
         imageUrl=current.imageUrl,
+        doctor_manager=doctor_manager,
     )
 
 
@@ -309,6 +331,15 @@ async def route_upload_profile_image(
     current.updated_at = datetime.now(timezone.utc)
     await current.save()
     
+    doctor_manager = None
+    try:
+        if current.role == Role.DOCTOR:
+            from app.models import Doctor
+            d = await Doctor.find_one(Doctor.user_id == current.id)
+            doctor_manager = bool(getattr(d, "is_manager", False)) if d else False
+    except Exception:
+        doctor_manager = None
+
     return UserOut(
         id=str(current.id),
         name=current.name,
@@ -318,4 +349,5 @@ async def route_upload_profile_image(
         city=current.city,
         role=current.role,
         imageUrl=current.imageUrl,
+        doctor_manager=doctor_manager,
     )

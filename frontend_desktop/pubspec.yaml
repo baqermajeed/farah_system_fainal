@@ -46,13 +46,21 @@ dependencies:
   # Local cache
   hive: ^2.2.3
   hive_flutter: ^1.1.0
-  win32: ^5.15.0
-  ffi: ^2.1.5
+
+  # Printing QR codes
+  printing: ^5.13.1
+  pdf: ^3.11.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.2
+
+flutter_launcher_icons:
+  windows:
+    generate: true
+    image_path: "assets/images/logo.png"
 
 flutter:
   uses-material-design: true

@@ -56,6 +56,10 @@ class ApiConstants {
   static const String receptionCreatePatient = '/reception/patients';
   static const String receptionAppointments = '/reception/appointments';
   static const String receptionDoctors = '/reception/doctors';
+  static String receptionDoctorWorkingHours(String doctorId) =>
+      '/reception/doctors/$doctorId/working-hours';
+  static String receptionDoctorAvailableSlots(String doctorId, String date) =>
+      '/reception/doctors/$doctorId/available-slots/$date';
   static String receptionPatientDoctors(String patientId) =>
       '/reception/patients/$patientId/doctors';
   static const String receptionAssignPatient = '/reception/assign';
@@ -93,6 +97,9 @@ class ApiConstants {
       '/doctor/patients/$patientId/gallery/$imageId';
   static String doctorUploadPatientImage(String patientId) =>
       '/doctor/patients/$patientId/upload-image';
+  static String doctorTransferPatient(String patientId) =>
+      '/doctor/patients/$patientId/transfer';
+  static const String doctorDoctors = '/doctor/doctors';
   static const String doctorAppointments = '/doctor/appointments';
 
   // Implant Stages Endpoints

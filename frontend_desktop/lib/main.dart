@@ -29,6 +29,9 @@ void main() async {
   // Initialize Hive for local cache
   await Hive.initFlutter();
   await Hive.openBox('patients');
+  await Hive.openBox('appointments');
+  await Hive.openBox('medicalRecords');
+  await Hive.openBox('gallery');
 
   // Initialize AuthController to load persisted session
   Get.put(AuthController());

@@ -1,6 +1,6 @@
 from datetime import datetime
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Literal
 
 from app.constants import Role
 
@@ -19,6 +19,7 @@ class UserBase(BaseModel):
 class UserOut(UserBase):
     id: str
     role: Role
+    doctor_manager: Optional[bool] = None  # يظهر فقط للطبيب (True/False)
 
     class Config:
         from_attributes = True
@@ -54,6 +55,7 @@ class PatientCreate(BaseModel):
     gender: Optional[str] = None
     age: Optional[int] = None
     city: Optional[str] = None
+    visit_type: Optional[str] = None  # "مريض جديد" | "مراجع قديم" (اختياري)
 
 
 class DoctorPatientProfileOut(BaseModel):
@@ -75,6 +77,7 @@ class PatientOut(BaseModel):
     age: Optional[int] = None
     city: Optional[str] = None
     treatment_type: Optional[str] = None
+    visit_type: Optional[str] = None
     # Mongo ObjectId تُرجع كنصوص في الـ API
     doctor_ids: List[str] = []  # قائمة معرفات الأطباء المرتبطين
     doctor_profiles: Dict[str, DoctorPatientProfileOut] = Field(default_factory=dict)
@@ -92,6 +95,13 @@ class PatientUpdate(BaseModel):
     city: Optional[str] = None
     treatment_type: Optional[str] = None
     phone: Optional[str] = None  # Admin only
+    visit_type: Optional[str] = None
+
+
+class PatientTransferIn(BaseModel):
+    """طلب تحويل مريض من طبيب مدير إلى طبيب آخر."""
+    target_doctor_id: str
+    mode: Literal["shared", "move"] = "shared"  # shared: يبقى عند الاثنين، move: ينحذف من عند المحوّل
 
 # -------------------- Doctor Schemas --------------------
 

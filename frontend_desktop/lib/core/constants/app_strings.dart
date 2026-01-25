@@ -19,6 +19,9 @@ class AppStrings {
   static const String gender = 'الجنس (اضغط للاختيار)';
   static const String male = 'ذكر';
   static const String female = 'أنثى';
+  static const String visitType = 'نوع المراجع';
+  static const String newPatient = 'مريض جديد';
+  static const String returningPatient = 'مراجع قديم';
   static const String age = 'العمر';
   static const String city = 'المدينة';
   static const String selectCity = 'اختر';

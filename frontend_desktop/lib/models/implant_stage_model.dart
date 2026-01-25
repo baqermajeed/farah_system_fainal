@@ -53,13 +53,22 @@ class ImplantStageModel {
       }
     }
     
+    final rawAppointmentId = json['appointment_id'];
+    final appointmentIdStr = rawAppointmentId?.toString().trim();
+    final normalizedAppointmentId =
+        (appointmentIdStr == null ||
+                appointmentIdStr.isEmpty ||
+                appointmentIdStr.toLowerCase() == 'null')
+            ? null
+            : appointmentIdStr;
+
     return ImplantStageModel(
       id: json['id']?.toString() ?? '',
       patientId: json['patient_id']?.toString() ?? '',
       stageName: json['stage_name'] ?? '',
       scheduledAt: parseDateTime(json['scheduled_at']),
       isCompleted: json['is_completed'] ?? false,
-      appointmentId: json['appointment_id']?.toString(),
+      appointmentId: normalizedAppointmentId,
       createdAt: parseDateTime(json['created_at']),
       updatedAt: parseDateTime(json['updated_at']),
     );

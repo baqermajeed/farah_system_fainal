@@ -38,6 +38,7 @@ async def list_patients(
             age=u.age if u else None,
             city=u.city if u else None,
             treatment_type=p.treatment_type,
+            visit_type=getattr(p, "visit_type", None),
             doctor_ids=[str(did) for did in p.doctor_ids],
             doctor_profiles=build_doctor_profile_map(p),
             qr_code_data=p.qr_code_data,

@@ -17,8 +17,51 @@ class PatientController extends GetxController {
   // for patient usage, currently we focus on doctor usage
   final Rx<PatientModel?> myProfile = Rx<PatientModel?>(null);
 
+  Future<List<PatientModel>> _fetchAllPages({
+    required Future<List<PatientModel>> Function(int skip, int limit) fetchPage,
+    int pageSize = 100,
+    int maxItems = 200000,
+  }) async {
+    final all = <PatientModel>[];
+    var skip = 0;
+
+    while (true) {
+      final page = await fetchPage(skip, pageSize);
+      if (page.isEmpty) break;
+
+      all.addAll(page);
+
+      // Stop when we reached the last page.
+      if (page.length < pageSize) break;
+
+      // Safety guard to avoid unbounded memory usage if the API misbehaves.
+      if (all.length >= maxItems) {
+        print(
+          '⚠️ [PatientController] Reached maxItems=$maxItems while fetching patients. Stopping pagination to avoid memory issues.',
+        );
+        break;
+      }
+
+      skip += pageSize;
+    }
+
+    // Deduplicate by id (defensive) while preserving order.
+    final seen = <String>{};
+    final deduped = <PatientModel>[];
+    for (final p in all) {
+      if (seen.add(p.id)) {
+        deduped.add(p);
+      }
+    }
+    return deduped;
+  }
+
   // جلب قائمة المرضى (للطبيب)
-  Future<void> loadPatients({int skip = 0, int limit = 50}) async {
+  Future<void> loadPatients({
+    int skip = 0,
+    int limit = 50,
+    bool fetchAll = true,
+  }) async {
     try {
       isLoading.value = true;
       print('📋 [PatientController] Loading doctor patients...');
@@ -52,17 +95,33 @@ class PatientController extends GetxController {
         print(
           '📋 [PatientController] Receptionist mode - loading all patients (API)',
         );
-        final patientsList = await _patientService.getAllPatients(
-          skip: skip,
-          limit: limit,
-        );
-        patients.value = patientsList;
+        if (fetchAll && skip == 0) {
+          final patientsList = await _fetchAllPages(
+            fetchPage: (s, l) => _patientService.getAllPatients(skip: s, limit: l),
+            pageSize: 100,
+          );
+          patients.value = patientsList;
+        } else {
+          final patientsList = await _patientService.getAllPatients(
+            skip: skip,
+            limit: limit,
+          );
+          patients.value = patientsList;
+        }
       } else {
-        final patientsList = await _doctorService.getMyPatients(
-          skip: skip,
-          limit: limit,
-        );
-        patients.value = patientsList;
+        if (fetchAll && skip == 0) {
+          final patientsList = await _fetchAllPages(
+            fetchPage: (s, l) => _doctorService.getMyPatients(skip: s, limit: l),
+            pageSize: 100,
+          );
+          patients.value = patientsList;
+        } else {
+          final patientsList = await _doctorService.getMyPatients(
+            skip: skip,
+            limit: limit,
+          );
+          patients.value = patientsList;
+        }
       }
 
       print('✅ [PatientController] Loaded ${patients.length} patients from API');
@@ -126,6 +185,7 @@ class PatientController extends GetxController {
           gender: oldPatient.gender,
           age: oldPatient.age,
           city: oldPatient.city,
+          visitType: oldPatient.visitType,
           imageUrl: oldPatient.imageUrl,
           doctorIds: oldPatient.doctorIds,
           treatmentHistory: <String>[
@@ -249,6 +309,7 @@ class PatientController extends GetxController {
       gender: patient.gender,
       age: patient.age,
       city: patient.city,
+      visitType: patient.visitType,
       imageUrl: patient.imageUrl,
       doctorIds: doctorIds,
       treatmentHistory: patient.treatmentHistory,

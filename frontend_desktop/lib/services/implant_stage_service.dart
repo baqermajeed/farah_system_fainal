@@ -6,19 +6,40 @@ import 'package:frontend_desktop/models/implant_stage_model.dart';
 class ImplantStageService {
   final _api = ApiService();
 
+  List<ImplantStageModel> _parseStagesFromResponseData(dynamic data) {
+    // Supports multiple backend shapes:
+    // 1) { stages: [...] }
+    // 2) { data: { stages: [...] } }
+    // 3) [ ... ]
+    if (data is List) {
+      return data.map((x) => ImplantStageModel.fromJson(x)).toList();
+    }
+
+    if (data is Map) {
+      final stages = data['stages'];
+      if (stages is List) {
+        return stages.map((x) => ImplantStageModel.fromJson(x)).toList();
+      }
+
+      final nested = data['data'];
+      if (nested is Map) {
+        final nestedStages = nested['stages'];
+        if (nestedStages is List) {
+          return nestedStages.map((x) => ImplantStageModel.fromJson(x)).toList();
+        }
+      }
+    }
+
+    return [];
+  }
+
   // جلب جميع مراحل زراعة الأسنان للمريض
   Future<List<ImplantStageModel>> getImplantStages(String patientId) async {
     try {
       final response = await _api.get(ApiConstants.getImplantStages(patientId));
 
       if (response.statusCode == 200) {
-        final data = response.data;
-        if (data['stages'] != null && data['stages'] is List) {
-          return (data['stages'] as List)
-              .map((stage) => ImplantStageModel.fromJson(stage))
-              .toList();
-        }
-        return [];
+        return _parseStagesFromResponseData(response.data);
       } else {
         throw ApiException('فشل جلب مراحل الزراعة');
       }
@@ -36,13 +57,7 @@ class ImplantStageService {
       final response = await _api.post(ApiConstants.initializeImplantStages(patientId));
 
       if (response.statusCode == 200) {
-        final data = response.data;
-        if (data['stages'] != null && data['stages'] is List) {
-          return (data['stages'] as List)
-              .map((stage) => ImplantStageModel.fromJson(stage))
-              .toList();
-        }
-        return [];
+        return _parseStagesFromResponseData(response.data);
       } else {
         throw ApiException('فشل تهيئة مراحل الزراعة');
       }
@@ -62,13 +77,10 @@ class ImplantStageService {
     String time,
   ) async {
     try {
-      // دمج التاريخ والوقت (نستخدم التاريخ والوقت المحلي)
+      // دمج التاريخ والوقت (محلي) ثم إرسال UTC صريح حتى لا يحصل انحراف (+3 ساعات مثلاً)
       final timeParts = time.split(':');
       final hour = int.parse(timeParts[0]);
       final minute = timeParts.length > 1 ? int.parse(timeParts[1]) : 0;
-      
-      // إنشاء DateTime محلي باستخدام DateTime.now() كمرجع للحصول على timezone
-      final now = DateTime.now();
       final localDateTime = DateTime(
         date.year,
         date.month,
@@ -76,13 +88,7 @@ class ImplantStageService {
         hour,
         minute,
       );
-      
-      // حساب الفرق بين now المحلي و now UTC للحصول على offset
-      final nowUtc = now.toUtc();
-      final offset = now.difference(nowUtc);
-      
-      // تحويل إلى UTC بطرح offset
-      final utcDateTime = localDateTime.subtract(offset);
+      final utcDateTime = localDateTime.toUtc();
 
       final data = {
         'scheduled_at': utcDateTime.toIso8601String(),

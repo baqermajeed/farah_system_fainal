@@ -5,12 +5,20 @@ import re
 
 from beanie.operators import In
 
-from app.schemas import DoctorOut, PatientOut, PatientCreate, AppointmentOut, ReceptionAppointmentOut
+from app.schemas import (
+    DoctorOut,
+    PatientOut,
+    PatientCreate,
+    AppointmentOut,
+    ReceptionAppointmentOut,
+    WorkingHoursOut,
+)
 from app.security import require_roles, get_current_user
 from app.constants import Role
 from app.models import Patient, User
 from app.services import patient_service
 from app.services.admin_service import create_patient
+from app.services.doctor_working_hours_service import DoctorWorkingHoursService
 from app.utils.r2_clinic import upload_clinic_image
 from app.utils.patient_profile import build_doctor_profile_map
 
@@ -24,6 +32,7 @@ IMAGE_TYPES = (
 )
 
 router = APIRouter(prefix="/reception", tags=["reception"], dependencies=[Depends(require_roles([Role.RECEPTIONIST, Role.ADMIN]))])
+working_hours_service = DoctorWorkingHoursService()
 
 @router.get("/patients", response_model=List[PatientOut])
 async def list_patients(
@@ -48,6 +57,7 @@ async def list_patients(
             age=u.age if u else None,
             city=u.city if u else None,
             treatment_type=p.treatment_type,
+            visit_type=getattr(p, "visit_type", None),
             doctor_ids=[str(did) for did in p.doctor_ids],
             doctor_profiles=build_doctor_profile_map(p),
             qr_code_data=p.qr_code_data,
@@ -55,6 +65,36 @@ async def list_patients(
             imageUrl=u.imageUrl if u else None,
         ))
     return out
+
+
+@router.get("/doctors/{doctor_id}/working-hours", response_model=List[WorkingHoursOut])
+async def get_doctor_working_hours_for_reception(doctor_id: str):
+    """جلب أوقات عمل طبيب محدد (للاستقبال/الادمن)."""
+    result = await working_hours_service.get_doctor_working_hours(doctor_id)
+    return [
+        WorkingHoursOut(
+            id=str(wh.id),
+            doctor_id=str(wh.doctor_id),
+            day_of_week=wh.day_of_week,
+            start_time=wh.start_time,
+            end_time=wh.end_time,
+            is_working=wh.is_working,
+            slot_duration=wh.slot_duration,
+            created_at=wh.created_at.isoformat()
+            if wh.created_at
+            else datetime.now(timezone.utc).isoformat(),
+            updated_at=wh.updated_at.isoformat()
+            if wh.updated_at
+            else datetime.now(timezone.utc).isoformat(),
+        )
+        for wh in result
+    ]
+
+
+@router.get("/doctors/{doctor_id}/available-slots/{date}", response_model=List[str])
+async def get_doctor_available_slots_for_reception(doctor_id: str, date: str):
+    """جلب الأوقات المتاحة لطبيب محدد في يوم معين (للاستقبال/الادمن)."""
+    return await working_hours_service.get_available_slots(doctor_id=doctor_id, date=date)
 
 @router.get("/doctors", response_model=List[DoctorOut])
 async def list_doctors():
@@ -124,7 +164,14 @@ async def create_patient_reception(payload: PatientCreate):
             status_code=400,
             detail="رقم الهاتف يجب أن يكون 11 رقم ويبدأ بـ 07",
         )
-    p = await create_patient(phone=payload.phone.strip(), name=payload.name, gender=payload.gender, age=payload.age, city=payload.city)
+    p = await create_patient(
+        phone=payload.phone.strip(),
+        name=payload.name,
+        gender=payload.gender,
+        age=payload.age,
+        city=payload.city,
+        visit_type=payload.visit_type,
+    )
     from app.models import User
     u = await User.get(p.user_id)
     return PatientOut(
@@ -136,6 +183,7 @@ async def create_patient_reception(payload: PatientCreate):
         age=u.age if u else None,
         city=u.city if u else None,
         treatment_type=p.treatment_type,
+        visit_type=getattr(p, "visit_type", None),
         doctor_ids=[str(did) for did in p.doctor_ids],
         doctor_profiles=build_doctor_profile_map(p),
         qr_code_data=p.qr_code_data,
@@ -188,6 +236,7 @@ async def upload_patient_profile_image(
         age=u.age,
         city=u.city,
         treatment_type=p.treatment_type,
+        visit_type=getattr(p, "visit_type", None),
         doctor_ids=[str(did) for did in p.doctor_ids],
         doctor_profiles=build_doctor_profile_map(p),
         qr_code_data=p.qr_code_data,

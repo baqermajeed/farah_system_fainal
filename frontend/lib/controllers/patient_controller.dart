@@ -18,8 +18,45 @@ class PatientController extends GetxController {
   final Rx<Map<String, dynamic>?> myDoctor = Rx<Map<String, dynamic>?>(null);
   final RxList<Map<String, dynamic>> myDoctors = <Map<String, dynamic>>[].obs;
 
+  Future<List<PatientModel>> _fetchAllPages({
+    required Future<List<PatientModel>> Function(int skip, int limit) fetchPage,
+    int pageSize = 100,
+    int maxItems = 200000,
+  }) async {
+    final all = <PatientModel>[];
+    var currentSkip = 0;
+
+    while (true) {
+      final page = await fetchPage(currentSkip, pageSize);
+      if (page.isEmpty) break;
+
+      all.addAll(page);
+      if (page.length < pageSize) break;
+
+      if (all.length >= maxItems) {
+        print(
+          '⚠️ [PatientController] Reached maxItems=$maxItems while fetching patients. Stopping pagination to avoid memory issues.',
+        );
+        break;
+      }
+
+      currentSkip += pageSize;
+    }
+
+    final seen = <String>{};
+    final deduped = <PatientModel>[];
+    for (final p in all) {
+      if (seen.add(p.id)) deduped.add(p);
+    }
+    return deduped;
+  }
+
   // جلب قائمة المرضى (للطبيب أو موظف الاستقبال) مع كاش Hive
-  Future<void> loadPatients({int skip = 0, int limit = 50}) async {
+  Future<void> loadPatients({
+    int skip = 0,
+    int limit = 50,
+    bool fetchAll = true,
+  }) async {
     try {
       isLoading.value = true;
       print('📋 [PatientController] Loading patients with cache...');
@@ -56,17 +93,32 @@ class PatientController extends GetxController {
       if (userType == 'receptionist') {
         // موظف الاستقبال: يجلب جميع المرضى من /reception/patients
         print('📋 [PatientController] Loading all patients (receptionist, API)...');
-        patientsList = await _patientService.getAllPatients(
-          skip: skip,
-          limit: limit,
-        );
+        if (fetchAll && skip == 0) {
+          patientsList = await _fetchAllPages(
+            fetchPage: (s, l) =>
+                _patientService.getAllPatients(skip: s, limit: l),
+            pageSize: 100,
+          );
+        } else {
+          patientsList = await _patientService.getAllPatients(
+            skip: skip,
+            limit: limit,
+          );
+        }
       } else {
         // الطبيب (أو أي نوع آخر): يجلب مرضاه فقط من /doctor/patients
         print('📋 [PatientController] Loading doctor patients (API)...');
-        patientsList = await _doctorService.getMyPatients(
-          skip: skip,
-          limit: limit,
-        );
+        if (fetchAll && skip == 0) {
+          patientsList = await _fetchAllPages(
+            fetchPage: (s, l) => _doctorService.getMyPatients(skip: s, limit: l),
+            pageSize: 100,
+          );
+        } else {
+          patientsList = await _doctorService.getMyPatients(
+            skip: skip,
+            limit: limit,
+          );
+        }
 
         if (patientsList.isEmpty) {
           print('⚠️ [PatientController] No patients found for this doctor!');

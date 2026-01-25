@@ -92,6 +92,12 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
   final WorkingHoursService _workingHoursService = WorkingHoursService();
   final ImagePicker _imagePicker = ImagePicker();
   String? patientId;
+  AppointmentModel? _selectedAppointmentArg;
+  String? _selectedAppointmentId;
+  final Map<String, GlobalKey> _appointmentItemKeys = {};
+  bool _didAutoScrollToSelected = false;
+  bool _didAutoScrollToSelectedImplantStage = false;
+  final Map<String, GlobalKey> _implantStageItemKeys = {};
 
   // Unread messages count
   final RxInt _unreadCount = 0.obs;
@@ -107,7 +113,23 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    // Get patientId (and optional selected appointment) from arguments
+    final args = Get.arguments as Map<String, dynamic>?;
+    patientId = args?['patientId'];
+    final dynamic passedAppointment = args?['appointment'];
+    if (passedAppointment is AppointmentModel) {
+      _selectedAppointmentArg = passedAppointment;
+    }
+    final dynamic passedAppointmentId = args?['appointmentId'];
+    _selectedAppointmentId =
+        _selectedAppointmentArg?.id ?? passedAppointmentId?.toString();
+
+    // If we came from an appointment tap, open the "المواعيد" tab by default.
+    _tabController = TabController(
+      length: 3,
+      vsync: this,
+      initialIndex: _selectedAppointmentId != null ? 1 : 0,
+    );
 
     // Add listener for immediate tab change updates
     _tabController.addListener(() {
@@ -118,10 +140,6 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
     _galleryController = Get.put(GalleryController());
     // Initialize MedicalRecordController
     _medicalRecordController = Get.put(MedicalRecordController());
-
-    // Get patientId from arguments
-    final args = Get.arguments as Map<String, dynamic>?;
-    patientId = args?['patientId'];
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (patientId != null) {
@@ -1116,6 +1134,23 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                 : -1); // Upcoming: oldest first, Past: newest first
       });
 
+      // Auto-scroll to the tapped appointment card (no new UI).
+      if (!_didAutoScrollToSelected && _selectedAppointmentId != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final key = _appointmentItemKeys[_selectedAppointmentId!];
+          final ctx = key?.currentContext;
+          if (ctx != null) {
+            Scrollable.ensureVisible(
+              ctx,
+              alignment: 0.1,
+              duration: const Duration(milliseconds: 350),
+              curve: Curves.easeInOut,
+            );
+            _didAutoScrollToSelected = true;
+          }
+        });
+      }
+
       return Container(
         color: const Color(0xFFF4FEFF),
         child: ListView.builder(
@@ -1178,16 +1213,23 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
               formattedTime = appointment.time;
             }
 
-            return GestureDetector(
-              onLongPress: () {
-                setState(() {
-                  isSelectionMode = true;
-                  if (!selectedAppointmentIds.contains(appointment.id)) {
-                    selectedAppointmentIds.add(appointment.id);
-                  }
-                });
-              },
-              child: Container(
+            final itemKey = _appointmentItemKeys.putIfAbsent(
+              appointment.id,
+              () => GlobalKey(),
+            );
+
+            return KeyedSubtree(
+              key: itemKey,
+              child: GestureDetector(
+                onLongPress: () {
+                  setState(() {
+                    isSelectionMode = true;
+                    if (!selectedAppointmentIds.contains(appointment.id)) {
+                      selectedAppointmentIds.add(appointment.id);
+                    }
+                  });
+                },
+                child: Container(
                 margin: EdgeInsets.only(bottom: 16.h),
                 padding: EdgeInsets.all(16.w),
                 decoration: BoxDecoration(
@@ -1666,6 +1708,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                     ),
                   ],
                 ),
+                ),
               ),
             );
           },
@@ -1783,6 +1826,24 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
       final pid = patientId ?? '';
       final patientStages =
           pid.isEmpty ? <ImplantStageModel>[] : implantStageController.stagesForPatient(pid);
+
+      // Auto-scroll to the tapped implant-stage "appointment" (no new UI).
+      if (!_didAutoScrollToSelectedImplantStage &&
+          _selectedAppointmentId != null &&
+          patientStages.any((s) => s.id == _selectedAppointmentId)) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final ctx = _implantStageItemKeys[_selectedAppointmentId!]?.currentContext;
+          if (ctx != null) {
+            Scrollable.ensureVisible(
+              ctx,
+              alignment: 0.1,
+              duration: const Duration(milliseconds: 350),
+              curve: Curves.easeInOut,
+            );
+            _didAutoScrollToSelectedImplantStage = true;
+          }
+        });
+      }
 
       if (patientStages.isEmpty) {
         return Container(
@@ -1938,17 +1999,25 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
             // التحقق من أن المرحلة موجودة (تم إنشاؤها) - id غير فارغ
             final stageExists = existingStage.id.isNotEmpty;
 
-            return _buildImplantStageItem(
-              stage: existingStage,
-              isLast: isLast,
-              hasNextCompleted: hasNextCompleted,
-              isDoctor: isDoctor,
-              getDayName: getDayName,
-              formatTime: formatTime,
-              showAppointmentInfo:
-                  existingStage.isCompleted ||
-                  isNextToLastCompleted ||
-                  (isFirstStage && stageExists),
+            final stageKey = _implantStageItemKeys.putIfAbsent(
+              existingStage.id,
+              () => GlobalKey(),
+            );
+
+            return KeyedSubtree(
+              key: stageKey,
+              child: _buildImplantStageItem(
+                stage: existingStage,
+                isLast: isLast,
+                hasNextCompleted: hasNextCompleted,
+                isDoctor: isDoctor,
+                getDayName: getDayName,
+                formatTime: formatTime,
+                showAppointmentInfo:
+                    existingStage.isCompleted ||
+                    isNextToLastCompleted ||
+                    (isFirstStage && stageExists),
+              ),
             );
           },
         ),
@@ -2321,7 +2390,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
 
     // Load working hours when dialog opens
     if (doctorId != null) {
-      workingHoursController.loadWorkingHours();
+      workingHoursController.loadWorkingHours(doctorId: doctorId);
     }
 
     showDialog(
@@ -2363,8 +2432,23 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                             try {
                               final dateStr =
                                   '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-                              final slots = await _workingHoursService
-                                  .getAvailableSlots(doctorId, dateStr);
+                              final userType =
+                                  (_authController.currentUser.value?.userType ??
+                                          '')
+                                      .toLowerCase();
+                              final isReceptionOrAdmin =
+                                  userType == 'receptionist' ||
+                                      userType == 'admin';
+                              final slots = isReceptionOrAdmin
+                                  ? await _workingHoursService
+                                      .getAvailableSlotsForReception(
+                                        doctorId,
+                                        dateStr,
+                                      )
+                                  : await _workingHoursService.getAvailableSlots(
+                                      doctorId,
+                                      dateStr,
+                                    );
                               setDialogState(() {
                                 availableSlots = slots;
                                 isLoadingSlots = false;
@@ -4243,7 +4327,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
 
     // Load working hours when dialog opens
     if (doctorId != null) {
-      workingHoursController.loadWorkingHours();
+      workingHoursController.loadWorkingHours(doctorId: doctorId);
     }
 
     final implantStageController = Get.put(ImplantStageController());
@@ -4286,8 +4370,21 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                       try {
                         final dateStr =
                             '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-                        final slots = await _workingHoursService
-                            .getAvailableSlots(doctorId, dateStr);
+                        final userType =
+                            (_authController.currentUser.value?.userType ?? '')
+                                .toLowerCase();
+                        final isReceptionOrAdmin =
+                            userType == 'receptionist' || userType == 'admin';
+                        final slots = isReceptionOrAdmin
+                            ? await _workingHoursService
+                                .getAvailableSlotsForReception(
+                                  doctorId,
+                                  dateStr,
+                                )
+                            : await _workingHoursService.getAvailableSlots(
+                                doctorId,
+                                dateStr,
+                              );
                         setDialogState(() {
                           availableSlots = slots;
                           isLoadingSlots = false;

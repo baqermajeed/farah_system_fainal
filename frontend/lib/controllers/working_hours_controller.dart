@@ -53,17 +53,20 @@ class WorkingHoursController extends GetxController {
   }
 
   /// جلب أوقات العمل من الـ API
-  Future<void> loadWorkingHours() async {
-    final user = _authController.currentUser.value;
-    if (user == null) return;
-
-    // Get doctor ID from user
-    // Assuming the user ID is the doctor ID or we need to get it from Doctor model
-    final doctorId = user.id;
+  Future<void> loadWorkingHours({String? doctorId}) async {
+    final resolvedDoctorId = doctorId ?? _authController.currentUser.value?.id;
+    if (resolvedDoctorId == null || resolvedDoctorId.isEmpty) return;
 
     isLoading.value = true;
     try {
-      final hours = await _service.getDoctorWorkingHours(doctorId);
+      final userType =
+          (_authController.currentUser.value?.userType ?? '').toLowerCase();
+      final bool isReceptionOrAdmin =
+          userType == 'receptionist' || userType == 'admin';
+
+      final hours = (isReceptionOrAdmin && doctorId != null)
+          ? await _service.getDoctorWorkingHoursForReception(resolvedDoctorId)
+          : await _service.getDoctorWorkingHours(resolvedDoctorId);
       
       // تحديث أوقات العمل من البيانات المسترجعة
       // تأكد من وجود جميع الأيام السبعة

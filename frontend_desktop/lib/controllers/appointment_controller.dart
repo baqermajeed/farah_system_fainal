@@ -6,6 +6,7 @@ import 'package:frontend_desktop/services/doctor_service.dart';
 import 'package:frontend_desktop/core/network/api_exception.dart';
 import 'package:frontend_desktop/core/utils/network_utils.dart';
 import 'package:frontend_desktop/controllers/auth_controller.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 class AppointmentController extends GetxController {
   final _patientService = PatientService();
@@ -17,17 +18,82 @@ class AppointmentController extends GetxController {
       <AppointmentModel>[].obs;
   final RxBool isLoading = false.obs;
 
+  /// Cache patient appointments by patientId so leaving the patient file
+  /// (and loading doctor appointments) doesn't wipe the patient's view.
+  final RxMap<String, List<AppointmentModel>> patientAppointmentsCache =
+      <String, List<AppointmentModel>>{}.obs;
+
+  // Prevent request storms when ensure-loading from build() repeatedly
+  final Set<String> _inFlightPatientAppointments = <String>{};
+  final Set<String> _loadedOncePatientAppointments = <String>{};
+
+  List<AppointmentModel> getCachedPatientAppointments(String patientId) {
+    return patientAppointmentsCache[patientId] ?? const <AppointmentModel>[];
+  }
+
+  /// Ensures we have loaded appointments for this patient at least once.
+  /// Safe to call from build/Obx without spamming the backend.
+  void ensurePatientAppointmentsLoadedById(String patientId) {
+    if (patientId.isEmpty) return;
+    if (_loadedOncePatientAppointments.contains(patientId) ||
+        _inFlightPatientAppointments.contains(patientId)) {
+      return;
+    }
+
+    _inFlightPatientAppointments.add(patientId);
+    // Fire and forget; UI will react via Rx updates
+    loadPatientAppointmentsById(patientId).whenComplete(() {
+      _inFlightPatientAppointments.remove(patientId);
+      _loadedOncePatientAppointments.add(patientId);
+    });
+  }
+
   // جلب مواعيد المريض أو جميع المواعيد للاستقبال
   Future<void> loadPatientAppointments() async {
     try {
       print('📅 [AppointmentController] loadPatientAppointments called');
       isLoading.value = true;
 
+      // 1) محاولة التحميل من الكاش أولاً (Hive) - نفس مبدأ frontend
+      final box = Hive.box('appointments');
       final authController = Get.find<AuthController>();
       final userType = authController.currentUser.value?.userType;
-      print('📅 [AppointmentController] User type: $userType');
+      final cacheKey = 'patient_${userType ?? 'unknown'}';
 
-      if (userType == 'receptionist') {
+      final cachedList = box.get(cacheKey);
+      if (cachedList != null && cachedList is List) {
+        try {
+          final cachedAppointments = cachedList
+              .map(
+                (json) => AppointmentModel.fromJson(
+                  Map<String, dynamic>.from(json as Map),
+                ),
+              )
+              .toList();
+
+          if (userType == 'receptionist') {
+            appointments.value = cachedAppointments;
+            primaryAppointments.clear();
+            secondaryAppointments.clear();
+          } else {
+            appointments.value = cachedAppointments;
+            primaryAppointments.value = cachedAppointments;
+            secondaryAppointments.value = [];
+          }
+
+          print(
+            '✅ [AppointmentController] Loaded ${appointments.length} appointments from cache',
+          );
+        } catch (e) {
+          print('❌ [AppointmentController] Error parsing cached appointments: $e');
+        }
+      }
+
+      final userTypeForRequest =
+          Get.find<AuthController>().currentUser.value?.userType;
+      print('📅 [AppointmentController] User type: $userTypeForRequest');
+
+      if (userTypeForRequest == 'receptionist') {
         // موظف الاستقبال: يجلب جميع المواعيد من /reception/appointments
         print(
           '📅 [AppointmentController] Loading appointments for receptionist',
@@ -54,6 +120,23 @@ class AppointmentController extends GetxController {
         print(
           '📅 [AppointmentController] Total appointments: ${appointments.length}',
         );
+      }
+
+      // 2) تحديث الكاش بعد نجاح الجلب من API
+      try {
+        await box.put(
+          cacheKey,
+          appointments.map((a) => a.toJson()).toList(),
+        );
+        await box.put(
+          '${cacheKey}_lastUpdated',
+          DateTime.now().toIso8601String(),
+        );
+        print(
+          '💾 [AppointmentController] Cache updated with ${appointments.length} appointments',
+        );
+      } catch (e) {
+        print('❌ [AppointmentController] Error updating cache: $e');
       }
     } on ApiException catch (e) {
       print('❌ [AppointmentController] ApiException: ${e.message}');
@@ -140,17 +223,21 @@ class AppointmentController extends GetxController {
     }
   }
 
-  // جلب مواعيد مريض محدد (للطبيب)
+  // جلب مواعيد مريض محدد (للطبيب) مع فلترتها للطبيب الحالي
   Future<void> loadPatientAppointmentsById(String patientId) async {
     try {
       isLoading.value = true;
       final appointmentsList = await _doctorService.getPatientAppointments(
         patientId,
       );
-      // Filter by patient ID
-      appointments.value = appointmentsList
-          .where((apt) => apt.patientId == patientId)
-          .toList();
+
+      // نفس مبدأ frontend: فلترة فقط حسب patientId (الـ backend يحدد الصلاحيات)
+      final list =
+          appointmentsList.where((apt) => apt.patientId == patientId).toList();
+
+      patientAppointmentsCache[patientId] = list;
+      patientAppointmentsCache.refresh();
+      appointments.value = list;
     } on ApiException catch (e) {
       if (NetworkUtils.isNetworkError(e)) {
         NetworkUtils.showNetworkErrorDialog();
@@ -283,6 +370,18 @@ class AppointmentController extends GetxController {
       final index = appointments.indexWhere((apt) => apt.id == appointmentId);
       if (index != -1) {
         appointments[index] = updatedAppointment;
+      }
+
+      // تحديث الموعد في كاش المريض (إن وجد)
+      final cached = patientAppointmentsCache[patientId];
+      if (cached != null && cached.isNotEmpty) {
+        final cachedIndex = cached.indexWhere((apt) => apt.id == appointmentId);
+        if (cachedIndex != -1) {
+          final newList = List<AppointmentModel>.from(cached);
+          newList[cachedIndex] = updatedAppointment;
+          patientAppointmentsCache[patientId] = newList;
+          patientAppointmentsCache.refresh();
+        }
       }
 
       Get.snackbar('نجح', 'تم تحديث حالة الموعد بنجاح');

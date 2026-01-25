@@ -5,6 +5,7 @@ class PatientModel {
   final String gender;
   final int age;
   final String city;
+  final String? visitType; // "مريض جديد" | "مراجع قديم"
   final String? imageUrl;
   final List<String> doctorIds;
   final List<String>? treatmentHistory;
@@ -18,6 +19,7 @@ class PatientModel {
     required this.gender,
     required this.age,
     required this.city,
+    this.visitType,
     this.imageUrl,
     this.doctorIds = const [],
     this.treatmentHistory,
@@ -33,6 +35,7 @@ class PatientModel {
       gender: json['gender'] ?? '',
       age: json['age'] ?? 0,
       city: json['city'] ?? '',
+      visitType: json['visit_type'] ?? json['visitType'],
       imageUrl: json['imageUrl'],
       doctorIds: json['doctor_ids'] != null
           ? List<String>.from(json['doctor_ids'])
@@ -55,6 +58,7 @@ class PatientModel {
       'gender': gender,
       'age': age,
       'city': city,
+      'visitType': visitType,
       'imageUrl': imageUrl,
       'doctorIds': doctorIds,
       'treatmentHistory': treatmentHistory,

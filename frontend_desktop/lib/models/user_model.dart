@@ -3,6 +3,7 @@ class UserModel {
   final String name;
   final String phoneNumber;
   final String userType;
+  final bool isDoctorManager;
   final String? gender;
   final int? age;
   final String? city;
@@ -13,6 +14,7 @@ class UserModel {
     required this.name,
     required this.phoneNumber,
     required this.userType,
+    this.isDoctorManager = false,
     this.gender,
     this.age,
     this.city,
@@ -30,6 +32,7 @@ class UserModel {
       name: json['name'] ?? '',
       phoneNumber: json['phone'] ?? json['phoneNumber'] ?? '',
       userType: mappedUserType,
+      isDoctorManager: (json['doctor_manager'] == true) || (json['doctorManager'] == true),
       gender: json['gender'],
       age: json['age'],
       city: json['city'],
@@ -60,6 +63,7 @@ class UserModel {
       'name': name,
       'phoneNumber': phoneNumber,
       'userType': userType,
+      'doctorManager': isDoctorManager,
       'gender': gender,
       'age': age,
       'city': city,
@@ -73,6 +77,7 @@ class UserModel {
     String? name,
     String? phoneNumber,
     String? userType,
+    bool? isDoctorManager,
     String? gender,
     int? age,
     String? city,
@@ -83,6 +88,7 @@ class UserModel {
       name: name ?? this.name,
       phoneNumber: phoneNumber ?? this.phoneNumber,
       userType: userType ?? this.userType,
+      isDoctorManager: isDoctorManager ?? this.isDoctorManager,
       gender: gender ?? this.gender,
       age: age ?? this.age,
       city: city ?? this.city,

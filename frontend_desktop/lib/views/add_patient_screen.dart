@@ -10,6 +10,7 @@ import 'package:frontend_desktop/core/constants/app_colors.dart';
 import 'package:frontend_desktop/core/constants/app_strings.dart';
 import 'package:frontend_desktop/core/widgets/custom_text_field.dart';
 import 'package:frontend_desktop/core/widgets/gender_selector.dart';
+import 'package:frontend_desktop/core/widgets/visit_type_selector.dart';
 import 'package:frontend_desktop/core/widgets/back_button_widget.dart';
 import 'package:frontend_desktop/controllers/auth_controller.dart';
 import 'package:frontend_desktop/services/patient_service.dart';
@@ -35,6 +36,7 @@ class _AddPatientScreenState extends State<AddPatientScreen> {
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _ageController = TextEditingController();
   String? selectedGender;
+  String? selectedVisitType = AppStrings.newPatient;
   String? selectedCity;
   bool _isLoading = false;
   final ImagePicker _imagePicker = ImagePicker();
@@ -226,6 +228,29 @@ class _AddPatientScreenState extends State<AddPatientScreen> {
                       ],
                     ),
                     SizedBox(height: 24.h),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          AppStrings.visitType,
+                          style: TextStyle(
+                            fontSize: 16.sp,
+                            fontWeight: FontWeight.w500,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        SizedBox(height: 8.h),
+                        VisitTypeSelector(
+                          selectedVisitType: selectedVisitType,
+                          onVisitTypeChanged: (v) {
+                            setState(() {
+                              selectedVisitType = v;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 24.h),
                     CustomTextField(
                       labelText: AppStrings.phoneNumber,
                       hintText: '0000 000 0000',
@@ -297,6 +322,7 @@ class _AddPatientScreenState extends State<AddPatientScreen> {
                                     if (_nameController.text.isEmpty ||
                                         trimmedPhone.isEmpty ||
                                         selectedGender == null ||
+                                        selectedVisitType == null ||
                                         selectedCity == null ||
                                         _ageController.text.isEmpty) {
                                       Get.snackbar(
@@ -357,6 +383,7 @@ class _AddPatientScreenState extends State<AddPatientScreen> {
                                               name: _nameController.text.trim(),
                                               phoneNumber: trimmedPhone,
                                               gender: selectedGender!,
+                                              visitType: selectedVisitType,
                                               age: age,
                                               city: selectedCity!,
                                             );
@@ -369,13 +396,13 @@ class _AddPatientScreenState extends State<AddPatientScreen> {
                                               context: context,
                                               message: 'جارٍ الرفع',
                                               action: () async {
-                                                await _patientService.uploadPatientImageForReception(
+                                                final updated = await _patientService.uploadPatientImageForReception(
                                                   patientId: createdPatient.id,
                                                   imageBytes: _selectedPatientImageBytes!,
                                                   fileName: _selectedPatientImageName ??
                                                       'patient_${DateTime.now().millisecondsSinceEpoch}.jpg',
                                                 );
-                                                return createdPatient;
+                                                return updated ?? createdPatient;
                                               },
                                             );
                                           } catch (e) {
@@ -477,6 +504,7 @@ class _AddPatientScreenState extends State<AddPatientScreen> {
                                               name: _nameController.text.trim(),
                                               phoneNumber: trimmedPhone,
                                               gender: selectedGender!,
+                                              visitType: selectedVisitType,
                                               age: age,
                                               city: selectedCity!,
                                             );

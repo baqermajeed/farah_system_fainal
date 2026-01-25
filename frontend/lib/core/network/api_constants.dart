@@ -56,6 +56,10 @@ class ApiConstants {
   static const String receptionCreatePatient = '/reception/patients';
   static const String receptionAppointments = '/reception/appointments';
   static const String receptionDoctors = '/reception/doctors';
+  static String receptionDoctorWorkingHours(String doctorId) =>
+      '/reception/doctors/$doctorId/working-hours';
+  static String receptionDoctorAvailableSlots(String doctorId, String date) =>
+      '/reception/doctors/$doctorId/available-slots/$date';
   static String receptionPatientDoctors(String patientId) =>
       '/reception/patients/$patientId/doctors';
   static const String receptionAssignPatient = '/reception/assign';

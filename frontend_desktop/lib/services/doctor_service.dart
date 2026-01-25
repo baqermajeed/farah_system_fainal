@@ -4,6 +4,7 @@ import 'package:dio/dio.dart' as dio;
 import 'package:frontend_desktop/services/api_service.dart';
 import 'package:frontend_desktop/core/network/api_constants.dart';
 import 'package:frontend_desktop/core/network/api_exception.dart';
+import 'package:frontend_desktop/models/doctor_model.dart';
 import 'package:frontend_desktop/models/patient_model.dart';
 import 'package:frontend_desktop/models/appointment_model.dart';
 import 'package:frontend_desktop/models/medical_record_model.dart';
@@ -91,6 +92,7 @@ class DoctorService {
     required String gender,
     required int age,
     required String city,
+    String? visitType,
   }) async {
     try {
       final response = await _api.post(
@@ -101,6 +103,7 @@ class DoctorService {
           'gender': gender,
           'age': age,
           'city': city,
+          if (visitType != null) 'visit_type': visitType,
         },
       );
 
@@ -151,6 +154,45 @@ class DoctorService {
         rethrow;
       }
       throw ApiException('فشل جلب قائمة المرضى: ${e.toString()}');
+    }
+  }
+
+  // جلب قائمة جميع الأطباء (للطبيب المدير فقط)
+  Future<List<DoctorModel>> getAllDoctorsForManager() async {
+    try {
+      final response = await _api.get(ApiConstants.doctorDoctors);
+      if (response.statusCode == 200) {
+        final data = response.data as List;
+        return data.map((json) => DoctorModel.fromJson(json)).toList();
+      }
+      throw ApiException('فشل جلب قائمة الأطباء');
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('فشل جلب قائمة الأطباء: ${e.toString()}');
+    }
+  }
+
+  // تحويل مريض إلى طبيب آخر (للطبيب المدير فقط)
+  Future<PatientModel> transferPatient({
+    required String patientId,
+    required String targetDoctorId,
+    required String mode, // "shared" | "move"
+  }) async {
+    try {
+      final response = await _api.post(
+        ApiConstants.doctorTransferPatient(patientId),
+        data: {
+          'target_doctor_id': targetDoctorId,
+          'mode': mode,
+        },
+      );
+      if (response.statusCode == 200) {
+        return _mapPatientOutToModel(response.data);
+      }
+      throw ApiException('فشل تحويل المريض');
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('فشل تحويل المريض: ${e.toString()}');
     }
   }
 
@@ -670,6 +712,7 @@ class DoctorService {
       gender: json['gender'] ?? '',
       age: json['age'] ?? 0,
       city: json['city'] ?? '',
+      visitType: json['visit_type'] ?? json['visitType'],
       imageUrl: json['imageUrl'] ?? json['image_url'],
       doctorIds: doctorIds,
       treatmentHistory: json['treatment_type'] != null
