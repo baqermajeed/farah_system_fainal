@@ -48,6 +48,15 @@ async def list_patients(
 
     for p in patients:
         u = user_map.get(p.user_id)
+        # محاولة الحصول على treatment_type من doctor_profiles إذا كان p.treatment_type None
+        treatment_type = p.treatment_type
+        if not treatment_type and p.doctor_profiles:
+            # نأخذ treatment_type من أول doctor_profile موجود
+            for profile in p.doctor_profiles.values():
+                if profile and profile.treatment_type:
+                    treatment_type = profile.treatment_type
+                    break
+        
         out.append(PatientOut(
             id=str(p.id),
             user_id=str(p.user_id),
@@ -56,7 +65,7 @@ async def list_patients(
             gender=u.gender if u else None,
             age=u.age if u else None,
             city=u.city if u else None,
-            treatment_type=p.treatment_type,
+            treatment_type=treatment_type,
             visit_type=getattr(p, "visit_type", None),
             doctor_ids=[str(did) for did in p.doctor_ids],
             doctor_profiles=build_doctor_profile_map(p),

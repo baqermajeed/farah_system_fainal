@@ -352,6 +352,7 @@ async def get_doctor_profile_stats(
             "name": user.name if user else None,
             "phone": user.phone if user else None,
             "imageUrl": user.imageUrl if user else None,
+            "is_manager": doctor.is_manager,
         },
         "counts": {
             "total_patients": total_patients,

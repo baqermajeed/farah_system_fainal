@@ -34,6 +34,7 @@ class DoctorProfileDoctor {
   final String? name;
   final String? phone;
   final String? imageUrl;
+  final bool isManager;
 
   DoctorProfileDoctor({
     required this.doctorId,
@@ -41,6 +42,7 @@ class DoctorProfileDoctor {
     this.name,
     this.phone,
     this.imageUrl,
+    this.isManager = false,
   });
 
   factory DoctorProfileDoctor.fromJson(Map<String, dynamic> json) => DoctorProfileDoctor(
@@ -49,6 +51,7 @@ class DoctorProfileDoctor {
         name: json['name']?.toString(),
         phone: json['phone']?.toString(),
         imageUrl: json['imageUrl']?.toString(),
+        isManager: json['is_manager'] == true || json['isManager'] == true,
       );
 }
 

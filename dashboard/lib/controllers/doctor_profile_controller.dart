@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../core/constants/app_colors.dart';
 import '../enums/patient_activity_filter_mode.dart';
 import '../models/doctor_profile.dart';
 import '../models/patient_activity_stats.dart';
 import '../services/stats_service.dart';
+import '../services/admin_service.dart';
 
 enum AppointmentFilterMode { total, daily, monthly, custom }
 enum MessageFilterMode { total, daily, monthly, custom }
@@ -14,6 +16,7 @@ class DoctorProfileController extends GetxController {
   DoctorProfileController({required this.doctorId});
 
   final _stats = StatsService();
+  final _admin = AdminService();
 
   final RxBool loading = false.obs;
   final RxnString error = RxnString();
@@ -124,6 +127,102 @@ class DoctorProfileController extends GetxController {
     _patientActivityCustomTo = to;
     patientActivityMode.value = PatientActivityFilterMode.custom;
     await _loadPatientActivity(mode: PatientActivityFilterMode.custom);
+  }
+
+  /// تعيين أو إلغاء خاصية "طبيب مدير"
+  Future<void> setManagerStatus(bool isManager) async {
+    try {
+      // تحديث محلي فوري (optimistic update)
+      final currentProfile = profile.value;
+      if (currentProfile != null) {
+        // إنشاء نسخة محدثة من الـ profile
+        final updatedDoctor = DoctorProfileDoctor(
+          doctorId: currentProfile.doctor.doctorId,
+          userId: currentProfile.doctor.userId,
+          name: currentProfile.doctor.name,
+          phone: currentProfile.doctor.phone,
+          imageUrl: currentProfile.doctor.imageUrl,
+          isManager: isManager,
+        );
+        profile.value = DoctorProfile(
+          doctor: updatedDoctor,
+          counts: currentProfile.counts,
+          messages: currentProfile.messages,
+          appointments: currentProfile.appointments,
+          transfers: currentProfile.transfers,
+        );
+      }
+
+      // إرسال التحديث للـ backend
+      await _admin.setDoctorManager(
+        doctorId: doctorId,
+        isManager: isManager,
+      );
+
+      // انتظار قصير للتأكد من تحديث الـ database
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      // إعادة تحميل البيانات من الـ backend للتأكد
+      await load();
+
+      // التحقق من أن التحديث تم بنجاح
+      final updatedProfile = profile.value;
+      if (updatedProfile != null && updatedProfile.doctor.isManager != isManager) {
+        // إذا لم يتطابق، نعيد التحديث المحلي
+        final correctedDoctor = DoctorProfileDoctor(
+          doctorId: updatedProfile.doctor.doctorId,
+          userId: updatedProfile.doctor.userId,
+          name: updatedProfile.doctor.name,
+          phone: updatedProfile.doctor.phone,
+          imageUrl: updatedProfile.doctor.imageUrl,
+          isManager: isManager,
+        );
+        profile.value = DoctorProfile(
+          doctor: correctedDoctor,
+          counts: updatedProfile.counts,
+          messages: updatedProfile.messages,
+          appointments: updatedProfile.appointments,
+          transfers: updatedProfile.transfers,
+        );
+      }
+
+      // عرض رسالة النجاح
+      Get.snackbar(
+        'تم بنجاح',
+        isManager
+            ? 'تم تعيين الطبيب كطبيب مدير'
+            : 'تم إلغاء خاصية طبيب مدير',
+        backgroundColor: AppColors.success.withValues(alpha: 0.1),
+        colorText: AppColors.success,
+        snackPosition: SnackPosition.BOTTOM,
+        margin: const EdgeInsets.all(20),
+        borderRadius: 16,
+        icon: Icon(
+          Icons.check_circle_rounded,
+          color: AppColors.success,
+        ),
+        duration: const Duration(seconds: 2),
+      );
+    } catch (e) {
+      // في حالة الخطأ، نعيد الحالة القديمة
+      await load();
+      error.value = e.toString();
+      Get.snackbar(
+        'خطأ',
+        'فشل تحديث حالة الطبيب: ${e.toString()}',
+        backgroundColor: AppColors.error.withValues(alpha: 0.1),
+        colorText: AppColors.error,
+        snackPosition: SnackPosition.BOTTOM,
+        margin: const EdgeInsets.all(20),
+        borderRadius: 16,
+        icon: Icon(
+          Icons.error_outline_rounded,
+          color: AppColors.error,
+        ),
+        duration: const Duration(seconds: 3),
+      );
+      rethrow;
+    }
   }
 }
 

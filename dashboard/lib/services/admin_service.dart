@@ -58,6 +58,26 @@ class AdminService {
       throw ApiException('تعذر جلب مرضى الطبيب.', statusCode: e.response?.statusCode);
     }
   }
+
+  /// تعيين أو إلغاء خاصية "طبيب مدير" للطبيب
+  Future<void> setDoctorManager({
+    required String doctorId,
+    required bool isManager,
+  }) async {
+    try {
+      await _dio.patch(
+        '/admin/doctors/$doctorId/manager',
+        data: {'is_manager': isManager},
+        options: ApiClient.instance.authorizedOptions(),
+      );
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      throw ApiException(
+        'فشل ${isManager ? 'تعيين' : 'إلغاء'} طبيب مدير. ${e.response?.data ?? ''}',
+        statusCode: status,
+      );
+    }
+  }
 }
 
 

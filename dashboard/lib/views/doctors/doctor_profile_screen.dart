@@ -176,6 +176,21 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
+                    // Manager Status Toggle
+                    Obx(() {
+                      final currentProfile = _c.profile.value;
+                      if (currentProfile == null) return const SizedBox.shrink();
+                      return Center(
+                        child: _ManagerToggle(
+                          doctorId: widget.doctorId,
+                          isManager: currentProfile.doctor.isManager,
+                          onChanged: (value) async {
+                            await _c.setManagerStatus(value);
+                          },
+                        ),
+                      );
+                    }),
+                    const SizedBox(height: 24),
                     SectionHeader(
                       title: 'نظرة عامة',
                       subtitle: 'إحصائيات المرضى والمواعيد والرسائل',
@@ -882,6 +897,67 @@ class _TransferRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ManagerToggle extends StatelessWidget {
+  final String doctorId;
+  final bool isManager;
+  final ValueChanged<bool> onChanged;
+
+  const _ManagerToggle({
+    required this.doctorId,
+    required this.isManager,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: isManager
+            ? AppColors.primary.withValues(alpha: 0.1)
+            : AppColors.background,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isManager
+              ? AppColors.primary
+              : AppColors.textHint.withValues(alpha: 0.3),
+          width: 1.5,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isManager ? Icons.admin_panel_settings_rounded : Icons.person_rounded,
+            size: 18,
+            color: isManager ? AppColors.primary : AppColors.textSecondary,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            isManager ? 'طبيب مدير' : 'طبيب عادي',
+            style: GoogleFonts.cairo(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: isManager ? AppColors.primary : AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Switch(
+            value: isManager,
+            onChanged: (value) {
+              // استدعاء callback فقط - الـ controller سيتولى عرض الرسائل والتحديث
+              onChanged(value);
+            },
+            activeColor: AppColors.primary,
+            inactiveThumbColor: AppColors.textHint,
+            inactiveTrackColor: AppColors.textHint.withValues(alpha: 0.3),
+          ),
+        ],
+      ),
     );
   }
 }

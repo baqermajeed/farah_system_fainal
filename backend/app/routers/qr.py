@@ -55,6 +55,15 @@ async def scan(code: str, current=Depends(require_roles([Role.ADMIN, Role.DOCTOR
                     imageUrl=doctor_user.imageUrl,
                 ))
     
+    # محاولة الحصول على treatment_type من doctor_profiles إذا كان patient.treatment_type None
+    treatment_type = patient.treatment_type
+    if not treatment_type and patient.doctor_profiles:
+        # نأخذ treatment_type من أول doctor_profile موجود
+        for profile in patient.doctor_profiles.values():
+            if profile and profile.treatment_type:
+                treatment_type = profile.treatment_type
+                break
+    
     return {
         "patient": PatientOut(
             id=str(patient.id),
@@ -64,7 +73,7 @@ async def scan(code: str, current=Depends(require_roles([Role.ADMIN, Role.DOCTOR
             gender=u.gender,
             age=u.age,
             city=u.city,
-            treatment_type=patient.treatment_type,
+            treatment_type=treatment_type,
             visit_type=getattr(patient, "visit_type", None),
             doctor_ids=[str(did) for did in patient.doctor_ids],
             doctor_profiles=build_doctor_profile_map(patient),
