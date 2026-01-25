@@ -7733,35 +7733,92 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                         textAlign: TextAlign.right,
                       )
                     else
-                      DropdownButtonFormField<String>(
-                        value: selectedDoctorId,
-                        isExpanded: true,
-                        decoration: InputDecoration(
-                          labelText: 'الطبيب',
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12.r),
+                      Container(
+                        height: 200.h,
+                        child: GridView.builder(
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            crossAxisSpacing: 12.w,
+                            mainAxisSpacing: 12.h,
+                            childAspectRatio: 1.2,
                           ),
-                        ),
-                        items: doctors
-                            .map(
-                              (d) => DropdownMenuItem<String>(
-                                value: d.id,
-                                child: Align(
-                                  alignment: Alignment.centerRight,
-                                  child: Text(
-                                    d.name ?? d.phone,
-                                    textAlign: TextAlign.right,
-                                    overflow: TextOverflow.ellipsis,
+                          itemCount: doctors.length,
+                          itemBuilder: (context, index) {
+                            final doctor = doctors[index];
+                            final isSelected = selectedDoctorId == doctor.id;
+                            return GestureDetector(
+                              onTap: () {
+                                setDialogState(() {
+                                  selectedDoctorId = doctor.id;
+                                });
+                              },
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? AppColors.primaryLight
+                                      : AppColors.white,
+                                  borderRadius: BorderRadius.circular(12.r),
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? AppColors.primary
+                                        : AppColors.divider,
+                                    width: isSelected ? 2 : 1,
                                   ),
                                 ),
+                                padding: EdgeInsets.all(12.w),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      doctor.name ?? doctor.phone,
+                                      style: TextStyle(
+                                        fontSize: 14.sp,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.textPrimary,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    SizedBox(height: 8.h),
+                                    // دوائر خضراء صغيرة تمثل عدد التحويلات اليوم
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: List.generate(
+                                        doctor.todayTransfers > 0
+                                            ? (doctor.todayTransfers > 10
+                                                ? 10
+                                                : doctor.todayTransfers)
+                                            : 0,
+                                        (index) => Container(
+                                          width: 6.w,
+                                          height: 6.w,
+                                          margin: EdgeInsets.symmetric(horizontal: 2.w),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.success,
+                                            shape: BoxShape.circle,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    if (doctor.todayTransfers > 10)
+                                      Padding(
+                                        padding: EdgeInsets.only(top: 4.h),
+                                        child: Text(
+                                          '+${doctor.todayTransfers - 10}',
+                                          style: TextStyle(
+                                            fontSize: 10.sp,
+                                            color: AppColors.success,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
                               ),
-                            )
-                            .toList(),
-                        onChanged: (v) {
-                          setDialogState(() {
-                            selectedDoctorId = v;
-                          });
-                        },
+                            );
+                          },
+                        ),
                       ),
                     SizedBox(height: 12.h),
                     Container(

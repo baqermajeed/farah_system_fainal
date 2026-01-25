@@ -4,6 +4,7 @@ class DoctorModel {
   final String? name;
   final String phone;
   final String? imageUrl;
+  final int todayTransfers;
 
   DoctorModel({
     required this.id,
@@ -11,6 +12,7 @@ class DoctorModel {
     this.name,
     required this.phone,
     this.imageUrl,
+    this.todayTransfers = 0,
   });
 
   factory DoctorModel.fromJson(Map<String, dynamic> json) {
@@ -20,6 +22,7 @@ class DoctorModel {
       name: json['name'],
       phone: json['phone'] ?? '',
       imageUrl: json['imageUrl'] ?? json['image_url'],
+      todayTransfers: json['today_transfers'] ?? 0,
     );
   }
 

@@ -241,30 +241,53 @@ async def transfer_patient(
     return _build_doctor_patient_out(updated, u, manager_doctor_id)
 
 
-@router.get("/doctors", response_model=List[DoctorOut])
+@router.get("/doctors")
 async def list_doctors_for_manager(current=Depends(get_current_user)):
-    """قائمة جميع الأطباء - متاحة للطبيب المدير فقط (لاختيار طبيب عند التحويل)."""
+    """قائمة جميع الأطباء مع عدد التحويلات اليوم - متاحة للطبيب المدير فقط (لاختيار طبيب عند التحويل)."""
     _ = await _require_doctor_manager(current)
+
+    from datetime import datetime, timezone, timedelta
+    from app.models import AssignmentLog
+    
+    # حساب بداية اليوم
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow_start = today_start + timedelta(days=1)
 
     doctors = await Doctor.find({}).to_list()
     user_ids = list({d.user_id for d in doctors if d.user_id})
     users = await User.find(In(User.id, user_ids)).to_list() if user_ids else []
     user_map = {u.id: u for u in users}
 
-    out: List[DoctorOut] = []
+    # جلب عدد التحويلات اليوم لكل طبيب
+    from beanie import PydanticObjectId as OID
+    today_transfers = await AssignmentLog.find(
+        AssignmentLog.assigned_at >= today_start,
+        AssignmentLog.assigned_at < tomorrow_start,
+    ).to_list()
+    
+    # تجميع عدد التحويلات لكل طبيب
+    transfers_by_doctor: dict[str, int] = {}
+    for log in today_transfers:
+        doctor_key = str(log.doctor_id)
+        transfers_by_doctor[doctor_key] = transfers_by_doctor.get(doctor_key, 0) + 1
+
+    out = []
     for d in doctors:
         u = user_map.get(d.user_id)
         if not u:
             continue
-        out.append(
-            DoctorOut(
-                id=str(d.id),
-                user_id=str(d.user_id),
-                name=u.name,
-                phone=u.phone,
-                imageUrl=u.imageUrl,
-            )
-        )
+        doctor_id_str = str(d.id)
+        today_transfers_count = transfers_by_doctor.get(doctor_id_str, 0)
+        
+        out.append({
+            "id": doctor_id_str,
+            "user_id": str(d.user_id),
+            "name": u.name,
+            "phone": u.phone,
+            "imageUrl": u.imageUrl,
+            "today_transfers": today_transfers_count,
+        })
     return out
 
 
