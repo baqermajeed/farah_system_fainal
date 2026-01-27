@@ -794,10 +794,15 @@ async def list_gallery(
     limit: int = Query(50, ge=1, le=100),
     current=Depends(get_current_user),
 ):
-    """قائمة صور المعرض للمريض (القسم الثالث)."""
+    """قائمة صور المعرض للمريض (القسم الثالث).
+
+    - الطبيب يشاهد الصور التي قام هو برفعها للمريض.
+    - بالإضافة إلى الصور التي رفعها موظفو الاستقبال لهذا المريض.
+    - لا يشاهد الصور التي رفعها أطباء آخرون لنفس المريض.
+    """
     doctor_id = await _get_current_doctor_id(current)
-    gallery = await patient_service.list_gallery_for_patient(
-        patient_id=patient_id, skip=skip, limit=limit, doctor_id=doctor_id
+    gallery = await patient_service.list_gallery_for_doctor_view(
+        patient_id=patient_id, doctor_id=doctor_id, skip=skip, limit=limit
     )
     result = []
     for g in gallery:

@@ -153,21 +153,22 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
     ever(_patientController.selectedPatient, (patient) {
       if (patient != null) {
         // التحقق من نوع المستخدم
-        final userType = _authController.currentUser.value?.userType;
+        final userType = _authController.currentUser.value?.userType?.toLowerCase();
         
-        // موظف الاستقبال لا يملك صلاحيات للوصول إلى السجلات والمعرض والمواعيد لمريض محدد
         if (userType == 'receptionist') {
-          // موظف الاستقبال: نحمل فقط أطباء المريض
-          // إعادة تعيين قائمة الأطباء إذا كان المريض مختلفاً
+          // موظف الاستقبال:
+          // - تحميل أطباء المريض للقسم الجانبي
+          // - تحميل صور المعرض الخاصة به لهذا المريض
           if (_currentPatientIdForDoctors != patient.id) {
             _patientDoctors.clear();
             _currentPatientIdForDoctors = patient.id;
             _loadPatientDoctors(patient.id);
           }
+          _galleryController.loadGallery(patient.id);
           return;
         }
         
-        // للطبيب: تحميل السجلات والمعرض والمواعيد
+        // للطبيب أو أدوار أخرى: تحميل السجلات والمعرض والمواعيد
         _medicalRecordController.loadPatientRecords(patient.id);
         _galleryController.loadGallery(patient.id);
         _appointmentController.loadPatientAppointmentsById(patient.id);

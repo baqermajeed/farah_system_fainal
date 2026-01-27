@@ -211,13 +211,20 @@ async def my_notes(current=Depends(get_current_user)):
 
 @router.get("/gallery", response_model=list[GalleryOut])
 async def my_gallery(current=Depends(get_current_user)):
-    """معرض صوري (القسم الثالث)."""
+    """معرض صوري (القسم الثالث) كما يراه المريض.
+
+    المريض لا يرى الصور التي رفعها الأطباء أو موظفو الاستقبال،
+    وإنما يمكنه رؤية الصور التي رفعها مستخدمون آخرون مثل المصور أو نفسه فقط.
+    """
     patient = await Patient.find_one(Patient.user_id == current.id)
     if not patient:
         raise HTTPException(status_code=404, detail="Patient profile not found")
 
-    gallery = await patient_service.list_gallery_for_patient(
-        patient_id=str(patient.id)
+    # المريض لا يرى الصور التي رفعها الأطباء أو موظفي الاستقبال
+    gallery = await patient_service.list_gallery_for_patient_public(
+        patient_id=str(patient.id),
+        skip=0,
+        limit=None,
     )
     result = []
     for g in gallery:

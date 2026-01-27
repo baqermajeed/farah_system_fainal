@@ -704,21 +704,120 @@ async def list_gallery_for_patient(
     patient_id: str,
     skip: int = 0,
     limit: Optional[int] = None,
-    doctor_id: str | None = None,
 ) -> List[GalleryImage]:
     """
-    إرجاع جميع صور المعرض لمريض معيّن.
+    إرجاع جميع صور المعرض لمريض معيّن بدون أية فلاتر بحسب الرافع.
 
-    - في حالة تمرير doctor_id يتم تصفية الصور المرتبطة بهذا الطبيب فقط (لشاشة الطبيب).
-    - تُستخدم هذه الدالة للمريض/الطبيب/المدير.
+    تُستخدم هذه الدالة للأدمن أو في الخدمات الداخلية.
     """
     skip, limit = _normalize_pagination(skip, limit)
     query = GalleryImage.find(GalleryImage.patient_id == OID(patient_id)).sort("-created_at").skip(skip)
-    if doctor_id:
-        query = query.find(GalleryImage.doctor_id == OID(doctor_id))
     if limit is not None:
         query = query.limit(limit)
     return await query.to_list()
+
+
+async def list_gallery_for_patient_public(
+    *,
+    patient_id: str,
+    skip: int = 0,
+    limit: Optional[int] = None,
+) -> List[GalleryImage]:
+    """
+    صور المعرض كما يراها المريض.
+
+    - لا نعرض الصور التي رفعها الأطباء أو موظفو الاستقبال.
+    - حاليًا نسمح فقط بصور المصوّر (PHOTOGRAPHER)، ويمكن توسيعها لاحقًا.
+    """
+    skip, limit = _normalize_pagination(skip, limit)
+    pid = OID(patient_id)
+    # جميع الصور للمريض
+    images = await GalleryImage.find(GalleryImage.patient_id == pid).sort("-created_at").to_list()
+    if not images:
+        return []
+
+    # جمع معرّفات الرافعين
+    uploader_ids = {img.uploaded_by_user_id for img in images if img.uploaded_by_user_id}
+    if not uploader_ids:
+        return []
+
+    users = await User.find(In(User.id, list(uploader_ids))).to_list()
+    user_map: dict[OID, User] = {u.id: u for u in users}
+
+    allowed: list[GalleryImage] = []
+    for img in images:
+        u = user_map.get(img.uploaded_by_user_id)
+        if not u:
+            continue
+        # المريض لا يرى صور الأطباء أو الاستقبال
+        if u.role in (Role.DOCTOR, Role.RECEPTIONIST):
+            continue
+        # يسمح حاليًا بصور المصوّر أو أدوار أخرى غير الطبيب/الاستقبال
+        allowed.append(img)
+
+    # تطبيق الـ pagination بعد الفلترة
+    if skip:
+        allowed = allowed[skip:]
+    if limit is not None:
+        allowed = allowed[:limit]
+    return allowed
+
+
+async def list_gallery_for_doctor_view(
+    *,
+    patient_id: str,
+    doctor_id: str,
+    skip: int = 0,
+    limit: Optional[int] = None,
+) -> List[GalleryImage]:
+    """
+    صور المعرض كما يراها الطبيب:
+    - يرى الصور التي رفعها هو نفسه (doctor_id == current_doctor_id).
+    - يرى كذلك الصور التي رفعها موظفو الاستقبال لهذا المريض.
+    - لا يرى الصور التي رفعها أطباء آخرون لهذا المريض.
+    """
+    skip, limit = _normalize_pagination(skip, limit)
+    try:
+        pid = OID(patient_id)
+        did = OID(doctor_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid id format: {e}")
+
+    # 1) صور هذا الطبيب
+    doctor_images = await GalleryImage.find(
+        GalleryImage.patient_id == pid,
+        GalleryImage.doctor_id == did,
+    ).to_list()
+
+    # 2) صور الاستقبال (نحددهم عبر دور المستخدم)
+    receptionist_users = await User.find(User.role == Role.RECEPTIONIST).to_list()
+    rec_ids = [u.id for u in receptionist_users]
+    receptionist_images: list[GalleryImage] = []
+    if rec_ids:
+        receptionist_images = await GalleryImage.find(
+            GalleryImage.patient_id == pid,
+            In(GalleryImage.uploaded_by_user_id, rec_ids),
+        ).to_list()
+
+    combined = doctor_images + receptionist_images
+    # إزالة التكرارات إن وجدت
+    seen: set[str] = set()
+    unique: list[GalleryImage] = []
+    for img in combined:
+        key = str(img.id)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(img)
+
+    # ترتيب تنازلي حسب created_at
+    unique.sort(key=lambda x: x.created_at or datetime.now(timezone.utc), reverse=True)
+
+    if skip:
+        unique = unique[skip:]
+    if limit is not None:
+        unique = unique[:limit]
+    return unique
 
 
 async def list_gallery_for_patient_by_uploader(
