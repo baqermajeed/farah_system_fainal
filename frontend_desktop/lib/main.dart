@@ -19,9 +19,17 @@ import 'package:frontend_desktop/views/appointments_screen.dart';
 import 'package:frontend_desktop/controllers/auth_controller.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:camera/camera.dart';
+
+// متغير عام لتخزين الكاميرات المتاحة
+List<CameraDescription>? availableCamerasList;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // جلب قائمة الكاميرات المتاحة على Windows/Linux/MacOS (اختياري - لا يمنع البناء)
+  // يتم جلب الكاميرات عند الحاجة فقط لتجنب مشاكل البناء
+  availableCamerasList = null; // سيتم جلبها عند الحاجة
 
   // Initialize Arabic locale for DateFormat
   await initializeDateFormatting('ar', null);

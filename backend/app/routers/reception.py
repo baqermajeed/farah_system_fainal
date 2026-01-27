@@ -12,6 +12,7 @@ from app.schemas import (
     AppointmentOut,
     ReceptionAppointmentOut,
     WorkingHoursOut,
+    GalleryOut,
 )
 from app.security import require_roles, get_current_user
 from app.constants import Role
@@ -31,7 +32,11 @@ IMAGE_TYPES = (
     "image/heif",
 )
 
-router = APIRouter(prefix="/reception", tags=["reception"], dependencies=[Depends(require_roles([Role.RECEPTIONIST, Role.ADMIN]))])
+router = APIRouter(
+    prefix="/reception",
+    tags=["reception"],
+    dependencies=[Depends(require_roles([Role.RECEPTIONIST, Role.ADMIN]))],
+)
 working_hours_service = DoctorWorkingHoursService()
 
 @router.get("/patients", response_model=List[PatientOut])
@@ -252,6 +257,90 @@ async def upload_patient_profile_image(
         qr_image_path=p.qr_image_path,
         imageUrl=u.imageUrl,
     )
+
+
+@router.post("/patients/{patient_id}/gallery", response_model=GalleryOut)
+async def upload_patient_gallery_image(
+    patient_id: str,
+    image: UploadFile = File(...),
+    note: str | None = None,
+    current=Depends(get_current_user),
+):
+    """
+    رفع صورة إلى معرض المريض من قبل موظف الاستقبال/الادمن.
+
+    - تظهر هذه الصورة في معرض المريض (للمريض والطبيب).
+    - عند استعلام موظف الاستقبال عن المعرض من واجهته، نعرض له فقط
+      الصور التي قام برفعها بنفسه (باستخدام endpoint منفصل).
+    """
+    if IMAGE_TYPES and image.content_type not in IMAGE_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type. Allowed types: {', '.join(IMAGE_TYPES)}",
+        )
+
+    file_bytes = await image.read()
+    image_path = await upload_clinic_image(
+        patient_id=patient_id,
+        folder="gallery",
+        file_bytes=file_bytes,
+        content_type=image.content_type,
+    )
+    gi = await patient_service.create_gallery_image(
+        patient_id=patient_id,
+        uploaded_by_user_id=str(current.id),
+        image_path=image_path,
+        note=note,
+        doctor_id=None,
+    )
+    return GalleryOut(
+        id=str(gi.id),
+        patient_id=str(gi.patient_id),
+        image_path=gi.image_path,
+        note=gi.note,
+        created_at=gi.created_at.isoformat()
+        if gi.created_at
+        else datetime.now(timezone.utc).isoformat(),
+    )
+
+
+@router.get("/patients/{patient_id}/gallery", response_model=List[GalleryOut])
+async def list_my_uploaded_gallery_images(
+    patient_id: str,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+    current=Depends(get_current_user),
+):
+    """
+    إرجاع صور المعرض التي قام موظف الاستقبال الحالي برفعها لهذا المريض فقط.
+
+    - لا يرى موظف الاستقبال باقي صور المريض (المرفوعة من الأطباء أو المصور).
+    """
+    gallery = await patient_service.list_gallery_for_patient_by_uploader(
+        patient_id=patient_id,
+        uploaded_by_user_id=str(current.id),
+        skip=skip,
+        limit=limit,
+    )
+    result: List[GalleryOut] = []
+    for g in gallery:
+        try:
+            result.append(
+                GalleryOut(
+                    id=str(g.id),
+                    patient_id=str(g.patient_id),
+                    image_path=g.image_path,
+                    note=g.note,
+                    created_at=g.created_at.isoformat()
+                    if g.created_at
+                    else datetime.now(timezone.utc).isoformat(),
+                )
+            )
+        except Exception:
+            # في حال وجود خطأ في سجل معيّن، نتجاوزه ولا نوقف الاستعلام بالكامل
+            continue
+    return result
+
 
 @router.get("/appointments", response_model=List[ReceptionAppointmentOut])
 async def list_appointments(

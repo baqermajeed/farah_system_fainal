@@ -3,11 +3,15 @@ import 'package:get/get.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:frontend_desktop/models/gallery_image_model.dart';
 import 'package:frontend_desktop/services/doctor_service.dart';
+import 'package:frontend_desktop/services/patient_service.dart';
+import 'package:frontend_desktop/controllers/auth_controller.dart';
 import 'package:frontend_desktop/core/network/api_exception.dart';
 import 'package:frontend_desktop/core/utils/network_utils.dart';
 
 class GalleryController extends GetxController {
   final _doctorService = DoctorService();
+  final _patientService = PatientService();
+  final AuthController _authController = Get.find<AuthController>();
 
   final galleryImages = <GalleryImageModel>[].obs;
   final isLoading = false.obs;
@@ -19,9 +23,11 @@ class GalleryController extends GetxController {
       isLoading.value = true;
       errorMessage.value = '';
 
-      // 1) محاولة التحميل من الكاش أولاً (Hive) - نفس مبدأ frontend
+      final userType = _authController.currentUser.value?.userType.toLowerCase();
+
+      // 1) محاولة التحميل من الكاش أولاً (Hive) - مع الأخذ بالاعتبار نوع المستخدم
       final box = Hive.box('gallery');
-      final cacheKey = 'patient_$patientId';
+      final cacheKey = '${userType ?? 'unknown'}_patient_$patientId';
 
       final cachedList = box.get(cacheKey);
       if (cachedList != null && cachedList is List) {
@@ -42,10 +48,20 @@ class GalleryController extends GetxController {
         }
       }
 
-      final images = await _doctorService.getPatientGallery(patientId);
+      // 2) جلب البيانات من الـ API حسب الدور
+      List<GalleryImageModel> images;
+      if (userType == 'doctor') {
+        images = await _doctorService.getPatientGallery(patientId);
+      } else if (userType == 'receptionist') {
+        // موظف الاستقبال يرى فقط الصور التي قام برفعها بنفسه
+        images = await _patientService.getReceptionPatientGallery(patientId);
+      } else {
+        // أدوار أخرى (إن وجدت) لا تعرض شيئاً في هذا التبويب حالياً
+        images = <GalleryImageModel>[];
+      }
       galleryImages.value = images;
 
-      // 2) تحديث الكاش بعد نجاح الجلب من API
+      // 3) تحديث الكاش بعد نجاح الجلب من API
       try {
         await box.put(
           cacheKey,
@@ -100,12 +116,24 @@ class GalleryController extends GetxController {
 
       galleryImages.insert(0, tempImage);
 
-      // 2) رفع فعلي للسيرفر
-      final newImage = await _doctorService.uploadGalleryImage(
-        patientId,
-        imageFile,
-        note,
-      );
+      // 2) رفع فعلي للسيرفر حسب الدور
+      final userType = _authController.currentUser.value?.userType.toLowerCase();
+      GalleryImageModel newImage;
+      if (userType == 'doctor') {
+        newImage = await _doctorService.uploadGalleryImage(
+          patientId,
+          imageFile,
+          note,
+        );
+      } else if (userType == 'receptionist') {
+        newImage = await _patientService.uploadReceptionGalleryImage(
+          patientId: patientId,
+          imageFile: imageFile,
+          note: note,
+        );
+      } else {
+        throw ApiException('هذا الدور غير مخوّل لرفع صور المعرض');
+      }
 
       // 3) استبدال الصورة المؤقتة بالحقيقية
       final index = galleryImages.indexWhere((img) => img.id == tempImage!.id);

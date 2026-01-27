@@ -266,11 +266,15 @@ async def list_doctors_for_manager(current=Depends(get_current_user)):
         AssignmentLog.assigned_at < tomorrow_start,
     ).to_list()
     
+    print(f"🔍 [Doctor Router] Found {len(today_transfers)} transfers today")
+    print(f"🔍 [Doctor Router] Today range: {today_start} to {tomorrow_start}")
+    
     # تجميع عدد التحويلات لكل طبيب
     transfers_by_doctor: dict[str, int] = {}
     for log in today_transfers:
         doctor_key = str(log.doctor_id)
         transfers_by_doctor[doctor_key] = transfers_by_doctor.get(doctor_key, 0) + 1
+        print(f"🔍 [Doctor Router] Transfer to doctor {doctor_key}, total: {transfers_by_doctor[doctor_key]}")
 
     out = []
     for d in doctors:
@@ -280,14 +284,19 @@ async def list_doctors_for_manager(current=Depends(get_current_user)):
         doctor_id_str = str(d.id)
         today_transfers_count = transfers_by_doctor.get(doctor_id_str, 0)
         
-        out.append({
+        doctor_data = {
             "id": doctor_id_str,
             "user_id": str(d.user_id),
             "name": u.name,
             "phone": u.phone,
             "imageUrl": u.imageUrl,
             "today_transfers": today_transfers_count,
-        })
+        }
+        
+        print(f"🔍 [Doctor Router] Doctor {u.name}: {today_transfers_count} transfers")
+        out.append(doctor_data)
+    
+    print(f"🔍 [Doctor Router] Returning {len(out)} doctors")
     return out
 
 

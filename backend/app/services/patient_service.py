@@ -424,8 +424,19 @@ async def delete_note(
     return True
 
 async def create_gallery_image(
-    *, patient_id: str, uploaded_by_user_id: str, image_path: str, note: Optional[str], doctor_id: str | None = None
+    *,
+    patient_id: str,
+    uploaded_by_user_id: str,
+    image_path: str,
+    note: Optional[str],
+    doctor_id: str | None = None,
 ) -> GalleryImage:
+    """
+    إنشاء سجل صورة في معرض المريض.
+
+    - uploaded_by_user_id: المستخدم (طبيب / استقبال / مصور) الذي رفع الصورة.
+    - doctor_id: يتم تمريره فقط عندما تكون الصورة مرفوعة من قبل الطبيب لحساب النشاط.
+    """
     doctor_oid = OID(doctor_id) if doctor_id else None
     gi = GalleryImage(
         patient_id=OID(patient_id),
@@ -435,6 +446,7 @@ async def create_gallery_image(
         doctor_id=doctor_oid,
     )
     await gi.insert()
+    # نحدّث نشاط الطبيب فقط إذا كانت الصورة مرفوعة من قبل طبيب مرتبط بالمريض
     if doctor_id:
         patient = await Patient.get(OID(patient_id))
         if patient and OID(doctor_id) in patient.doctor_ids:
@@ -688,12 +700,51 @@ async def list_notes_for_patient(*, patient_id: str, skip: int = 0, limit: Optio
     return await query.to_list()
 
 async def list_gallery_for_patient(
-    *, patient_id: str, skip: int = 0, limit: Optional[int] = None, doctor_id: str | None = None
+    *,
+    patient_id: str,
+    skip: int = 0,
+    limit: Optional[int] = None,
+    doctor_id: str | None = None,
 ) -> List[GalleryImage]:
+    """
+    إرجاع جميع صور المعرض لمريض معيّن.
+
+    - في حالة تمرير doctor_id يتم تصفية الصور المرتبطة بهذا الطبيب فقط (لشاشة الطبيب).
+    - تُستخدم هذه الدالة للمريض/الطبيب/المدير.
+    """
     skip, limit = _normalize_pagination(skip, limit)
     query = GalleryImage.find(GalleryImage.patient_id == OID(patient_id)).sort("-created_at").skip(skip)
     if doctor_id:
         query = query.find(GalleryImage.doctor_id == OID(doctor_id))
+    if limit is not None:
+        query = query.limit(limit)
+    return await query.to_list()
+
+
+async def list_gallery_for_patient_by_uploader(
+    *,
+    patient_id: str,
+    uploaded_by_user_id: str,
+    skip: int = 0,
+    limit: Optional[int] = None,
+) -> List[GalleryImage]:
+    """
+    إرجاع صور المعرض التي قام مستخدم معيّن برفعها لمريض محدّد.
+
+    تُستخدم هذه الدالة لموظف الاستقبال (أو أي دور آخر) عندما نريد
+    أن يرى فقط الصور التي قام برفعها بنفسه للمريض.
+    """
+    skip, limit = _normalize_pagination(skip, limit)
+    try:
+        pid = OID(patient_id)
+        uid = OID(uploaded_by_user_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid id format: {e}")
+
+    query = GalleryImage.find(
+        GalleryImage.patient_id == pid,
+        GalleryImage.uploaded_by_user_id == uid,
+    ).sort("-created_at").skip(skip)
     if limit is not None:
         query = query.limit(limit)
     return await query.to_list()

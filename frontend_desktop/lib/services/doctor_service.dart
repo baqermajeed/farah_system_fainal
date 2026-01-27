@@ -161,12 +161,35 @@ class DoctorService {
   Future<List<DoctorModel>> getAllDoctorsForManager() async {
     try {
       final response = await _api.get(ApiConstants.doctorDoctors);
+      print('📋 [DoctorService] Response status: ${response.statusCode}');
+      print('📋 [DoctorService] Response data type: ${response.data.runtimeType}');
+      print('📋 [DoctorService] Raw response data: ${response.data}');
+      
       if (response.statusCode == 200) {
-        final data = response.data as List;
-        return data.map((json) => DoctorModel.fromJson(json)).toList();
+        final data = response.data;
+        if (data is! List) {
+          print('❌ [DoctorService] Response data is not a List: $data');
+          throw ApiException('تنسيق البيانات غير صحيح');
+        }
+        
+        print('📋 [DoctorService] Doctors data (List): $data');
+        final doctors = data.map((json) {
+          if (json is! Map) {
+            print('❌ [DoctorService] Doctor item is not a Map: $json');
+            return null;
+          }
+          final jsonMap = json as Map<String, dynamic>;
+          print('📋 [DoctorService] Doctor JSON: $jsonMap');
+          print('📋 [DoctorService] today_transfers value: ${jsonMap['today_transfers']} (type: ${jsonMap['today_transfers'].runtimeType})');
+          return DoctorModel.fromJson(jsonMap);
+        }).where((d) => d != null).cast<DoctorModel>().toList();
+        
+        print('📋 [DoctorService] Parsed doctors with transfers: ${doctors.map((d) => '${d.name}: ${d.todayTransfers}').join(', ')}');
+        return doctors;
       }
       throw ApiException('فشل جلب قائمة الأطباء');
     } catch (e) {
+      print('❌ [DoctorService] Error: $e');
       if (e is ApiException) rethrow;
       throw ApiException('فشل جلب قائمة الأطباء: ${e.toString()}');
     }

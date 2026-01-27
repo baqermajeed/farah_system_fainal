@@ -17,6 +17,10 @@ class WorkingHoursController extends GetxController {
   // حالة التوسع لكل يوم
   RxMap<int, bool> expandedDays = <int, bool>{}.obs;
 
+  // كاش أوقات العمل لكل طبيب (doctorId -> workingHours)
+  // الكاش يبقى دائماً حتى يتم التحديث يدوياً
+  final Map<String, List<Map<String, dynamic>>> _workingHoursCache = {};
+
   // أسماء الأيام
   final List<String> dayNames = [
     'الأحد',
@@ -56,12 +60,24 @@ class WorkingHoursController extends GetxController {
   ///
   /// - إذا تم تمرير [doctorId] سيتم جلب أوقات عمل هذا الطبيب.
   /// - إذا لم يُمرر، سيتم استخدام مستخدم الجلسة الحالية (مفيد في شاشة الطبيب).
-  Future<void> loadWorkingHours({String? doctorId}) async {
+  /// - [forceRefresh] إذا كان true، سيتم تجاهل الكاش وجلب البيانات من الباكند.
+  ///   يجب استخدام forceRefresh عند فتح صفحة تعديل أوقات العمل.
+  Future<void> loadWorkingHours({String? doctorId, bool forceRefresh = false}) async {
     final resolvedDoctorId = doctorId ?? _authController.currentUser.value?.id;
     if (resolvedDoctorId == null || resolvedDoctorId.isEmpty) return;
 
+    // التحقق من الكاش أولاً (الكاش دائماً صالح إلا إذا كان forceRefresh = true)
+    if (!forceRefresh && _workingHoursCache.containsKey(resolvedDoctorId)) {
+      print('✅ [WorkingHoursController] Using cached working hours for doctor: $resolvedDoctorId');
+      final cachedHours = _workingHoursCache[resolvedDoctorId]!;
+      workingHours.value = List.from(cachedHours);
+      workingHours.refresh();
+      return;
+    }
+
     isLoading.value = true;
     try {
+      print('📡 [WorkingHoursController] Fetching working hours from backend for doctor: $resolvedDoctorId');
       final userType =
           (_authController.currentUser.value?.userType ?? '').toLowerCase();
       final bool isReceptionOrAdmin =
@@ -89,12 +105,13 @@ class WorkingHoursController extends GetxController {
       }
       
       // ضمان وجود جميع الأيام السبعة (استخدم القيم الافتراضية للأيام المفقودة)
+      final List<Map<String, dynamic>> processedHours = [];
       for (int i = 0; i < 7; i++) {
         if (hoursMap.containsKey(i)) {
-          workingHours[i] = hoursMap[i]!;
+          processedHours.add(hoursMap[i]!);
         } else {
           // إذا لم يكن اليوم موجوداً في قاعدة البيانات، استخدم القيم الافتراضية
-          workingHours[i] = {
+          processedHours.add({
             'dayOfWeek': i,
             'dayName': dayNames[i],
             'startTime': '09:00',
@@ -102,16 +119,45 @@ class WorkingHoursController extends GetxController {
             'isWorking': i != 5, // الجمعة عطلة افتراضياً
             'slotDuration': 30,
             'id': null,
-          };
+          });
         }
       }
+      
+      // تحديث الكاش (يتم تحديثه دائماً عند جلب البيانات من الباكند)
+      _workingHoursCache[resolvedDoctorId] = processedHours;
+      
+      // تحديث أوقات العمل المعروضة
+      workingHours.value = processedHours;
       workingHours.refresh();
+      
+      print('✅ [WorkingHoursController] Cached working hours for doctor: $resolvedDoctorId');
     } catch (e) {
       print('❌ [WorkingHoursController] Error loading working hours: $e');
-      // Keep default values on error
+      // في حالة الخطأ، حاول استخدام الكاش القديم إذا كان موجوداً
+      if (_workingHoursCache.containsKey(resolvedDoctorId)) {
+        print('⚠️ [WorkingHoursController] Using stale cache due to error');
+        final cachedHours = _workingHoursCache[resolvedDoctorId]!;
+        workingHours.value = List.from(cachedHours);
+        workingHours.refresh();
+      } else {
+        // Keep default values on error
+        _initializeDefaultWorkingHours();
+      }
     } finally {
       isLoading.value = false;
     }
+  }
+
+  /// مسح الكاش لطبيب معين
+  void clearCacheForDoctor(String doctorId) {
+    _workingHoursCache.remove(doctorId);
+    print('🗑️ [WorkingHoursController] Cleared cache for doctor: $doctorId');
+  }
+
+  /// مسح جميع الكاش
+  void clearAllCache() {
+    _workingHoursCache.clear();
+    print('🗑️ [WorkingHoursController] Cleared all cache');
   }
 
   /// حفظ أوقات العمل
@@ -153,8 +199,9 @@ class WorkingHoursController extends GetxController {
 
     try {
       await _service.setWorkingHours(doctorId, hoursToSend);
-      // إعادة تحميل البيانات
-      await loadWorkingHours();
+      // مسح الكاش وإعادة تحميل البيانات
+      clearCacheForDoctor(doctorId);
+      await loadWorkingHours(forceRefresh: true);
       return {'ok': true, 'message': 'تم حفظ أوقات العمل بنجاح'};
     } catch (e) {
       print('❌ [WorkingHoursController] Error saving working hours: $e');
@@ -176,6 +223,8 @@ class WorkingHoursController extends GetxController {
 
     try {
       await _service.deleteWorkingHours(doctorId);
+      // مسح الكاش
+      clearCacheForDoctor(doctorId);
       _initializeDefaultWorkingHours();
       return {'ok': true, 'message': 'تم حذف جميع أوقات العمل بنجاح'};
     } catch (e) {

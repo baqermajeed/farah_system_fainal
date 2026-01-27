@@ -1,7 +1,9 @@
 import 'dart:io';
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
@@ -11,6 +13,7 @@ import 'package:get/get.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:camera/camera.dart';
 import 'package:intl/intl.dart';
 import 'package:frontend_desktop/core/constants/app_colors.dart';
 import 'package:frontend_desktop/core/constants/app_strings.dart';
@@ -37,6 +40,12 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:frontend_desktop/services/patient_service.dart';
 import 'package:frontend_desktop/models/doctor_model.dart';
+import 'package:frontend_desktop/main.dart' show availableCamerasList;
+// دالة مساعدة لقراءة الصورة بشكل async
+Future<Uint8List> _readImageBytes(String imagePath) async {
+  final file = File(imagePath);
+  return await file.readAsBytes();
+}
 
 // Delegate for sticky TabBar
 class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
@@ -1839,14 +1848,14 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                               children: [
                                 // Name at the top
                                 Text(
-                                  'الاسم : ${patient.name}${(patient.visitType != null && patient.visitType!.trim().isNotEmpty) ? ' (${patient.visitType})' : ''}',
+                                  'الاسم : ${patient.name}',
                                   style: GoogleFonts.cairo(
                                     fontSize: 14.sp,
                                     fontWeight: FontWeight.w700,
                                     color: const Color(0xFF649FCC),
                                   ),
                                   textAlign: TextAlign.right,
-                                  maxLines: 1,
+                                  maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 Text(
@@ -1921,6 +1930,18 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                     overflow: TextOverflow.ellipsis,
                                   );
                                 }),
+                                // نوع المريض - أسفل نوع العلاج
+                                Text(
+                                  'نوع المريض : ${(patient.visitType != null && patient.visitType!.trim().isNotEmpty) ? patient.visitType : 'لا يوجد'}',
+                                  style: TextStyle(
+                                    fontSize: 12.sp,
+                                    fontWeight: FontWeight.w600,
+                                    color: const Color(0xFF505558),
+                                  ),
+                                  textAlign: TextAlign.right,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ],
                             ),
                           ),
@@ -3304,8 +3325,11 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                   final date = selectedDate!;
                   final dateStr =
                       '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-                  final slots =
-                      await _workingHoursService.getAvailableSlots(doctorId, dateStr);
+                  final slots = await _workingHoursService.getAvailableSlots(
+                    doctorId,
+                    dateStr,
+                    forceRefresh: false, // استخدام الكاش إذا كان موجوداً
+                  );
                   setDialogState(() {
                     availableSlots = slots;
                     isLoadingSlots = false;
@@ -3354,6 +3378,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                         final slots = await _workingHoursService.getAvailableSlots(
                           doctorId,
                           dateStr,
+                          forceRefresh: false, // استخدام الكاش إذا كان موجوداً
                         );
                         setDialogState(() {
                           availableSlots = slots;
@@ -4433,6 +4458,12 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                     ? selectedImages
                                     : null,
                               );
+                              // مسح الكاش للأوقات المتاحة لهذا التاريخ بعد حجز الموعد
+                              if (doctorId != null && selectedDate != null) {
+                                final dateStr =
+                                    '${selectedDate!.year}-${selectedDate!.month.toString().padLeft(2, '0')}-${selectedDate!.day.toString().padLeft(2, '0')}';
+                                _workingHoursService.clearAvailableSlotsCache(doctorId, dateStr);
+                              }
                               // لا نعيد تحميل المواعيد هنا، الكونترولر يضيف الموعد متفائلاً
                             } catch (e) {
                               print(
@@ -5834,9 +5865,197 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
               );
             }
 
+            // دالة لقراءة وحفظ الصورة في background
+            Future<void> _readAndSaveImage(
+              String imagePath,
+              String fileName,
+              StateSetter setDialogState,
+              BuildContext context,
+            ) async {
+              BuildContext? dialogContext;
+              try {
+                // إظهار مؤشر تحميل باستخدام showDialog بدلاً من Get.dialog
+                if (context.mounted) {
+                  await showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (ctx) {
+                      dialogContext = ctx;
+                      return Center(
+                        child: Container(
+                          padding: EdgeInsets.all(20.w),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12.r),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              CircularProgressIndicator(),
+                              SizedBox(height: 16.h),
+                              Text(
+                                'جارٍ معالجة الصورة...',
+                                style: TextStyle(fontSize: 14.sp),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                }
+                
+                // قراءة الصورة بشكل async
+                print('📖 [Camera] Starting to read image...');
+                final bytes = await _readImageBytes(imagePath)
+                    .timeout(
+                      const Duration(seconds: 20),
+                      onTimeout: () {
+                        print('⏱️ [Camera] Timeout reading image');
+                        throw TimeoutException('Timeout reading image');
+                      },
+                    );
+                
+                print('✅ [Camera] Image read successfully, size: ${bytes.length} bytes');
+                
+                // إغلاق مؤشر التحميل
+                if (dialogContext != null && context.mounted) {
+                  Navigator.of(dialogContext!).pop();
+                }
+                
+                // حفظ الصورة في الحالة
+                if (context.mounted) {
+                  setDialogState(() {
+                    _selectedPatientImageBytes = bytes;
+                    _selectedPatientImageName = fileName;
+                  });
+                  print('✅ [Camera] Image saved to dialog state');
+                }
+              } catch (e, stackTrace) {
+                print('❌ [Camera] Error reading image: $e');
+                print('❌ [Camera] Stack trace: $stackTrace');
+                
+                // إغلاق مؤشر التحميل
+                if (dialogContext != null && context.mounted) {
+                  try {
+                    Navigator.of(dialogContext!).pop();
+                  } catch (_) {
+                    // تجاهل الخطأ إذا كان الـdialog مغلقاً بالفعل
+                  }
+                }
+                
+                if (context.mounted) {
+                  Get.snackbar(
+                    'خطأ',
+                    'فشل قراءة الصورة: ${e.toString()}',
+                    snackPosition: SnackPosition.TOP,
+                    duration: const Duration(seconds: 3),
+                  );
+                }
+              }
+            }
+
+            // دالة لالتقاط الصورة من الكاميرا على Windows/Linux/MacOS
+            Future<void> _captureImageFromCamera(StateSetter setDialogState) async {
+              try {
+                // محاولة استخدام camera package
+                List<CameraDescription> cameras;
+                try {
+                  if (availableCamerasList == null) {
+                    cameras = await availableCameras();
+                    availableCamerasList = cameras;
+                    print('✅ [Camera] Found ${cameras.length} camera(s)');
+                  } else {
+                    cameras = availableCamerasList!;
+                  }
+                } catch (e) {
+                  print('❌ [Camera] availableCameras() failed: $e');
+                  String errorMsg = 'فشل الوصول إلى الكاميرا';
+                  
+                  // تحديد السبب الدقيق
+                  if (e.toString().contains('MissingPluginException')) {
+                    errorMsg = 'مكتبة الكاميرا غير مثبتة بشكل صحيح.\nيرجى إعادة بناء التطبيق.';
+                  } else if (e.toString().contains('PlatformException')) {
+                    errorMsg = 'خطأ في النظام.\nتأكد من أن الكاميرا متصلة ومفعلة.';
+                  } else if (e.toString().contains('CameraException')) {
+                    errorMsg = 'خطأ في الكاميرا.\nتأكد من الصلاحيات وإعدادات Windows.';
+                  }
+                  
+                  Get.snackbar(
+                    'خطأ',
+                    '$errorMsg\n\nالسبب: ${e.toString().split(':').first}\n\nيرجى اختيار صورة من الملفات.',
+                    snackPosition: SnackPosition.TOP,
+                    duration: const Duration(seconds: 6),
+                  );
+                  return;
+                }
+                
+                if (cameras.isEmpty) {
+                  Get.snackbar(
+                    'تنبيه',
+                    'لا توجد كاميرا متاحة على هذا النظام.\n\nالتحقق من:\n1. الكاميرا متصلة\n2. الصلاحيات مفعلة في Windows\n3. برامج التشغيل محدثة\n\nيرجى اختيار صورة من الملفات.',
+                    snackPosition: SnackPosition.TOP,
+                    duration: const Duration(seconds: 6),
+                  );
+                  return;
+                }
+
+                // استخدام أول كاميرا متاحة
+                final camera = cameras.first;
+                final controller = CameraController(
+                  camera,
+                  ResolutionPreset.medium, // استخدام جودة متوسطة لتقليل حجم الصورة
+                );
+
+                await controller.initialize();
+
+                // عرض شاشة الكاميرا
+                if (!context.mounted) return;
+                final XFile? image = await Navigator.of(context).push<XFile>(
+                  MaterialPageRoute(
+                    builder: (context) => _CameraCaptureScreen(
+                      controller: controller,
+                    ),
+                  ),
+                );
+
+                await controller.dispose();
+
+                if (image != null) {
+                  // حفظ مسار الصورة أولاً بدلاً من قراءتها مباشرة
+                  final imagePath = image.path;
+                  final fileName = 'patient_${DateTime.now().millisecondsSinceEpoch}.jpg';
+                  
+                  print('📸 [Camera] Image captured: $imagePath');
+                  
+                  // تأخير قراءة الصورة قليلاً لتجنب تعارض مع Navigator.pop
+                  Future.microtask(() {
+                    _readAndSaveImage(imagePath, fileName, setDialogState, context);
+                  });
+                }
+              } catch (e) {
+                String errorMessage = 'فشل التقاط الصورة';
+                if (e.toString().contains('MissingPluginException') || 
+                    e.toString().contains('availableCameras') ||
+                    e.toString().contains('CameraException')) {
+                  errorMessage = 'الكاميرا غير مدعومة على هذا النظام.\nيرجى:\n1. إعادة تشغيل التطبيق\n2. أو اختيار صورة من الملفات';
+                } else {
+                  errorMessage = 'فشل التقاط الصورة: ${e.toString()}';
+                }
+                Get.snackbar(
+                  'خطأ',
+                  errorMessage,
+                  snackPosition: SnackPosition.TOP,
+                  duration: const Duration(seconds: 5),
+                );
+              }
+            }
+
             Future<void> _pickPatientImage(ImageSource source) async {
               try {
-                if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+                // على Windows/Linux/MacOS: إذا كان المصدر gallery، استخدم FilePicker
+                if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS) && 
+                    source == ImageSource.gallery) {
                   final result = await FilePicker.platform.pickFiles(
                     type: FileType.image,
                     allowMultiple: false,
@@ -5853,7 +6072,14 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                       _selectedPatientImageName = fileName;
                     });
                   }
-                } else {
+                } 
+                // على Windows/Linux/MacOS: إذا كان المصدر camera، استخدم camera package مباشرة
+                else if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS) && 
+                         source == ImageSource.camera) {
+                  await _captureImageFromCamera(setDialogState);
+                } 
+                // على الموبايل: استخدام image_picker
+                else {
                   final XFile? picked = await _imagePicker.pickImage(
                     source: source,
                     imageQuality: 85,
@@ -5869,9 +6095,16 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                   });
                 }
               } catch (e) {
+                String errorMessage = 'فشل اختيار الصورة';
+                if (e.toString().contains('cameraDelegate') || 
+                    e.toString().contains('ImageSource.camera')) {
+                  errorMessage = 'الكاميرا غير متاحة على هذا النظام. يرجى اختيار صورة من الملفات.';
+                } else {
+                  errorMessage = 'فشل اختيار الصورة: ${e.toString()}';
+                }
                 Get.snackbar(
                   'خطأ',
-                  'فشل اختيار الصورة: ${e.toString()}',
+                  errorMessage,
                   snackPosition: SnackPosition.TOP,
                   duration: const Duration(seconds: 3),
                 );
@@ -5900,33 +6133,31 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                           ),
                         ),
                         SizedBox(height: 12.h),
-                        if (Platform.isWindows || Platform.isLinux || Platform.isMacOS)
-                          ListTile(
-                            leading: Icon(Icons.photo_library, color: AppColors.primary),
-                            title: Text('اختيار صورة', textAlign: TextAlign.right),
-                            onTap: () async {
-                              Navigator.pop(context);
-                              await _pickPatientImage(ImageSource.gallery);
-                            },
-                          )
-                        else ...[
-                          ListTile(
-                            leading: Icon(Icons.photo_library, color: AppColors.primary),
-                            title: Text('اختيار من المعرض', textAlign: TextAlign.right),
-                            onTap: () async {
-                              Navigator.pop(context);
-                              await _pickPatientImage(ImageSource.gallery);
-                            },
+                        // خيار اختيار صورة من الملفات
+                        ListTile(
+                          leading: Icon(Icons.photo_library, color: AppColors.primary),
+                          title: Text(
+                            Platform.isWindows || Platform.isLinux || Platform.isMacOS
+                                ? 'اختيار صورة'
+                                : 'اختيار من المعرض',
+                            textAlign: TextAlign.right,
                           ),
-                          ListTile(
-                            leading: Icon(Icons.photo_camera, color: AppColors.primary),
-                            title: Text('التقاط صورة', textAlign: TextAlign.right),
-                            onTap: () async {
-                              Navigator.pop(context);
-                              await _pickPatientImage(ImageSource.camera);
-                            },
-                          ),
-                        ],
+                          onTap: () async {
+                            Navigator.pop(context);
+                            await _pickPatientImage(ImageSource.gallery);
+                          },
+                        ),
+                        // خيار التقاط صورة من الكاميرا (متاح على جميع المنصات)
+                        ListTile(
+                          leading: Icon(Icons.photo_camera,
+                              color: AppColors.primary),
+                          title: Text('التقاط صورة',
+                              textAlign: TextAlign.right),
+                          onTap: () async {
+                            Navigator.pop(context);
+                            await _pickPatientImage(ImageSource.camera);
+                          },
+                        ),
                         if (_selectedPatientImageBytes != null)
                           ListTile(
                             leading: const Icon(Icons.delete_outline, color: Colors.red),
@@ -6804,6 +7035,9 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
 
   void _showWorkingHoursDialog(BuildContext context) {
     final WorkingHoursController controller = Get.put(WorkingHoursController());
+    // عند فتح صفحة تعديل أوقات العمل، يجب جلب البيانات من الباكند دائماً
+    // لتحديث الكاش بأحدث البيانات
+    controller.loadWorkingHours(forceRefresh: true);
     
     String _convertTo12Hour(String time24) {
       try {
@@ -7734,18 +7968,25 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                       )
                     else
                       Container(
-                        height: 200.h,
+                        constraints: BoxConstraints(
+                          maxHeight: 350.h,
+                        ),
                         child: GridView.builder(
+                          shrinkWrap: true,
+                          physics: const AlwaysScrollableScrollPhysics(),
                           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: 2,
                             crossAxisSpacing: 12.w,
                             mainAxisSpacing: 12.h,
-                            childAspectRatio: 1.2,
+                            childAspectRatio: 136.w / 66.h,
                           ),
                           itemCount: doctors.length,
                           itemBuilder: (context, index) {
                             final doctor = doctors[index];
                             final isSelected = selectedDoctorId == doctor.id;
+                            // حساب عدد الدوائر (حد أقصى 10)
+                            final circlesCount = doctor.todayTransfers > 10 ? 10 : doctor.todayTransfers;
+                            
                             return GestureDetector(
                               onTap: () {
                                 setDialogState(() {
@@ -7753,6 +7994,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                 });
                               },
                               child: Container(
+                                width: 136.w,
+                                height: 66.h,
                                 decoration: BoxDecoration(
                                   color: isSelected
                                       ? AppColors.primaryLight
@@ -7765,54 +8008,92 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                     width: isSelected ? 2 : 1,
                                   ),
                                 ),
-                                padding: EdgeInsets.all(12.w),
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 8.w,
+                                  vertical: 6.h,
+                                ),
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.center,
                                   children: [
-                                    Text(
-                                      doctor.name ?? doctor.phone,
-                                      style: TextStyle(
-                                        fontSize: 14.sp,
-                                        fontWeight: FontWeight.w700,
-                                        color: AppColors.textPrimary,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    SizedBox(height: 8.h),
-                                    // دوائر خضراء صغيرة تمثل عدد التحويلات اليوم
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: List.generate(
-                                        doctor.todayTransfers > 0
-                                            ? (doctor.todayTransfers > 10
-                                                ? 10
-                                                : doctor.todayTransfers)
-                                            : 0,
-                                        (index) => Container(
-                                          width: 6.w,
-                                          height: 6.w,
-                                          margin: EdgeInsets.symmetric(horizontal: 2.w),
-                                          decoration: BoxDecoration(
-                                            color: AppColors.success,
-                                            shape: BoxShape.circle,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    if (doctor.todayTransfers > 10)
-                                      Padding(
-                                        padding: EdgeInsets.only(top: 4.h),
+                                    // اسم الطبيب
+                                    SizedBox(
+                                      height: 28.h,
+                                      child: Center(
                                         child: Text(
-                                          '+${doctor.todayTransfers - 10}',
+                                          doctor.name ?? doctor.phone,
                                           style: TextStyle(
-                                            fontSize: 10.sp,
-                                            color: AppColors.success,
-                                            fontWeight: FontWeight.w600,
+                                            fontSize: 12.sp,
+                                            fontWeight: FontWeight.w700,
+                                            color: AppColors.textPrimary,
                                           ),
+                                          textAlign: TextAlign.center,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
+                                    ),
+                                    SizedBox(height: 4.h),
+                                    // دوائر خضراء صغيرة تمثل عدد التحويلات اليوم
+                                    Flexible(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (doctor.todayTransfers > 0)
+                                            Wrap(
+                                              alignment: WrapAlignment.center,
+                                              spacing: 3.w,
+                                              runSpacing: 2.h,
+                                              children: List.generate(
+                                                circlesCount,
+                                                (circleIndex) => Container(
+                                                  width: 6.w,
+                                                  height: 6.w,
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.green,
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                ),
+                                              ),
+                                            )
+                                          else
+                                            Container(
+                                              width: 6.w,
+                                              height: 6.w,
+                                              decoration: BoxDecoration(
+                                                color: Colors.grey.withOpacity(0.3),
+                                                shape: BoxShape.circle,
+                                              ),
+                                            ),
+                                          if (doctor.todayTransfers > 10)
+                                            Padding(
+                                              padding: EdgeInsets.only(top: 2.h),
+                                              child: Text(
+                                                '+${doctor.todayTransfers - 10}',
+                                                style: TextStyle(
+                                                  fontSize: 8.sp,
+                                                  color: Colors.green,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ),
+                                          // عرض العدد
+                                          if (doctor.todayTransfers > 0)
+                                            Padding(
+                                              padding: EdgeInsets.only(top: 1.h),
+                                              child: Text(
+                                                '${doctor.todayTransfers} تحويل',
+                                                style: TextStyle(
+                                                  fontSize: 8.sp,
+                                                  color: AppColors.textSecondary,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -7837,7 +8118,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                               if (v == null) return;
                               setDialogState(() => mode = v);
                             },
-                            title: const Text('مشترك (يبقى عندي وعند الطبيب الآخر)'),
+                            title: const Text('مشترك '),
                             dense: true,
                           ),
                           RadioListTile<String>(
@@ -7847,7 +8128,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                               if (v == null) return;
                               setDialogState(() => mode = v);
                             },
-                            title: const Text('غير مشترك (ينحذف من عندي ويصير عند الطبيب الآخر)'),
+                            title: const Text('غير مشترك'),
                             dense: true,
                           ),
                         ],
@@ -8076,6 +8357,115 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
             child: Text(
               'إلغاء',
               style: TextStyle(fontSize: 14.sp, color: AppColors.textSecondary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// شاشة التقاط الصورة من الكاميرا
+class _CameraCaptureScreen extends StatefulWidget {
+  final CameraController controller;
+
+  const _CameraCaptureScreen({required this.controller});
+
+  @override
+  State<_CameraCaptureScreen> createState() => _CameraCaptureScreenState();
+}
+
+class _CameraCaptureScreenState extends State<_CameraCaptureScreen> {
+  @override
+  void dispose() {
+    widget.controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          // Preview الكاميرا
+          Positioned.fill(
+            child: CameraPreview(widget.controller),
+          ),
+          // أزرار التحكم
+          Positioned(
+            bottom: 40.h,
+            left: 0,
+            right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                // زر الإلغاء
+                GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Container(
+                    width: 60.w,
+                    height: 60.w,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.3),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.close,
+                      color: Colors.white,
+                      size: 30.sp,
+                    ),
+                  ),
+                ),
+                // زر التقاط الصورة
+                GestureDetector(
+                  onTap: () async {
+                    try {
+                      print('📸 [Camera] Taking picture...');
+                      final XFile image = await widget.controller.takePicture();
+                      print('✅ [Camera] Picture taken: ${image.path}');
+                      
+                      if (context.mounted) {
+                        Navigator.of(context).pop(image);
+                        print('✅ [Camera] Navigator popped with image');
+                      } else {
+                        print('⚠️ [Camera] Context not mounted, cannot pop');
+                      }
+                    } catch (e, stackTrace) {
+                      print('❌ [Camera] Error taking picture: $e');
+                      print('❌ [Camera] Stack trace: $stackTrace');
+                      if (context.mounted) {
+                        Get.snackbar(
+                          'خطأ',
+                          'فشل التقاط الصورة: ${e.toString()}',
+                          snackPosition: SnackPosition.BOTTOM,
+                          backgroundColor: Colors.red,
+                          colorText: Colors.white,
+                          duration: const Duration(seconds: 4),
+                        );
+                      }
+                    }
+                  },
+                  child: Container(
+                    width: 80.w,
+                    height: 80.w,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 4),
+                    ),
+                    child: Container(
+                      margin: EdgeInsets.all(8.w),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                ),
+                // مساحة فارغة للتوازن
+                SizedBox(width: 60.w),
+              ],
             ),
           ),
         ],

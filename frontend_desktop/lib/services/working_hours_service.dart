@@ -5,6 +5,10 @@ import 'package:frontend_desktop/services/api_service.dart';
 
 class WorkingHoursService {
   final _api = ApiService();
+  
+  // كاش الأوقات المتاحة لكل طبيب وتاريخ (doctorId_date -> slots)
+  // يتم مسح الكاش عند حجز موعد جديد
+  final Map<String, List<String>> _availableSlotsCache = {};
 
   /// جلب أوقات عمل الطبيب
   Future<List<WorkingHoursModel>> getDoctorWorkingHours(String doctorId) async {
@@ -137,23 +141,49 @@ class WorkingHoursService {
   }
 
   /// جلب الأوقات المتاحة لطبيب في يوم معين
-  Future<List<String>> getAvailableSlots(String doctorId, String date) async {
+  /// 
+  /// [forceRefresh] إذا كان true، سيتم تجاهل الكاش وجلب البيانات من الباكند.
+  Future<List<String>> getAvailableSlots(
+    String doctorId,
+    String date, {
+    bool forceRefresh = false,
+  }) async {
+    // مفتاح الكاش: doctorId_date
+    final cacheKey = '${doctorId}_$date';
+    
+    // التحقق من الكاش أولاً
+    if (!forceRefresh && _availableSlotsCache.containsKey(cacheKey)) {
+      print(
+        '✅ [WorkingHoursService] Using cached available slots for doctor: $doctorId, date: $date',
+      );
+      return List.from(_availableSlotsCache[cacheKey]!);
+    }
+    
     try {
       print(
-        '📅 [WorkingHoursService] Fetching available slots for doctor: $doctorId, date: $date',
+        '📡 [WorkingHoursService] Fetching available slots from backend for doctor: $doctorId, date: $date',
       );
       final response = await _api.get(ApiConstants.doctorAvailableSlots(date));
 
       if (response.statusCode == 200) {
         final List<dynamic> data = response.data;
         final List<String> slots = data.map((slot) => slot.toString()).toList();
-        print('✅ [WorkingHoursService] Found ${slots.length} available slots');
+        
+        // حفظ في الكاش
+        _availableSlotsCache[cacheKey] = slots;
+        
+        print('✅ [WorkingHoursService] Found ${slots.length} available slots and cached');
         return slots;
       } else {
         throw ApiException('فشل جلب الأوقات المتاحة');
       }
     } catch (e) {
       print('❌ [WorkingHoursService] Error fetching available slots: $e');
+      // في حالة الخطأ، حاول استخدام الكاش القديم إذا كان موجوداً
+      if (_availableSlotsCache.containsKey(cacheKey)) {
+        print('⚠️ [WorkingHoursService] Using stale cache due to error');
+        return List.from(_availableSlotsCache[cacheKey]!);
+      }
       if (e is ApiException) {
         rethrow;
       }
@@ -162,13 +192,27 @@ class WorkingHoursService {
   }
 
   /// جلب الأوقات المتاحة لطبيب محدد في يوم معين (للاستقبال/الادمن)
+  /// 
+  /// [forceRefresh] إذا كان true، سيتم تجاهل الكاش وجلب البيانات من الباكند.
   Future<List<String>> getAvailableSlotsForReception(
     String doctorId,
-    String date,
-  ) async {
+    String date, {
+    bool forceRefresh = false,
+  }) async {
+    // مفتاح الكاش: doctorId_date_reception
+    final cacheKey = '${doctorId}_${date}_reception';
+    
+    // التحقق من الكاش أولاً
+    if (!forceRefresh && _availableSlotsCache.containsKey(cacheKey)) {
+      print(
+        '✅ [WorkingHoursService] (Reception) Using cached available slots for doctor: $doctorId, date: $date',
+      );
+      return List.from(_availableSlotsCache[cacheKey]!);
+    }
+    
     try {
       print(
-        '📅 [WorkingHoursService] (Reception) Fetching available slots for doctor: $doctorId, date: $date',
+        '📡 [WorkingHoursService] (Reception) Fetching available slots from backend for doctor: $doctorId, date: $date',
       );
       final response = await _api.get(
         ApiConstants.receptionDoctorAvailableSlots(doctorId, date),
@@ -177,8 +221,12 @@ class WorkingHoursService {
       if (response.statusCode == 200) {
         final List<dynamic> data = response.data;
         final List<String> slots = data.map((slot) => slot.toString()).toList();
+        
+        // حفظ في الكاش
+        _availableSlotsCache[cacheKey] = slots;
+        
         print(
-          '✅ [WorkingHoursService] (Reception) Found ${slots.length} available slots',
+          '✅ [WorkingHoursService] (Reception) Found ${slots.length} available slots and cached',
         );
         return slots;
       } else {
@@ -186,10 +234,30 @@ class WorkingHoursService {
       }
     } catch (e) {
       print('❌ [WorkingHoursService] (Reception) Error fetching available slots: $e');
+      // في حالة الخطأ، حاول استخدام الكاش القديم إذا كان موجوداً
+      if (_availableSlotsCache.containsKey(cacheKey)) {
+        print('⚠️ [WorkingHoursService] (Reception) Using stale cache due to error');
+        return List.from(_availableSlotsCache[cacheKey]!);
+      }
       if (e is ApiException) {
         rethrow;
       }
       throw ApiException('فشل جلب الأوقات المتاحة: ${e.toString()}');
     }
+  }
+
+  /// مسح الكاش للأوقات المتاحة لطبيب معين وتاريخ معين
+  void clearAvailableSlotsCache(String doctorId, String date) {
+    final cacheKey = '${doctorId}_$date';
+    final receptionCacheKey = '${doctorId}_${date}_reception';
+    _availableSlotsCache.remove(cacheKey);
+    _availableSlotsCache.remove(receptionCacheKey);
+    print('🗑️ [WorkingHoursService] Cleared available slots cache for doctor: $doctorId, date: $date');
+  }
+
+  /// مسح جميع الكاش للأوقات المتاحة
+  void clearAllAvailableSlotsCache() {
+    _availableSlotsCache.clear();
+    print('🗑️ [WorkingHoursService] Cleared all available slots cache');
   }
 }

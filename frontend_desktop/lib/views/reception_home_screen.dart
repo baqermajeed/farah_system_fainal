@@ -1,12 +1,16 @@
 import 'dart:io';
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:camera/camera.dart';
+import 'dart:io' show Platform, File;
 import 'package:intl/intl.dart';
 import 'package:frontend_desktop/core/constants/app_colors.dart';
 import 'package:frontend_desktop/core/constants/app_strings.dart';
@@ -36,6 +40,12 @@ import 'package:flutter/rendering.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
+import 'package:frontend_desktop/main.dart' show availableCamerasList;
+// دالة مساعدة لقراءة الصورة في isolate منفصل
+Future<Uint8List> _readImageBytes(String imagePath) async {
+  final file = File(imagePath);
+  return await file.readAsBytes();
+}
 
 // Delegate for sticky TabBar
 class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
@@ -1645,7 +1655,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                                   color: const Color(0xFF649FCC),
                                 ),
                                 textAlign: TextAlign.right,
-                                maxLines: 1,
+                                maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),
                               Text(
@@ -1699,6 +1709,18 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                               // Last item at the bottom
                               Text(
                                 'نوع العلاج : ${patient.treatmentHistory != null && patient.treatmentHistory!.isNotEmpty ? patient.treatmentHistory!.last : 'لا يوجد'}',
+                                style: TextStyle(
+                                  fontSize: 12.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF505558),
+                                ),
+                                textAlign: TextAlign.right,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              // نوع المريض - أسفل نوع العلاج
+                              Text(
+                                'نوع المريض : ${(patient.visitType != null && patient.visitType!.trim().isNotEmpty) ? patient.visitType : 'لا يوجد'}',
                                 style: TextStyle(
                                   fontSize: 12.sp,
                                   fontWeight: FontWeight.w600,
@@ -1776,9 +1798,42 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                     _buildDoctorsSection(patient),
                   ],
 
-                  // Add spacing at bottom for receptionist
-                  if (isReceptionist)
+                  // زر إضافة صور للمريض (خاص بموظف الاستقبال)
+                  if (isReceptionist) ...[
+                    SizedBox(height: 16.h),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16.w),
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 48.h,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            _showAddImageDialog(context, patient.id);
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14.r),
+                            ),
+                          ),
+                          icon: Icon(
+                            Icons.add_photo_alternate_outlined,
+                            color: Colors.white,
+                            size: 20.sp,
+                          ),
+                          label: Text(
+                            'إضافة صور للمريض',
+                            style: TextStyle(
+                              fontSize: 16.sp,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                     SizedBox(height: 24.h),
+                  ],
                 ],
               ),
             ),
@@ -5728,9 +5783,171 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
               );
             }
 
+            // دالة لقراءة الصورة وفتح حوار قص بنسبة 1:1 ثم حفظها
+            Future<void> _readAndSaveImage(
+              String imagePath,
+              String fileName,
+              StateSetter setDialogState,
+              BuildContext context,
+            ) async {
+              try {
+                // قراءة الصورة بشكل async
+                print('📖 [Camera] Starting to read image...');
+                final originalBytes = await _readImageBytes(imagePath).timeout(
+                  const Duration(seconds: 20),
+                  onTimeout: () {
+                    print('⏱️ [Camera] Timeout reading image');
+                    throw TimeoutException('Timeout reading image');
+                  },
+                );
+                print(
+                    '✅ [Camera] Image read successfully, size: ${originalBytes.length} bytes');
+
+                if (!context.mounted) return;
+
+                // فتح حوار قص الصورة بنسبة 1:1 ليتحكم به المستخدم
+                final Uint8List? croppedBytes =
+                    await showDialog<Uint8List?>(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (dialogContext) => _ImageCropDialog(
+                    imageBytes: originalBytes,
+                    title: 'قص الصورة',
+                    confirmText: 'اعتماد',
+                    cancelText: 'إلغاء',
+                  ),
+                );
+
+                // إذا ألغى المستخدم القص، لا نقوم بحفظ الصورة
+                if (croppedBytes == null) {
+                  print('ℹ️ [Camera] User cancelled image cropping');
+                  return;
+                }
+
+                // حفظ الصورة المقتصة في الحالة
+                if (context.mounted) {
+                  setDialogState(() {
+                    _selectedPatientImageBytes = croppedBytes;
+                    _selectedPatientImageName = fileName;
+                  });
+                  print('✅ [Camera] Cropped image saved to dialog state');
+                }
+              } catch (e, stackTrace) {
+                print('❌ [Camera] Error reading or cropping image: $e');
+                print('❌ [Camera] Stack trace: $stackTrace');
+                
+                if (context.mounted) {
+                  Get.snackbar(
+                    'خطأ',
+                    'فشل معالجة الصورة: ${e.toString()}',
+                    snackPosition: SnackPosition.TOP,
+                    duration: const Duration(seconds: 3),
+                  );
+                }
+              }
+            }
+
+            // دالة لالتقاط الصورة من الكاميرا على Windows/Linux/MacOS
+            Future<void> _captureImageFromCamera(StateSetter setDialogState) async {
+              try {
+                // محاولة استخدام camera package
+                List<CameraDescription> cameras;
+                try {
+                  if (availableCamerasList == null) {
+                    cameras = await availableCameras();
+                    availableCamerasList = cameras;
+                    print('✅ [Camera] Found ${cameras.length} camera(s)');
+                  } else {
+                    cameras = availableCamerasList!;
+                  }
+                } catch (e) {
+                  print('❌ [Camera] availableCameras() failed: $e');
+                  String errorMsg = 'فشل الوصول إلى الكاميرا';
+                  
+                  // تحديد السبب الدقيق
+                  if (e.toString().contains('MissingPluginException')) {
+                    errorMsg = 'مكتبة الكاميرا غير مثبتة بشكل صحيح.\nيرجى إعادة بناء التطبيق.';
+                  } else if (e.toString().contains('PlatformException')) {
+                    errorMsg = 'خطأ في النظام.\nتأكد من أن الكاميرا متصلة ومفعلة.';
+                  } else if (e.toString().contains('CameraException')) {
+                    errorMsg = 'خطأ في الكاميرا.\nتأكد من الصلاحيات وإعدادات Windows.';
+                  }
+                  
+                  Get.snackbar(
+                    'خطأ',
+                    '$errorMsg\n\nالسبب: ${e.toString().split(':').first}\n\nيرجى اختيار صورة من الملفات.',
+                    snackPosition: SnackPosition.TOP,
+                    duration: const Duration(seconds: 6),
+                  );
+                  return;
+                }
+                
+                if (cameras.isEmpty) {
+                  Get.snackbar(
+                    'تنبيه',
+                    'لا توجد كاميرا متاحة على هذا النظام.\n\nالتحقق من:\n1. الكاميرا متصلة\n2. الصلاحيات مفعلة في Windows\n3. برامج التشغيل محدثة\n\nيرجى اختيار صورة من الملفات.',
+                    snackPosition: SnackPosition.TOP,
+                    duration: const Duration(seconds: 6),
+                  );
+                  return;
+                }
+
+                // استخدام أول كاميرا متاحة
+                final camera = cameras.first;
+                final controller = CameraController(
+                  camera,
+                  ResolutionPreset.medium, // استخدام جودة متوسطة لتقليل حجم الصورة
+                );
+
+                await controller.initialize();
+
+                // عرض شاشة الكاميرا
+                if (!context.mounted) return;
+                final XFile? image = await Navigator.of(context).push<XFile>(
+                  MaterialPageRoute(
+                    builder: (context) => _CameraCaptureScreen(
+                      controller: controller,
+                    ),
+                  ),
+                );
+
+                await controller.dispose();
+
+                if (image != null) {
+                  // حفظ مسار الصورة أولاً بدلاً من قراءتها مباشرة
+                  final imagePath = image.path;
+                  final fileName = 'patient_${DateTime.now().millisecondsSinceEpoch}.jpg';
+                  
+                  print('📸 [Camera] Image captured: $imagePath');
+                  
+                  // تأخير قراءة الصورة قليلاً لتجنب تعارض مع Navigator.pop
+                  Future.microtask(() {
+                    _readAndSaveImage(imagePath, fileName, setDialogState, context);
+                  });
+                }
+              } catch (e) {
+                String errorMessage = 'فشل التقاط الصورة';
+                if (e.toString().contains('MissingPluginException') || 
+                    e.toString().contains('availableCameras') ||
+                    e.toString().contains('CameraException')) {
+                  errorMessage = 'الكاميرا غير مدعومة على هذا النظام.\nيرجى:\n1. إعادة تشغيل التطبيق\n2. أو اختيار صورة من الملفات';
+                } else {
+                  errorMessage = 'فشل التقاط الصورة: ${e.toString()}';
+                }
+                Get.snackbar(
+                  'خطأ',
+                  errorMessage,
+                  snackPosition: SnackPosition.TOP,
+                  duration: const Duration(seconds: 5),
+                );
+              }
+            }
+
             Future<void> _pickPatientImage(ImageSource source) async {
               try {
-                if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+                // على Windows/Linux/MacOS: إذا كان المصدر gallery، استخدم FilePicker
+                if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS) && 
+                    source == ImageSource.gallery) {
                   final result = await FilePicker.platform.pickFiles(
                     type: FileType.image,
                     allowMultiple: false,
@@ -5749,7 +5966,14 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                       _selectedPatientImageName = fileName;
                     });
                   }
-                } else {
+                } 
+                // على Windows/Linux/MacOS: إذا كان المصدر camera، استخدم camera package مباشرة
+                else if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS) && 
+                         source == ImageSource.camera) {
+                  await _captureImageFromCamera(setDialogState);
+                } 
+                // على الموبايل: استخدام image_picker
+                else {
                   final XFile? picked = await _imagePicker.pickImage(
                     source: source,
                     imageQuality: 85,
@@ -5765,9 +5989,16 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                   });
                 }
               } catch (e) {
-        Get.snackbar(
-          'خطأ',
-                  'فشل اختيار الصورة: ${e.toString()}',
+                String errorMessage = 'فشل اختيار الصورة';
+                if (e.toString().contains('cameraDelegate') || 
+                    e.toString().contains('ImageSource.camera')) {
+                  errorMessage = 'الكاميرا غير متاحة على هذا النظام. يرجى اختيار صورة من الملفات.';
+                } else {
+                  errorMessage = 'فشل اختيار الصورة: ${e.toString()}';
+                }
+                Get.snackbar(
+                  'خطأ',
+                  errorMessage,
                   snackPosition: SnackPosition.TOP,
                   duration: const Duration(seconds: 3),
                 );
@@ -5796,41 +6027,32 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                           ),
                         ),
                         SizedBox(height: 12.h),
-                        if (Platform.isWindows ||
-                            Platform.isLinux ||
-                            Platform.isMacOS)
-                          ListTile(
-                            leading: Icon(Icons.photo_library,
-                                color: AppColors.primary),
-                            title: Text('اختيار صورة',
-                                textAlign: TextAlign.right),
-                            onTap: () async {
-                              Navigator.pop(context);
-                              await _pickPatientImage(ImageSource.gallery);
-                            },
-                          )
-                        else ...[
-                          ListTile(
-                            leading: Icon(Icons.photo_library,
-                                color: AppColors.primary),
-                            title: Text('اختيار من المعرض',
-                                textAlign: TextAlign.right),
-                            onTap: () async {
-                              Navigator.pop(context);
-                              await _pickPatientImage(ImageSource.gallery);
-                            },
+                        // خيار اختيار صورة من الملفات
+                        ListTile(
+                          leading: Icon(Icons.photo_library,
+                              color: AppColors.primary),
+                          title: Text(
+                            Platform.isWindows || Platform.isLinux || Platform.isMacOS
+                                ? 'اختيار صورة'
+                                : 'اختيار من المعرض',
+                            textAlign: TextAlign.right,
                           ),
-                          ListTile(
-                            leading: Icon(Icons.photo_camera,
-                                color: AppColors.primary),
-                            title: Text('التقاط صورة',
-                                textAlign: TextAlign.right),
-                            onTap: () async {
-                              Navigator.pop(context);
-                              await _pickPatientImage(ImageSource.camera);
-                            },
-                          ),
-                        ],
+                          onTap: () async {
+                            Navigator.pop(context);
+                            await _pickPatientImage(ImageSource.gallery);
+                          },
+                        ),
+                        // خيار التقاط صورة من الكاميرا (متاح على جميع المنصات)
+                        ListTile(
+                          leading: Icon(Icons.photo_camera,
+                              color: AppColors.primary),
+                          title: Text('التقاط صورة',
+                              textAlign: TextAlign.right),
+                          onTap: () async {
+                            Navigator.pop(context);
+                            await _pickPatientImage(ImageSource.camera);
+                          },
+                        ),
                         if (_selectedPatientImageBytes != null)
                           ListTile(
                             leading: const Icon(Icons.delete_outline,
@@ -7180,6 +7402,341 @@ class _SelectDoctorDialogState extends State<_SelectDoctorDialog> {
                   ],
                 ),
               ),
+    );
+  }
+}
+
+/// حوار قص الصورة بنسبة 1:1 مع تحكم المستخدم في التكبير/التحريك
+class _ImageCropDialog extends StatefulWidget {
+  final Uint8List imageBytes;
+  final String title;
+  final String confirmText;
+  final String cancelText;
+
+  const _ImageCropDialog({
+    required this.imageBytes,
+    required this.title,
+    required this.confirmText,
+    required this.cancelText,
+  });
+
+  @override
+  State<_ImageCropDialog> createState() => _ImageCropDialogState();
+}
+
+class _ImageCropDialogState extends State<_ImageCropDialog> {
+  final GlobalKey _cropKey = GlobalKey();
+  bool _saving = false;
+
+  Future<void> _onConfirm() async {
+    if (_saving) return;
+    setState(() {
+      _saving = true;
+    });
+    try {
+      final boundary =
+          _cropKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) {
+        Navigator.of(context).pop<Uint8List?>(null);
+        return;
+      }
+
+      final ui.Image image =
+          await boundary.toImage(pixelRatio: 2.0); // دقة أعلى للصورة
+      final byteData =
+          await image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData == null) {
+        Navigator.of(context).pop<Uint8List?>(null);
+        return;
+      }
+      final bytes = byteData.buffer.asUint8List();
+      Navigator.of(context).pop<Uint8List?>(bytes);
+    } catch (e) {
+      print('❌ [CropDialog] Error capturing cropped image: $e');
+      Navigator.of(context).pop<Uint8List?>(null);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16.r),
+      ),
+      contentPadding: EdgeInsets.all(16.w),
+      title: Text(
+        widget.title,
+        textAlign: TextAlign.right,
+        style: TextStyle(
+          fontSize: 18.sp,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      content: SizedBox(
+        width: 400.w,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // منطقة القص بنسبة 1:1
+            RepaintBoundary(
+              key: _cropKey,
+              child: AspectRatio(
+                aspectRatio: 1,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12.r),
+                  child: Container(
+                    color: Colors.black,
+                    child: InteractiveViewer(
+                      minScale: 1.0,
+                      maxScale: 4.0,
+                      child: Image.memory(
+                        widget.imageBytes,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(height: 16.h),
+            Text(
+              'اسحب الصورة وحركها داخل الإطار المربع لاختيار الجزء المناسب، ثم اضغط ${widget.confirmText}.',
+              textAlign: TextAlign.right,
+              style: TextStyle(fontSize: 12.sp),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _saving
+              ? null
+              : () {
+                  Navigator.of(context).pop<Uint8List?>(null);
+                },
+          child: Text(
+            widget.cancelText,
+            style: TextStyle(color: Colors.red, fontSize: 14.sp),
+          ),
+        ),
+        ElevatedButton(
+          onPressed: _saving ? null : _onConfirm,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primary,
+          ),
+          child: _saving
+              ? SizedBox(
+                  width: 20.w,
+                  height: 20.w,
+                  child: const CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                )
+              : Text(
+                  widget.confirmText,
+                  style: TextStyle(color: Colors.white, fontSize: 14.sp),
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+// شاشة التقاط الصورة من الكاميرا
+class _CameraCaptureScreen extends StatefulWidget {
+  final CameraController controller;
+
+  const _CameraCaptureScreen({required this.controller});
+
+  @override
+  State<_CameraCaptureScreen> createState() => _CameraCaptureScreenState();
+}
+
+class _CameraCaptureScreenState extends State<_CameraCaptureScreen> {
+  @override
+  void dispose() {
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          // Preview الكاميرا
+          Positioned.fill(
+            child: CameraPreview(widget.controller),
+          ),
+          // أزرار التحكم
+          Positioned(
+            bottom: 40.h,
+            left: 0,
+            right: 0,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                // زر الإلغاء
+                GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Container(
+                    width: 60.w,
+                    height: 60.w,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.3),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.close,
+                      color: Colors.white,
+                      size: 30.sp,
+                    ),
+                  ),
+                ),
+                // زر التقاط الصورة
+                GestureDetector(
+                  onTap: () async {
+                    try {
+                      print('📸 [Camera] Taking picture...');
+                      final XFile image = await widget.controller.takePicture();
+                      print('✅ [Camera] Picture taken: ${image.path}');
+                      
+                      if (!context.mounted) {
+                        print('⚠️ [Camera] Context not mounted, cannot show confirmation dialog');
+                        return;
+                      }
+
+                      // عرض حوار تأكيد بعد التقاط الصورة (صح / خطأ)
+                      final bool? confirmed = await showDialog<bool>(
+                        context: context,
+                        barrierDismissible: false,
+                        builder: (dialogContext) {
+                          return AlertDialog(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16.r),
+                            ),
+                            title: Text(
+                              'تأكيد الصورة',
+                              textAlign: TextAlign.right,
+                              style: TextStyle(
+                                fontSize: 18.sp,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            content: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SizedBox(
+                                  width: 300.w,
+                                  height: 220.h,
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(12.r),
+                                    child: Image.file(
+                                      File(image.path),
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(height: 16.h),
+                                Text(
+                                  'هل تريد اعتماد هذه الصورة كصورة ملف للمريض؟',
+                                  textAlign: TextAlign.right,
+                                  style: TextStyle(
+                                    fontSize: 14.sp,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            actionsAlignment: MainAxisAlignment.spaceBetween,
+                            actions: [
+                              TextButton(
+                                onPressed: () {
+                                  // خطأ / إعادة التقاط
+                                  Navigator.of(dialogContext).pop(false);
+                                },
+                                child: Text(
+                                  'إعادة الالتقاط',
+                                  style: TextStyle(
+                                    color: Colors.red,
+                                    fontSize: 14.sp,
+                                  ),
+                                ),
+                              ),
+                              ElevatedButton(
+                                onPressed: () {
+                                  // صح / تأكيد
+                                  Navigator.of(dialogContext).pop(true);
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.primary,
+                                ),
+                                child: Text(
+                                  'اعتماد',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14.sp,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      );
+
+                      // إذا اختار المستخدم "اعتماد" نرجع الصورة إلى الشاشة السابقة
+                      if (confirmed == true && context.mounted) {
+                        Navigator.of(context).pop(image);
+                        print('✅ [Camera] Navigator popped with image after confirmation');
+                      } else {
+                        // في حالة عدم التأكيد، نبقى في شاشة الكاميرا لإعادة الالتقاط
+                        print('ℹ️ [Camera] User chose to retake photo');
+                      }
+                    } catch (e, stackTrace) {
+                      print('❌ [Camera] Error taking picture: $e');
+                      print('❌ [Camera] Stack trace: $stackTrace');
+                      if (context.mounted) {
+                        Get.snackbar(
+                          'خطأ',
+                          'فشل التقاط الصورة: ${e.toString()}',
+                          snackPosition: SnackPosition.BOTTOM,
+                          backgroundColor: Colors.red,
+                          colorText: Colors.white,
+                          duration: const Duration(seconds: 4),
+                        );
+                      }
+                    }
+                  },
+                  child: Container(
+                    width: 80.w,
+                    height: 80.w,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 4),
+                    ),
+                    child: Container(
+                      margin: EdgeInsets.all(8.w),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                ),
+                // مساحة فارغة للتوازن
+                SizedBox(width: 60.w),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

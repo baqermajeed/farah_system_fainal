@@ -8,6 +8,7 @@ import 'package:frontend_desktop/models/patient_model.dart';
 import 'package:frontend_desktop/models/doctor_model.dart';
 import 'package:frontend_desktop/models/appointment_model.dart';
 import 'package:frontend_desktop/models/medical_record_model.dart';
+import 'package:frontend_desktop/models/gallery_image_model.dart';
 import 'package:http_parser/http_parser.dart';
 
 class PatientService {
@@ -324,6 +325,74 @@ class PatientService {
         rethrow;
       }
       throw ApiException('فشل جلب المعرض: ${e.toString()}');
+    }
+  }
+
+  // جلب صور المعرض لمريض معيّن كما يراها موظف الاستقبال
+  // (فقط الصور التي رفعها هذا الموظف نفسه)
+  Future<List<GalleryImageModel>> getReceptionPatientGallery(
+    String patientId, {
+    int skip = 0,
+    int limit = 50,
+  }) async {
+    try {
+      final response = await _api.get(
+        ApiConstants.receptionPatientGallery(patientId),
+        queryParameters: {'skip': skip, 'limit': limit},
+      );
+
+      if (response.statusCode == 200) {
+        final data = response.data as List;
+        return data
+            .map(
+              (json) => GalleryImageModel.fromJson(
+                (json as Map).cast<String, dynamic>(),
+              ),
+            )
+            .toList();
+      } else {
+        throw ApiException('فشل جلب صور المعرض (الاستقبال)');
+      }
+    } catch (e) {
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('فشل جلب صور المعرض (الاستقبال): ${e.toString()}');
+    }
+  }
+
+  // رفع صورة إلى معرض المريض من واجهة الاستقبال
+  Future<GalleryImageModel> uploadReceptionGalleryImage({
+    required String patientId,
+    required File imageFile,
+    String? note,
+  }) async {
+    try {
+      final formData = dio.FormData.fromMap({
+        'image': await dio.MultipartFile.fromFile(
+          imageFile.path,
+          filename: imageFile.path.split('/').last.split('\\').last,
+        ),
+        if (note != null && note.isNotEmpty) 'note': note,
+      });
+
+      final response = await _api.post(
+        ApiConstants.receptionPatientGallery(patientId),
+        formData: formData,
+      );
+
+      if (response.statusCode == 200) {
+        return GalleryImageModel.fromJson(
+          (response.data as Map).cast<String, dynamic>(),
+        );
+      } else {
+        throw ApiException('فشل رفع الصورة (الاستقبال)');
+      }
+    } catch (e) {
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('فشل رفع الصورة (الاستقبال): ${e.toString()}');
     }
   }
 
