@@ -573,10 +573,12 @@ async def add_appointment(
     # للتوافق مع البيانات القديمة، نستخدم أول صورة كـ image_path
     image_path = image_paths[0] if image_paths else None
     
-    # نضمن وجود timezone؛ إن لم يوجد نفترض UTC
+    # نضمن وجود timezone؛ إن لم يوجد نفترض التوقيت المحلي (مثلاً UTC+3 للعراق)
     _sa = datetime.fromisoformat(scheduled_at)
     if _sa.tzinfo is None:
-        _sa = _sa.replace(tzinfo=timezone.utc)
+        # بدلاً من اعتبار الوقت UTC (الذي يسبب فرق 3 ساعات في الواجهة)
+        # نثبّت الـ timezone على +3 ساعات ليبقى الوقت كما أدخله المستخدم.
+        _sa = _sa.replace(tzinfo=timezone(timedelta(hours=3)))
 
     doctor_id = await _get_current_doctor_id(current)
     ap = await patient_service.create_appointment(

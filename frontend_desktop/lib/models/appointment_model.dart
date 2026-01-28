@@ -28,9 +28,11 @@ class AppointmentModel {
   factory AppointmentModel.fromJson(Map<String, dynamic> json) {
     // Backend/Hive support logic adapted
     final scheduledAt = json['scheduled_at'] ?? json['date'];
-    final dateTime = scheduledAt is String
+    // نحرص على تحويل التاريخ القادم من الباكند إلى التوقيت المحلي
+    final rawDateTime = scheduledAt is String
         ? DateTime.parse(scheduledAt)
         : (scheduledAt is DateTime ? scheduledAt : DateTime.now());
+    final dateTime = rawDateTime.toLocal();
 
     List<String> finalImagePaths = [];
     if (json['image_paths'] != null && json['image_paths'] is List) {

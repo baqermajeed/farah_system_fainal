@@ -7978,12 +7978,22 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
       if (last == null) {
         return 'لا يوجد تحويلات سابقة';
       }
-      final now = DateTime.now();
-      final days = now.difference(last).inDays;
+
+      // نحسب الفرق بناءً على اليوم (بدون اعتبار الساعات لتفادي مشاكل اختلاف المناطق الزمنية)
+      final DateTime lastLocal = last.toLocal();
+      final DateTime today = DateTime.now();
+      final DateTime lastDateOnly =
+          DateTime(lastLocal.year, lastLocal.month, lastLocal.day);
+      final DateTime todayDateOnly =
+          DateTime(today.year, today.month, today.day);
+
+      final int days = todayDateOnly.difference(lastDateOnly).inDays;
+
       if (days <= 0) {
-        return 'آخر تحويل: اليوم';
+        return 'آخر تحويل اليوم';
       }
-      return 'آخر تحويل: منذ $days يوم';
+
+      return 'منذ $days يوم';
     }
 
     showDialog(
@@ -8095,8 +8105,9 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: 4,
                             crossAxisSpacing: 12.w,
-                            mainAxisSpacing: 12.h,
-                            childAspectRatio: 0.8,
+                            mainAxisSpacing: 6.h,
+                            // تثبيت ارتفاع كل بطاقة طبيب على 100.h
+                            mainAxisExtent: 110.h,
                           ),
                           itemCount: doctors.length,
                           itemBuilder: (context, index) {
@@ -8114,6 +8125,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                 });
                               },
                               child: Container(
+                                width: 150.w,
+                                height: 100.h,
                                 decoration: BoxDecoration(
                                   color: isSelected
                                       ? AppColors.primaryLight
@@ -8127,8 +8140,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                   ),
                                 ),
                                 padding: EdgeInsets.symmetric(
-                                  horizontal: 8.w,
-                                  vertical: 8.h,
+                                  horizontal: 4.w,
+                                  vertical: 4.h,
                                 ),
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
@@ -8175,17 +8188,52 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                     SizedBox(height: 4.h),
-                                    // عدد التحويلات اليوم
-                                    Text(
-                                      '${doctor.todayTransfers} تحويل اليوم',
-                                      style: TextStyle(
-                                        fontSize: 10.sp,
-                                        color: AppColors.textSecondary,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                                    // عدد التحويلات اليوم على شكل دوائر
+                                    Builder(
+                                      builder: (context) {
+                                        final int transfers =
+                                            doctor.todayTransfers;
+                                        // إذا لا توجد تحويلات نعرض دائرة رمادية واحدة
+                                        final int dots = transfers == 0
+                                            ? 1
+                                            : (transfers > 10 ? 10 : transfers);
+                                        final Color dotColor = transfers > 0
+                                            ? Colors.green
+                                            : AppColors.divider;
+
+                                        return Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            Wrap(
+                                              spacing: 3.w,
+                                              runSpacing: 2.h,
+                                              children: List.generate(
+                                                dots,
+                                                (index) => Container(
+                                                  width: 6.w,
+                                                  height: 6.w,
+                                                  decoration: BoxDecoration(
+                                                    color: dotColor,
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            if (transfers > 10) ...[
+                                              SizedBox(width: 6.w),
+                                              Text(
+                                                '+$transfers',
+                                                style: TextStyle(
+                                                  fontSize: 10.sp,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: AppColors.textSecondary,
+                                                ),
+                                              ),
+                                            ],
+                                          ],
+                                        );
+                                      },
                                     ),
                                     SizedBox(height: 4.h),
                                     // آخر تحويل بالأيام
@@ -8208,37 +8256,110 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                         ),
                       ),
                     SizedBox(height: 12.h),
-                    Container(
-                      padding: EdgeInsets.all(12.w),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryLight,
-                        borderRadius: BorderRadius.circular(12.r),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          RadioListTile<String>(
-                            value: 'shared',
-                            groupValue: mode,
-                            onChanged: (v) {
-                              if (v == null) return;
-                              setDialogState(() => mode = v);
-                            },
-                            title: const Text('مشترك '),
-                            dense: true,
+                    Row(
+                      children: [
+                        // خيار "مشترك"
+                        Expanded(
+                          child: InkWell(
+                            onTap: () => setDialogState(() => mode = 'shared'),
+                            borderRadius: BorderRadius.circular(12.r),
+                            child: Container(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 12.w,
+                                vertical: 10.h,
+                              ),
+                              decoration: BoxDecoration(
+                                color: mode == 'shared'
+                                    ? AppColors.success.withOpacity(0.15)
+                                    : Colors.white,
+                                borderRadius: BorderRadius.circular(12.r),
+                                border: Border.all(
+                                  color: mode == 'shared'
+                                      ? AppColors.success
+                                      : AppColors.divider,
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    'مشترك',
+                                    style: TextStyle(
+                                      fontSize: 13.sp,
+                                      fontWeight: FontWeight.w600,
+                                      color: mode == 'shared'
+                                          ? AppColors.success
+                                          : AppColors.textPrimary,
+                                    ),
+                                  ),
+                                  SizedBox(width: 8.w),
+                                  Radio<String>(
+                                    value: 'shared',
+                                    groupValue: mode,
+                                    onChanged: (v) {
+                                      if (v == null) return;
+                                      setDialogState(() => mode = v);
+                                    },
+                                    activeColor: AppColors.success,
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
-                          RadioListTile<String>(
-                            value: 'move',
-                            groupValue: mode,
-                            onChanged: (v) {
-                              if (v == null) return;
-                              setDialogState(() => mode = v);
-                            },
-                            title: const Text('غير مشترك'),
-                            dense: true,
+                        ),
+                        SizedBox(width: 12.w),
+                        // خيار "غير مشترك"
+                        Expanded(
+                          child: InkWell(
+                            onTap: () => setDialogState(() => mode = 'move'),
+                            borderRadius: BorderRadius.circular(12.r),
+                            child: Container(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 12.w,
+                                vertical: 10.h,
+                              ),
+                              decoration: BoxDecoration(
+                                color: mode == 'move'
+                                    ? AppColors.error.withOpacity(0.12)
+                                    : Colors.white,
+                                borderRadius: BorderRadius.circular(12.r),
+                                border: Border.all(
+                                  color: mode == 'move'
+                                      ? AppColors.error
+                                      : AppColors.divider,
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    'غير مشترك',
+                                    style: TextStyle(
+                                      fontSize: 13.sp,
+                                      fontWeight: FontWeight.w600,
+                                      color: mode == 'move'
+                                          ? AppColors.error
+                                          : AppColors.textPrimary,
+                                    ),
+                                  ),
+                                  SizedBox(width: 8.w),
+                                  Radio<String>(
+                                    value: 'move',
+                                    groupValue: mode,
+                                    onChanged: (v) {
+                                      if (v == null) return;
+                                      setDialogState(() => mode = v);
+                                    },
+                                    activeColor: AppColors.error,
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                     SizedBox(height: 16.h),
                     ElevatedButton(
