@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:frontend_desktop/models/implant_stage_model.dart';
 import 'package:frontend_desktop/services/implant_stage_service.dart';
 import 'package:frontend_desktop/core/network/api_exception.dart';
+import 'package:frontend_desktop/controllers/appointment_controller.dart';
 
 class ImplantStageController extends GetxController {
   final _implantStageService = ImplantStageService();
@@ -26,12 +27,18 @@ class ImplantStageController extends GetxController {
   /// Load stages once per patient unless you explicitly call [loadStages] to refresh.
   Future<void> ensureStagesLoaded(String patientId) async {
     // If we already tried once (even if empty) don't keep hammering the backend.
-    if (_loadedOncePatientIds.contains(patientId) || _inFlightPatientIds.contains(patientId)) {
+    if (_loadedOncePatientIds.contains(patientId) ||
+        _inFlightPatientIds.contains(patientId)) {
       return;
     }
 
     _inFlightPatientIds.add(patientId);
     try {
+      // لتجنّب "القفزة" في الواجهة: نحذف أي بيانات قديمة في الذاكرة
+      // ونُظهر حالة تحميل إلى أن تَصل بيانات الباكند الفعلية.
+      isLoading.value = true;
+      stages.removeWhere((s) => s.patientId == patientId);
+
       await loadStages(patientId);
     } finally {
       _inFlightPatientIds.remove(patientId);
@@ -174,6 +181,10 @@ class ImplantStageController extends GetxController {
         stages[newIndex] = updatedStage;
       }
 
+      // 4) إعادة تحميل جميع مراحل هذا المريض من الباكند لضمان تحديث
+      // مواعيد المراحل التالية التي يُعاد حسابها في السيرفر.
+      await loadStages(patientId);
+
       return true;
     } on ApiException catch (e) {
       // Rollback
@@ -269,6 +280,20 @@ class ImplantStageController extends GetxController {
         stages.add(completedStage);
       }
 
+      // 4) إعادة تحميل المراحل من الباكند حتى يتم تحديث موعد المرحلة التالية
+      // التي يتم إنشاؤها / تعديلها تلقائياً في السيرفر بعد الإكمال.
+      await loadStages(patientId);
+
+      // 5) تحديث جدول المواعيد من الباكند أيضاً حتى يختفي الموعد المكتمل
+      // من تبويب المواعيد (اليوم/المتأخرون/هذا الشهر) وكذلك من مواعيد المريض.
+      try {
+        final appointmentController = Get.find<AppointmentController>();
+        await appointmentController.loadDoctorAppointments();
+        await appointmentController.loadPatientAppointmentsById(patientId);
+      } catch (_) {
+        // إذا فشل التحديث هنا، سيظهر التغيير عند إعادة تحميل المواعيد يدوياً.
+      }
+
       return true;
     } on ApiException catch (e) {
       // Rollback
@@ -361,6 +386,16 @@ class ImplantStageController extends GetxController {
       if (newIndex != -1) {
         stages[newIndex] = uncompletedStage;
       }
+
+      // 4) إعادة تحميل المراحل لضمان تطابق الواجهة مع حالة الباكند
+      await loadStages(patientId);
+
+      // 5) إعادة تحميل المواعيد حتى يعود الموعد إلى جدول المواعيد
+      try {
+        final appointmentController = Get.find<AppointmentController>();
+        await appointmentController.loadDoctorAppointments();
+        await appointmentController.loadPatientAppointmentsById(patientId);
+      } catch (_) {}
 
       return true;
     } on ApiException catch (e) {

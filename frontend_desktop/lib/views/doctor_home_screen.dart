@@ -2446,11 +2446,17 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
       final cached = _appointmentController.getCachedPatientAppointments(
         patient.id,
       );
-      final appointments = cached.isNotEmpty
+      final allAppointments = cached.isNotEmpty
           ? List<AppointmentModel>.from(cached)
           : _appointmentController.appointments
               .where((apt) => apt.patientId == patient.id)
               .toList();
+
+      // نعرض فقط المواعيد النشطة (scheduled أو pending)
+      final appointments = allAppointments.where((apt) {
+        final status = apt.status.toLowerCase();
+        return status == 'scheduled' || status == 'pending';
+      }).toList();
 
       if (appointments.isEmpty) {
         return Container(
@@ -3192,6 +3198,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
             );
 
             final isLast = index == allStages.length - 1;
+            // تاريخ العرض للمستخدم هو التاريخ القادم من الباكند كما هو
+            final DateTime displayDate = existingStage.scheduledAt;
 
             // تحديد إذا كانت المرحلة التالية مكتملة
             bool hasNextCompleted = false;
@@ -3229,6 +3237,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
               hasNextCompleted: hasNextCompleted,
               getDayName: getDayName,
               formatTime: formatTime,
+              displayDate: displayDate,
               showAppointmentInfo:
                   existingStage.isCompleted ||
                   isNextToLastCompleted ||
@@ -3247,6 +3256,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
     required bool hasNextCompleted,
     required String Function(DateTime) getDayName,
     required String Function(DateTime) formatTime,
+    required DateTime displayDate,
     required bool showAppointmentInfo,
     required String patientId,
   }) {
@@ -3264,7 +3274,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                 context,
                 patientId,
                 stage.stageName,
-                stage.scheduledAt,
+                  displayDate,
               );
             },
             child: Padding(
@@ -3303,7 +3313,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                     ),
                     SizedBox(height: 4.h),
                     Text(
-                      'تاريخ ${dateFormat.format(stage.scheduledAt)} يوم ${getDayName(stage.scheduledAt)} الساعة ${formatTime(stage.scheduledAt)}',
+                      'تاريخ ${dateFormat.format(displayDate)} يوم ${getDayName(displayDate)} الساعة ${formatTime(displayDate)}',
                       style: TextStyle(
                         fontSize: 12.sp,
                         color: AppColors.textSecondary,

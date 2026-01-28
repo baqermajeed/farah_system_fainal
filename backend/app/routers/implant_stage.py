@@ -13,7 +13,10 @@ from app.services import implant_stage_service
 from app.models import User, Doctor, Patient
 from beanie import PydanticObjectId as OID
 
-router = APIRouter(prefix="/patients/{patient_id}/implant-stages", tags=["implant-stages"])
+router = APIRouter(
+    prefix="/patients/{patient_id}/implant-stages",
+    tags=["implant-stages"],
+)
 
 
 @router.get("", response_model=ImplantStagesResponse)
@@ -21,12 +24,18 @@ async def get_implant_stages(
     patient_id: str,
     current=Depends(get_current_user),
 ):
-    """جلب جميع مراحل زراعة الأسنان للمريض."""
+    """جلب مراحل زراعة الأسنان للمريض.
+
+    - الطبيب: يرى فقط المراحل المرتبطة به هو لهذا المريض.
+    - المريض والاستقبال: يرون جميع المراحل المسجَّلة لهذا المريض (بغض النظر عن الطبيب).
+    """
     # التحقق من أن المستخدم لديه صلاحية الوصول للمريض
     patient = await Patient.get(OID(patient_id))
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
-    
+
+    doctor_id_for_query: str | None = None
+
     # التحقق من الصلاحيات: الطبيب، المريض، أو الاستقبال
     user_type = current.role
     if user_type == Role.DOCTOR:
@@ -34,6 +43,7 @@ async def get_implant_stages(
         doctor = await Doctor.find_one(Doctor.user_id == current.id)
         if not doctor or OID(doctor.id) not in patient.doctor_ids:
             raise HTTPException(status_code=403, detail="Not your patient")
+        doctor_id_for_query = str(doctor.id)
     elif user_type == Role.PATIENT:
         # المريض: يجب أن يكون المريض نفسه
         if str(patient.user_id) != str(current.id):
@@ -41,24 +51,35 @@ async def get_implant_stages(
     elif user_type != Role.RECEPTIONIST:
         # الاستقبال: مسموح، لكن غيرهم غير مسموح
         raise HTTPException(status_code=403, detail="Access denied")
-    
-    stages = await implant_stage_service.get_implant_stages(patient_id)
-    
+
+    stages = await implant_stage_service.get_implant_stages(
+        patient_id,
+        doctor_id_for_query,
+    )
+
     # تحويل إلى ImplantStageOut
     stage_outs = [
         ImplantStageOut(
             id=str(stage.id),
             patient_id=str(stage.patient_id),
             stage_name=stage.stage_name,
-            scheduled_at=stage.scheduled_at.isoformat() if stage.scheduled_at else datetime.now(timezone.utc).isoformat(),
+            scheduled_at=stage.scheduled_at.isoformat()
+            if stage.scheduled_at
+            else datetime.now(timezone.utc).isoformat(),
             is_completed=stage.is_completed,
-            appointment_id=str(stage.appointment_id) if stage.appointment_id else None,
-            created_at=stage.created_at.isoformat() if stage.created_at else datetime.now(timezone.utc).isoformat(),
-            updated_at=stage.updated_at.isoformat() if stage.updated_at else datetime.now(timezone.utc).isoformat(),
+            appointment_id=str(stage.appointment_id)
+            if stage.appointment_id
+            else None,
+            created_at=stage.created_at.isoformat()
+            if stage.created_at
+            else datetime.now(timezone.utc).isoformat(),
+            updated_at=stage.updated_at.isoformat()
+            if stage.updated_at
+            else datetime.now(timezone.utc).isoformat(),
         )
         for stage in stages
     ]
-    
+
     return ImplantStagesResponse(stages=stage_outs)
 
 
