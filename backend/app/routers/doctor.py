@@ -243,13 +243,17 @@ async def transfer_patient(
 
 @router.get("/doctors")
 async def list_doctors_for_manager(current=Depends(get_current_user)):
-    """قائمة جميع الأطباء مع عدد التحويلات اليوم - متاحة للطبيب المدير فقط (لاختيار طبيب عند التحويل)."""
+    """قائمة جميع الأطباء مع عدد التحويلات (تعيين المرضى) في هذا اليوم، وتاريخ آخر تحويل.
+
+    - نستخدم حقل doctor_profiles.<doctor_id>.assigned_at الموجود داخل وثيقة المريض،
+      ولا نعتمد على أي حدود للـ limit، وبالتالي تُحتسب كل التحويلات.
+    - last_transfer_at هو أحدث assigned_at لأي مريض مرتبط بالطبيب.
+    """
     _ = await _require_doctor_manager(current)
 
     from datetime import datetime, timezone, timedelta
-    from app.models import AssignmentLog
+    from app.services import patient_service
 
-    # حساب بداية اليوم
     now = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     tomorrow_start = today_start + timedelta(days=1)
@@ -259,56 +263,61 @@ async def list_doctors_for_manager(current=Depends(get_current_user)):
     users = await User.find(In(User.id, user_ids)).to_list() if user_ids else []
     user_map = {u.id: u for u in users}
 
-    # جلب جميع سجلات التحويل لحساب:
-    # - عدد التحويلات اليوم لكل طبيب
-    # - تاريخ آخر تحويل لكل طبيب
-    transfers_by_doctor: dict[str, int] = {}
-    last_transfer_by_doctor: dict[str, datetime] = {}
-
-    try:
-        logs = await AssignmentLog.find({}).to_list()
-
-        print(f"🔍 [Doctor Router] Found {len(logs)} transfer logs (all time)")
-        print(f"🔍 [Doctor Router] Today range: {today_start} to {tomorrow_start}")
-
-        for log in logs:
-            doctor_key = str(log.doctor_id)
-            assigned_at = getattr(log, "assigned_at", None) or now
-
-            # عدّ تحويلات هذا اليوم فقط
-            if today_start <= assigned_at < tomorrow_start:
-                transfers_by_doctor[doctor_key] = transfers_by_doctor.get(doctor_key, 0) + 1
-
-            # حفظ آخر تاريخ تحويل (أحدث assigned_at) بغض النظر عن اليوم
-            prev = last_transfer_by_doctor.get(doctor_key)
-            if prev is None or assigned_at > prev:
-                last_transfer_by_doctor[doctor_key] = assigned_at
-    except Exception as e:
-        # في حال حدوث أي خطأ، نطبع في اللوج لكن لا نمنع إرجاع قائمة الأطباء
-        logger.error(f"❌ [Doctor Router] Failed to aggregate AssignmentLog data: {e}")
-
     out = []
     for d in doctors:
         u = user_map.get(d.user_id)
         if not u:
             continue
+
         doctor_id_str = str(d.id)
-        today_transfers_count = transfers_by_doctor.get(doctor_id_str, 0)
-        last_transfer_at = last_transfer_by_doctor.get(doctor_id_str)
-        
+        doctor_key = doctor_id_str
+
+        # جلب جميع المرضى المرتبطين بهذا الطبيب (بدون حد للعدد)
+        patients = await patient_service.list_doctor_patients(
+            doctor_id=doctor_id_str, skip=0, limit=None
+        )
+
+        today_transfers = 0
+        last_transfer_at: datetime | None = None
+
+        for p in patients:
+            profile = (p.doctor_profiles or {}).get(doctor_key)
+            if not profile or not getattr(profile, "assigned_at", None):
+                continue
+
+            assigned_at = profile.assigned_at
+            if assigned_at is None:
+                continue
+
+            # ضمان التحويل إلى UTC قبل المقارنة
+            if assigned_at.tzinfo is None:
+                assigned_utc = assigned_at.replace(tzinfo=timezone.utc)
+            else:
+                assigned_utc = assigned_at.astimezone(timezone.utc)
+
+            # يحتسب فقط التحويلات التي حدثت في هذا اليوم (يُعاد ضبطها تلقائياً عند 00:00)
+            if today_start <= assigned_utc < tomorrow_start:
+                today_transfers += 1
+
+            # حفظ أحدث تاريخ تحويل على الإطلاق
+            if (last_transfer_at is None) or (assigned_utc > last_transfer_at):
+                last_transfer_at = assigned_utc
+
         doctor_data = {
             "id": doctor_id_str,
             "user_id": str(d.user_id),
             "name": u.name,
             "phone": u.phone,
             "imageUrl": u.imageUrl,
-            "today_transfers": today_transfers_count,
+            "today_transfers": today_transfers,
             "last_transfer_at": last_transfer_at.isoformat() if last_transfer_at else None,
         }
-        
-        print(f"🔍 [Doctor Router] Doctor {u.name}: {today_transfers_count} transfers")
+
+        print(
+            f"🔍 [Doctor Router] Doctor {u.name}: today_transfers={today_transfers}, last={last_transfer_at}"
+        )
         out.append(doctor_data)
-    
+
     print(f"🔍 [Doctor Router] Returning {len(out)} doctors")
     return out
 
