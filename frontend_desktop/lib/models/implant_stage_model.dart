@@ -20,34 +20,25 @@ class ImplantStageModel {
   });
 
   factory ImplantStageModel.fromJson(Map<String, dynamic> json) {
-    // تحويل scheduled_at من UTC إلى local time
+    // تحويل أي تاريخ/وقت قادم من الباكند إلى التوقيت المحلي مباشرة
     DateTime parseDateTime(dynamic dateTimeValue) {
       if (dateTimeValue == null) {
         return DateTime.now().toLocal();
       }
-      
+
       if (dateTimeValue is String) {
         try {
-          String timeString = dateTimeValue.trim();
-          // التأكد من معاملة UTC بشكل صحيح
-          if (timeString.endsWith('+00:00')) {
-            timeString = timeString.replaceFirst('+00:00', 'Z');
-          } else if (!timeString.endsWith('Z') && !timeString.contains('+') && !timeString.contains('-', 10)) {
-            // إذا لم يكن هناك timezone indicator، نضيف 'Z' للافتراض أنه UTC
-            if (timeString.length >= 19) {
-              timeString = '${timeString}Z';
-            }
-          }
-          final parsed = DateTime.parse(timeString);
-          // تحويل من UTC إلى local time
-          // DateTime.parse يجب أن يتعامل بشكل صحيح مع UTC timestamps
-          return parsed.isUtc ? parsed.toLocal() : parsed;
+          final parsed = DateTime.parse(dateTimeValue);
+          // إذا كان UTC نحوله إلى local، وإذا كان بدون timezone نعتبره أصلاً local
+          return parsed.toLocal();
         } catch (e) {
-          print('⚠️ [ImplantStageModel] Error parsing timestamp: $dateTimeValue, error: $e');
+          print(
+            '⚠️ [ImplantStageModel] Error parsing timestamp: $dateTimeValue, error: $e',
+          );
           return DateTime.now().toLocal();
         }
       } else if (dateTimeValue is DateTime) {
-        return dateTimeValue.isUtc ? dateTimeValue.toLocal() : dateTimeValue;
+        return dateTimeValue.toLocal();
       } else {
         return DateTime.now().toLocal();
       }

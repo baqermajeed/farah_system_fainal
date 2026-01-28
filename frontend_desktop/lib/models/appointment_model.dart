@@ -48,24 +48,25 @@ class AppointmentModel {
       dateOnly = DateTime.now();
     }
 
-    // استخراج الوقت (HH:mm) من الـ ISO string مباشرة لتجنب مشاكل الـ timezone
+    // استخراج الوقت (HH:mm) من الـ ISO string
     String _extractTimeFromIso(String? value) {
       if (value == null || value.isEmpty) {
         return _formatTime(DateTime.now());
       }
-      // يحاول إيجاد النمط "THH:MM"
-      final regex = RegExp(r'T(\d{2}):(\d{2})');
-      final match = regex.firstMatch(value);
-      if (match != null) {
-        final hh = match.group(1)!;
-        final mm = match.group(2)!;
-        return '$hh:$mm';
-      }
-      // fallback بسيط
       try {
-        final dt = DateTime.parse(value);
+        // نحترم المنطقة الزمنية إن وُجدت ونحوّل دائماً إلى التوقيت المحلي
+        final dt = DateTime.parse(value).toLocal();
         return _formatTime(dt);
       } catch (_) {
+        // fallback: محاولة قراءة النمط "THH:MM" يدوياً
+        final regex = RegExp(r'T(\d{2}):(\d{2})');
+        final match = regex.firstMatch(value);
+        if (match != null) {
+          final hh = match.group(1)!;
+          final mm = match.group(2)!;
+          return '$hh:$mm';
+        }
+        // fallback نهائي: الوقت الحالي
         return _formatTime(DateTime.now());
       }
     }

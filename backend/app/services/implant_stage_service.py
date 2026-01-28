@@ -59,12 +59,13 @@ async def initialize_implant_stages(patient_id: str, registration_date: datetime
     start_time_str = await _get_doctor_start_time(doctor_id, local_today)
     start_hour, start_minute = map(int, start_time_str.split(':'))
     
-    # إنشاء datetime من تاريخ اليوم مع أول وقت عمل للطبيب بالتوقيت المحلي
-    # ثم تحويله إلى UTC (نفترض توقيت بغداد UTC+3)
-    local_datetime = datetime.combine(local_today, datetime.min.time().replace(hour=start_hour, minute=start_minute))
-    # إضافة timezone محلي (UTC+3 لبغداد) ثم تحويل إلى UTC
-    baghdad_tz = timezone(timedelta(hours=3))
-    base_date = local_datetime.replace(tzinfo=baghdad_tz).astimezone(timezone.utc)
+    # إنشاء datetime من تاريخ اليوم مع أول وقت عمل للطبيب كتوقيت "محلي" بدون تحويلات زمنية
+    # ملاحظة: بقية النظام (المواعيد العادية) يخزن الأوقات كتوقيت محلي بدون timezone،
+    # لذلك نتبع نفس النمط هنا لتجنب فروقات ٣ ساعات بين أنواع المواعيد.
+    base_date = datetime.combine(
+        local_today,
+        datetime.min.time().replace(hour=start_hour, minute=start_minute),
+    )
     first_stage_name = IMPLANT_STAGES[0]
     
     # إنشاء Appointment للمرحلة الأولى
@@ -186,31 +187,40 @@ async def _get_next_stage_date(current_stage_name: str, current_stage_date: date
         else:
             # باقي المراحل: كل 30 يوم بعد المرحلة السابقة
             days_to_add = 30
-        
-        # تحويل current_stage_date إلى local timezone (بغداد UTC+3) ثم إضافة الأيام
-        baghdad_tz = timezone(timedelta(hours=3))
-        current_date_local = current_stage_date.astimezone(baghdad_tz)
-        next_date_local = current_date_local.date() + timedelta(days=days_to_add)
-        
+
+        # نعمل دائماً بتوقيت "محلي" بدون timezone لتوحيد السلوك مع المواعيد العادية
+        base_date = current_stage_date
+        # إذا جاء التاريخ من قاعدة البيانات مع timezone، نتجاهل الـ tz ونأخذ التاريخ/الوقت كما هو
+        if base_date.tzinfo is not None:
+            base_date = base_date.replace(tzinfo=None)
+
+        next_date_local = (base_date.date() + timedelta(days=days_to_add))
+
         # جلب أول وقت عمل للطبيب في يوم التاريخ التالي
         start_time_str = await _get_doctor_start_time(doctor_id, next_date_local)
         start_hour, start_minute = map(int, start_time_str.split(':'))
-        
-        # إنشاء datetime مع أول وقت عمل للطبيب في timezone محلي ثم تحويله إلى UTC
-        next_date_local_dt = datetime.combine(next_date_local, datetime.min.time().replace(hour=start_hour, minute=start_minute))
-        next_date = next_date_local_dt.replace(tzinfo=baghdad_tz).astimezone(timezone.utc)
-        
+
+        # إنشاء datetime مع أول وقت عمل للطبيب (محلي بدون timezone)
+        next_date = datetime.combine(
+            next_date_local,
+            datetime.min.time().replace(hour=start_hour, minute=start_minute),
+        )
+
         return next_date
     except ValueError:
-        # إذا لم تكن المرحلة في القائمة
-        baghdad_tz = timezone(timedelta(hours=3))
-        current_date_local = current_stage_date.astimezone(baghdad_tz)
-        next_date_local = current_date_local.date() + timedelta(days=30)
+        # إذا لم تكن المرحلة في القائمة، نضيف 30 يوماً بنفس منطق التوقيت المحلي
+        base_date = current_stage_date
+        if base_date.tzinfo is not None:
+            base_date = base_date.replace(tzinfo=None)
+
+        next_date_local = (base_date.date() + timedelta(days=30))
         # جلب أول وقت عمل للطبيب
         start_time_str = await _get_doctor_start_time(doctor_id, next_date_local)
         start_hour, start_minute = map(int, start_time_str.split(':'))
-        next_date_local_dt = datetime.combine(next_date_local, datetime.min.time().replace(hour=start_hour, minute=start_minute))
-        next_date = next_date_local_dt.replace(tzinfo=baghdad_tz).astimezone(timezone.utc)
+        next_date = datetime.combine(
+            next_date_local,
+            datetime.min.time().replace(hour=start_hour, minute=start_minute),
+        )
         return next_date
 
 

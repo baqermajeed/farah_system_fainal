@@ -77,7 +77,8 @@ class ImplantStageService {
     String time,
   ) async {
     try {
-      // دمج التاريخ والوقت (محلي) ثم إرسال UTC صريح حتى لا يحصل انحراف (+3 ساعات مثلاً)
+      // دمج التاريخ والوقت (محلي) وإرساله كما هو بدون تحويل UTC
+      // حتى يبقى نفس الوقت الذي يراه الطبيب في الواجهة هو المخزَّن في الباكند.
       final timeParts = time.split(':');
       final hour = int.parse(timeParts[0]);
       final minute = timeParts.length > 1 ? int.parse(timeParts[1]) : 0;
@@ -88,10 +89,9 @@ class ImplantStageService {
         hour,
         minute,
       );
-      final utcDateTime = localDateTime.toUtc();
 
       final data = {
-        'scheduled_at': utcDateTime.toIso8601String(),
+        'scheduled_at': localDateTime.toIso8601String(),
       };
 
       final response = await _api.put(
