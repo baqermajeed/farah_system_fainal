@@ -125,7 +125,8 @@ async def get_implant_stages(
 ) -> List[ImplantStage]:
     """جلب مراحل زراعة الأسنان للمريض.
 
-    - في حالة الطبيب: نعيد فقط المراحل المرتبطة بهذا الطبيب (مع دعم البيانات القديمة إن لزم).
+    - في حالة الطبيب: نعيد فقط المراحل المرتبطة بهذا الطبيب.
+      مع ترقية السجلات القديمة (بدون doctor_id) لتُنسب للطبيب الذي يستخدمها أولاً.
     - في حالة المريض أو الاستقبال: نعيد جميع المراحل للمريض بغض النظر عن الطبيب.
     """
 
@@ -133,26 +134,46 @@ async def get_implant_stages(
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
 
-    base_filter = [ImplantStage.patient_id == patient.id]
-
     if doctor_id is not None:
-        # للطبيب: نُرجع فقط مراحله (ونضم السجلات القديمة بدون doctor_id إن أردنا دعمها)
         did = OID(doctor_id)
+
+        # 1) جرّب جلب مراحل هذا الطبيب مباشرة
         stages = (
             await ImplantStage.find(
-                *base_filter,
-                Or(ImplantStage.doctor_id == did, ImplantStage.doctor_id == None),  # type: ignore[comparison-overlap]
+                ImplantStage.patient_id == patient.id,
+                ImplantStage.doctor_id == did,
             )
             .sort("+scheduled_at")
             .to_list()
         )
-    else:
-        # للمريض أو الاستقبال: جميع المراحل للمريض
-        stages = (
-            await ImplantStage.find(*base_filter)
+        if stages:
+            return stages
+
+        # 2) لا توجد مراحل مربوطة بهذا الطبيب، ابحث عن مراحل قديمة بدون doctor_id
+        legacy_stages = (
+            await ImplantStage.find(
+                ImplantStage.patient_id == patient.id,
+                ImplantStage.doctor_id == None,  # type: ignore[comparison-overlap]
+            )
             .sort("+scheduled_at")
             .to_list()
         )
+        if not legacy_stages:
+            return []
+
+        # 3) ترقيتها للطبيب الحالي حتى لا يراها أي طبيب آخر مستقبلاً
+        for s in legacy_stages:
+            s.doctor_id = did
+            await s.save()
+
+        return legacy_stages
+
+    # للمريض أو الاستقبال: جميع المراحل للمريض
+    stages = (
+        await ImplantStage.find(ImplantStage.patient_id == patient.id)
+        .sort("+scheduled_at")
+        .to_list()
+    )
 
     return stages
 
@@ -173,7 +194,7 @@ async def update_stage_date(
     if did not in patient.doctor_ids:
         raise HTTPException(status_code=403, detail="Not your patient")
 
-    # البحث عن المرحلة الخاصة بهذا الطبيب
+    # البحث عن المرحلة الخاصة بهذا الطبيب (مع دعم مؤقت للسجلات القديمة)
     stage = await ImplantStage.find_one(
         ImplantStage.patient_id == patient.id,
         ImplantStage.stage_name == stage_name,
@@ -386,7 +407,7 @@ async def complete_stage(
     if did not in patient.doctor_ids:
         raise HTTPException(status_code=403, detail="Not your patient")
 
-    # البحث عن المرحلة الخاصة بهذا الطبيب
+    # البحث عن المرحلة الخاصة بهذا الطبيب (مع دعم مؤقت للسجلات القديمة)
     stage = await ImplantStage.find_one(
         ImplantStage.patient_id == patient.id,
         ImplantStage.stage_name == stage_name,
