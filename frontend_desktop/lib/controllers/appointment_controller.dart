@@ -166,7 +166,7 @@ class AppointmentController extends GetxController {
     String? dateTo,
     String? status,
     int skip = 0,
-    int limit = 50,
+    int limit = 100000, // جلب كل المواعيد تقريباً بدون حد فعلي
   }) async {
     try {
       isLoading.value = true;
@@ -307,7 +307,17 @@ class AppointmentController extends GetxController {
         imagePaths: const [],
       );
 
+      // إضافة الموعد المؤقت إلى قائمة المواعيد العامة
       appointments.add(tempAppointment);
+
+      // إضافة الموعد المؤقت أيضاً إلى كاش المواعيد الخاصة بالمريض (إن وجد)
+      final cachedForPatient = patientAppointmentsCache[patientId];
+      if (cachedForPatient != null) {
+        final newList = List<AppointmentModel>.from(cachedForPatient)
+          ..add(tempAppointment);
+        patientAppointmentsCache[patientId] = newList;
+        patientAppointmentsCache.refresh();
+      }
 
       // 2) استدعاء السيرفر
       final appointment = await _doctorService.addAppointment(
@@ -318,7 +328,7 @@ class AppointmentController extends GetxController {
         imageFiles: imageFiles,
       );
 
-      // 3) استبدال الموعد المؤقت بالموعد الحقيقي
+      // 3) استبدال الموعد المؤقت بالموعد الحقيقي في قائمة المواعيد العامة
       final index =
           appointments.indexWhere((apt) => apt.id == tempAppointment!.id);
       if (index != -1) {
@@ -327,11 +337,37 @@ class AppointmentController extends GetxController {
         appointments.add(appointment);
       }
 
+      // 4) استبدال الموعد المؤقت بالموعد الحقيقي في كاش المريض (إن وجد)
+      final cachedAfterAdd = patientAppointmentsCache[patientId];
+      if (cachedAfterAdd != null &&
+          cachedAfterAdd.isNotEmpty &&
+          tempAppointment != null) {
+        final list = List<AppointmentModel>.from(cachedAfterAdd);
+        final cachedIndex =
+            list.indexWhere((apt) => apt.id == tempAppointment!.id);
+        if (cachedIndex != -1) {
+          list[cachedIndex] = appointment;
+        } else {
+          list.add(appointment);
+        }
+        patientAppointmentsCache[patientId] = list;
+        patientAppointmentsCache.refresh();
+      }
+
       Get.snackbar('نجح', 'تم إضافة الموعد بنجاح');
     } on ApiException catch (e) {
       // Rollback: إزالة الموعد المؤقت
       if (tempAppointment != null) {
         appointments.removeWhere((apt) => apt.id == tempAppointment!.id);
+
+        // إزالة الموعد المؤقت من كاش المريض أيضاً (إن وجد)
+        final cached = patientAppointmentsCache[patientId];
+        if (cached != null && cached.isNotEmpty) {
+          final list = List<AppointmentModel>.from(cached)
+            ..removeWhere((apt) => apt.id == tempAppointment!.id);
+          patientAppointmentsCache[patientId] = list;
+          patientAppointmentsCache.refresh();
+        }
       }
 
       if (NetworkUtils.isNetworkError(e)) {
@@ -343,6 +379,15 @@ class AppointmentController extends GetxController {
     } catch (e) {
       if (tempAppointment != null) {
         appointments.removeWhere((apt) => apt.id == tempAppointment!.id);
+
+        // إزالة الموعد المؤقت من كاش المريض أيضاً (إن وجد)
+        final cached = patientAppointmentsCache[patientId];
+        if (cached != null && cached.isNotEmpty) {
+          final list = List<AppointmentModel>.from(cached)
+            ..removeWhere((apt) => apt.id == tempAppointment!.id);
+          patientAppointmentsCache[patientId] = list;
+          patientAppointmentsCache.refresh();
+        }
       }
 
       NetworkUtils.showNetworkErrorDialog();

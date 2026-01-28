@@ -308,7 +308,7 @@ async def upload_patient_gallery_image(
 async def list_my_uploaded_gallery_images(
     patient_id: str,
     skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=100),
+    limit: int = Query(50, ge=1),
     current=Depends(get_current_user),
 ):
     """
@@ -349,18 +349,20 @@ async def list_appointments(
     date_to: str | None = None,
     status: str | None = None,
     skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=100),
+    limit: int = Query(50, ge=1),
 ):
     """جداول مواعيد جميع المرضى (اليوم/غدًا/نطاق تاريخ)، مع خيار المتأخرون."""
     df = datetime.fromisoformat(date_from) if date_from else None
     dt = datetime.fromisoformat(date_to) if date_to else None
+    # نجلب جميع المواعيد المطابقة للفلاتر في طلب واحد (بدون حد للـ limit)
+    # مع الحفاظ على دعم skip/limit في التوقيع لعدم كسر أي عميل قديم.
     apps = await patient_service.list_appointments_for_all(
         day=day,
         date_from=df,
         date_to=dt,
         status=status,
-        skip=skip,
-        limit=limit,
+        skip=0,
+        limit=None,
     )
     # نحضر معلومات المرضى والأطباء المرتبطة بهذه المواعيد
     from app.models import Patient, User, Doctor

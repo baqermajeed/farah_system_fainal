@@ -248,7 +248,7 @@ async def list_doctors_for_manager(current=Depends(get_current_user)):
 
     from datetime import datetime, timezone, timedelta
     from app.models import AssignmentLog
-    
+
     # حساب بداية اليوم
     now = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -259,22 +259,29 @@ async def list_doctors_for_manager(current=Depends(get_current_user)):
     users = await User.find(In(User.id, user_ids)).to_list() if user_ids else []
     user_map = {u.id: u for u in users}
 
-    # جلب عدد التحويلات اليوم لكل طبيب
-    from beanie import PydanticObjectId as OID
-    today_transfers = await AssignmentLog.find(
-        AssignmentLog.assigned_at >= today_start,
-        AssignmentLog.assigned_at < tomorrow_start,
-    ).to_list()
-    
-    print(f"🔍 [Doctor Router] Found {len(today_transfers)} transfers today")
+    # جلب جميع سجلات التحويل لحساب:
+    # - عدد التحويلات اليوم لكل طبيب
+    # - تاريخ آخر تحويل لكل طبيب
+    today_transfers = await AssignmentLog.find({}).to_list()
+
+    print(f"🔍 [Doctor Router] Found {len(today_transfers)} transfer logs (all time)")
     print(f"🔍 [Doctor Router] Today range: {today_start} to {tomorrow_start}")
-    
-    # تجميع عدد التحويلات لكل طبيب
+
     transfers_by_doctor: dict[str, int] = {}
+    last_transfer_by_doctor: dict[str, datetime] = {}
+
     for log in today_transfers:
         doctor_key = str(log.doctor_id)
-        transfers_by_doctor[doctor_key] = transfers_by_doctor.get(doctor_key, 0) + 1
-        print(f"🔍 [Doctor Router] Transfer to doctor {doctor_key}, total: {transfers_by_doctor[doctor_key]}")
+        assigned_at = log.assigned_at or now
+
+        # عدّ تحويلات اليوم فقط لعرضها كعدد
+        if today_start <= assigned_at < tomorrow_start:
+            transfers_by_doctor[doctor_key] = transfers_by_doctor.get(doctor_key, 0) + 1
+
+        # حفظ آخر تاريخ تحويل (أحدث assigned_at) لهذا الطبيب
+        prev = last_transfer_by_doctor.get(doctor_key)
+        if prev is None or assigned_at > prev:
+            last_transfer_by_doctor[doctor_key] = assigned_at
 
     out = []
     for d in doctors:
@@ -283,6 +290,7 @@ async def list_doctors_for_manager(current=Depends(get_current_user)):
             continue
         doctor_id_str = str(d.id)
         today_transfers_count = transfers_by_doctor.get(doctor_id_str, 0)
+        last_transfer_at = last_transfer_by_doctor.get(doctor_id_str)
         
         doctor_data = {
             "id": doctor_id_str,
@@ -291,6 +299,7 @@ async def list_doctors_for_manager(current=Depends(get_current_user)):
             "phone": u.phone,
             "imageUrl": u.imageUrl,
             "today_transfers": today_transfers_count,
+            "last_transfer_at": last_transfer_at.isoformat() if last_transfer_at else None,
         }
         
         print(f"🔍 [Doctor Router] Doctor {u.name}: {today_transfers_count} transfers")
@@ -346,7 +355,7 @@ async def upload_patient_profile_image(
 @router.get("/patients", response_model=List[PatientOut])
 async def my_patients(
     skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=100),
+    limit: int = Query(50, ge=1),
     current=Depends(get_current_user),
 ):
     """يعرض المرضى الخاصين بالطبيب (أساسي/ثانوي)."""
@@ -374,7 +383,7 @@ async def my_patients(
 @router.get("/patients/inactive", response_model=List[PatientOut])
 async def my_inactive_patients(
     skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=100),
+    limit: int = Query(50, ge=1),
     current=Depends(get_current_user),
 ):
     """List patients that became inactive for this doctor."""
@@ -642,21 +651,23 @@ async def list_my_appointments(
     date_to: str | None = None,
     status: str | None = None,
     skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=100),
+    limit: int = Query(50, ge=1),
     current=Depends(get_current_user),
 ):
     """مواعيدي: اليوم/غدًا/الشهر أو نطاق (مع المتأخرون)."""
     df = datetime.fromisoformat(date_from) if date_from else None
     dt = datetime.fromisoformat(date_to) if date_to else None
     doctor_id = await _get_current_doctor_id(current)
+    # نجلب جميع مواعيد الطبيب المطابقة للفلاتر في طلب واحد (بدون حد للـ limit)
+    # مع الحفاظ على skip/limit في التوقيع لعدم كسر أي عميل قديم.
     apps = await patient_service.list_appointments_for_doctor(
         doctor_id=doctor_id,
         day=day,
         date_from=df,
         date_to=dt,
         status=status,
-        skip=skip,
-        limit=limit,
+        skip=0,
+        limit=None,
     )
     result = []
     for a in apps:

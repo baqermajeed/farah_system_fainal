@@ -105,6 +105,10 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
   final TextEditingController _qrScanController = TextEditingController();
   final GlobalKey _qrPrintKey = GlobalKey();
 
+  // Appointments filtering (custom tab: date range from / to)
+  DateTime? _appointmentsRangeStart;
+  DateTime? _appointmentsRangeEnd;
+
   Future<void> _refreshData() async {
     await _patientController.loadPatients();
     await _appointmentController.loadDoctorAppointments();
@@ -131,7 +135,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _appointmentsTabController = TabController(length: 3, vsync: this);
+    _appointmentsTabController = TabController(length: 4, vsync: this);
     // Listen to tab changes
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
@@ -150,9 +154,9 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
         _galleryController.loadGallery(patient.id);
         _appointmentController.loadPatientAppointmentsById(patient.id);
 
-        // Set default tab to Records (index 2) when a patient is selected
-        _tabController.animateTo(2);
-        _currentTabIndex.value = 2;
+        // Set default tab to Gallery (index 0) when a patient is selected
+        _tabController.animateTo(0);
+        _currentTabIndex.value = 0;
 
         // Load implant stages if treatment type is زراعة
         if (patient.treatmentHistory != null &&
@@ -1180,6 +1184,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                 Tab(text: 'اليوم'),
                 Tab(text: 'هذا الشهر'),
                 Tab(text: 'المتأخرون'),
+                Tab(text: 'تصفية مخصصة'),
               ],
             ),
           ),
@@ -1192,6 +1197,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                 _buildAppointmentsTableContent('اليوم'),
                 _buildAppointmentsTableContent('هذا الشهر'),
                 _buildAppointmentsTableContent('المتأخرون'),
+                _buildAppointmentsTableContent('تصفية مخصصة'),
               ],
             ),
           ),
@@ -1209,6 +1215,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
       List<AppointmentModel> filteredAppointments = [];
       String emptyMessage = '';
 
+      // تحديد المواعيد حسب نوع الفلتر
       switch (filter) {
         case 'اليوم':
           filteredAppointments = _appointmentController.getTodayAppointments();
@@ -1219,16 +1226,36 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
           emptyMessage = 'لا توجد مواعيد متأخرة';
           break;
         case 'هذا الشهر':
-          filteredAppointments = _appointmentController
-              .getThisMonthAppointments();
+          filteredAppointments =
+              _appointmentController.getThisMonthAppointments();
           emptyMessage = 'لا توجد مواعيد هذا الشهر';
+          break;
+        case 'تصفية مخصصة':
+          if (_appointmentsRangeStart != null &&
+              _appointmentsRangeEnd != null) {
+            final start = _appointmentsRangeStart!;
+            final end = _appointmentsRangeEnd!;
+            filteredAppointments = _appointmentController.appointments
+                .where((apt) =>
+                    !apt.date.isBefore(
+                        DateTime(start.year, start.month, start.day)) &&
+                    !apt.date.isAfter(
+                        DateTime(end.year, end.month, end.day)))
+                .toList();
+            emptyMessage = 'لا توجد مواعيد في هذه الفترة';
+          } else {
+            filteredAppointments = [];
+            emptyMessage = 'اختر تاريخاً (من / إلى) لعرض المواعيد';
+          }
           break;
       }
 
       // ترتيب المواعيد حسب التاريخ
       filteredAppointments.sort((a, b) => a.date.compareTo(b.date));
 
-      if (filteredAppointments.isEmpty) {
+      final bool showCustomFilterControls = filter == 'تصفية مخصصة';
+
+      Widget buildEmptyState() {
         return Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1251,7 +1278,9 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
         );
       }
 
-      return Container(
+      final tableContent = filteredAppointments.isEmpty
+          ? buildEmptyState()
+          : Container(
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16.r),
@@ -1452,6 +1481,82 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
           ],
         ),
       );
+
+      // في تبويب التصفية المخصصة نضيف أدوات اختيار الشهر أو الفترة فوق الجدول
+      if (showCustomFilterControls) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Align(
+              alignment: Alignment.centerRight,
+              child: Wrap(
+                spacing: 8.w,
+                runSpacing: 4.h,
+                children: [
+                  // زر واحد لاختيار الفترة (من / إلى)
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final now = DateTime.now();
+                      // اختيار تاريخ البداية
+                      final start = await showDatePicker(
+                        context: context,
+                        initialDate: _appointmentsRangeStart ?? now,
+                        firstDate: DateTime(now.year - 5),
+                        lastDate: DateTime(now.year + 5),
+                      );
+                      if (start == null) return;
+
+                      // اختيار تاريخ النهاية
+                      final end = await showDatePicker(
+                        context: context,
+                        initialDate: _appointmentsRangeEnd ?? start,
+                        firstDate: DateTime(start.year, start.month, start.day),
+                        lastDate: DateTime(start.year + 5),
+                      );
+                      if (end == null) return;
+
+                      setState(() {
+                        _appointmentsRangeStart = start;
+                        _appointmentsRangeEnd = end;
+                      });
+                    },
+                    icon: Icon(
+                      Icons.date_range,
+                      size: 18.sp,
+                      color: AppColors.primary,
+                    ),
+                    label: Text(
+                      (_appointmentsRangeStart == null ||
+                              _appointmentsRangeEnd == null)
+                          ? 'من / إلى'
+                          : '${DateFormat('yyyy/MM/dd', 'ar').format(_appointmentsRangeStart!)}  →  ${DateFormat('yyyy/MM/dd', 'ar').format(_appointmentsRangeEnd!)}',
+                      style: TextStyle(
+                        fontSize: 12.sp,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: AppColors.primary),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 12.w,
+                        vertical: 8.h,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12.r),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 12.h),
+            Expanded(child: tableContent),
+          ],
+        );
+      }
+
+      return tableContent;
     });
   }
 
@@ -7868,6 +7973,19 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
     String? selectedDoctorId;
     String mode = 'shared'; // shared | move
 
+    String _buildLastTransferText(DoctorModel doctor) {
+      final last = doctor.lastTransferAt;
+      if (last == null) {
+        return 'لا يوجد تحويلات سابقة';
+      }
+      final now = DateTime.now();
+      final days = now.difference(last).inDays;
+      if (days <= 0) {
+        return 'آخر تحويل: اليوم';
+      }
+      return 'آخر تحويل: منذ $days يوم';
+    }
+
     showDialog(
       context: context,
       barrierDismissible: true,
@@ -7896,7 +8014,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
             return Dialog(
               backgroundColor: Colors.transparent,
               child: Container(
-                width: 420.w,
+                width: 800.w,
                 padding: EdgeInsets.all(20.w),
                 decoration: BoxDecoration(
                   color: AppColors.white,
@@ -7975,18 +8093,20 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                           shrinkWrap: true,
                           physics: const AlwaysScrollableScrollPhysics(),
                           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
+                            crossAxisCount: 4,
                             crossAxisSpacing: 12.w,
                             mainAxisSpacing: 12.h,
-                            childAspectRatio: 136.w / 66.h,
+                            childAspectRatio: 0.8,
                           ),
                           itemCount: doctors.length,
                           itemBuilder: (context, index) {
                             final doctor = doctors[index];
                             final isSelected = selectedDoctorId == doctor.id;
-                            // حساب عدد الدوائر (حد أقصى 10)
-                            final circlesCount = doctor.todayTransfers > 10 ? 10 : doctor.todayTransfers;
-                            
+
+                            final imageUrl = ImageUtils.convertToValidUrl(
+                              doctor.imageUrl,
+                            );
+
                             return GestureDetector(
                               onTap: () {
                                 setDialogState(() {
@@ -7994,8 +8114,6 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                 });
                               },
                               child: Container(
-                                width: 136.w,
-                                height: 66.h,
                                 decoration: BoxDecoration(
                                   color: isSelected
                                       ? AppColors.primaryLight
@@ -8010,89 +8128,77 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                 ),
                                 padding: EdgeInsets.symmetric(
                                   horizontal: 8.w,
-                                  vertical: 6.h,
+                                  vertical: 8.h,
                                 ),
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
-                                  mainAxisSize: MainAxisSize.min,
                                   crossAxisAlignment: CrossAxisAlignment.center,
                                   children: [
-                                    // اسم الطبيب
-                                    SizedBox(
-                                      height: 28.h,
-                                      child: Center(
-                                        child: Text(
-                                          doctor.name ?? doctor.phone,
-                                          style: TextStyle(
-                                            fontSize: 12.sp,
-                                            fontWeight: FontWeight.w700,
-                                            color: AppColors.textPrimary,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ),
-                                    SizedBox(height: 4.h),
-                                    // دوائر خضراء صغيرة تمثل عدد التحويلات اليوم
-                                    Flexible(
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          if (doctor.todayTransfers > 0)
-                                            Wrap(
-                                              alignment: WrapAlignment.center,
-                                              spacing: 3.w,
-                                              runSpacing: 2.h,
-                                              children: List.generate(
-                                                circlesCount,
-                                                (circleIndex) => Container(
-                                                  width: 6.w,
-                                                  height: 6.w,
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.green,
-                                                    shape: BoxShape.circle,
-                                                  ),
-                                                ),
+                                    // صورة الطبيب
+                                    CircleAvatar(
+                                      radius: 20.r,
+                                      backgroundColor: AppColors.primaryLight,
+                                      backgroundImage: (imageUrl != null &&
+                                              ImageUtils.isValidImageUrl(
+                                                imageUrl,
+                                              ))
+                                          ? NetworkImage(imageUrl)
+                                          : null,
+                                      child: (imageUrl == null ||
+                                              !ImageUtils.isValidImageUrl(
+                                                imageUrl,
+                                              ))
+                                          ? Text(
+                                              (doctor.name != null &&
+                                                      doctor.name!.isNotEmpty)
+                                                  ? doctor.name![0]
+                                                  : 'د',
+                                              style: TextStyle(
+                                                color: AppColors.primary,
+                                                fontSize: 16.sp,
+                                                fontWeight: FontWeight.bold,
                                               ),
                                             )
-                                          else
-                                            Container(
-                                              width: 6.w,
-                                              height: 6.w,
-                                              decoration: BoxDecoration(
-                                                color: Colors.grey.withOpacity(0.3),
-                                                shape: BoxShape.circle,
-                                              ),
-                                            ),
-                                          if (doctor.todayTransfers > 10)
-                                            Padding(
-                                              padding: EdgeInsets.only(top: 2.h),
-                                              child: Text(
-                                                '+${doctor.todayTransfers - 10}',
-                                                style: TextStyle(
-                                                  fontSize: 8.sp,
-                                                  color: Colors.green,
-                                                  fontWeight: FontWeight.w600,
-                                                ),
-                                              ),
-                                            ),
-                                          // عرض العدد
-                                          if (doctor.todayTransfers > 0)
-                                            Padding(
-                                              padding: EdgeInsets.only(top: 1.h),
-                                              child: Text(
-                                                '${doctor.todayTransfers} تحويل',
-                                                style: TextStyle(
-                                                  fontSize: 8.sp,
-                                                  color: AppColors.textSecondary,
-                                                  fontWeight: FontWeight.w500,
-                                                ),
-                                              ),
-                                            ),
-                                        ],
+                                          : null,
+                                    ),
+                                    SizedBox(height: 6.h),
+                                    // اسم الطبيب
+                                    Text(
+                                      doctor.name ?? doctor.phone,
+                                      style: TextStyle(
+                                        fontSize: 12.sp,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.textPrimary,
                                       ),
+                                      textAlign: TextAlign.center,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    SizedBox(height: 4.h),
+                                    // عدد التحويلات اليوم
+                                    Text(
+                                      '${doctor.todayTransfers} تحويل اليوم',
+                                      style: TextStyle(
+                                        fontSize: 10.sp,
+                                        color: AppColors.textSecondary,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    SizedBox(height: 4.h),
+                                    // آخر تحويل بالأيام
+                                    Text(
+                                      _buildLastTransferText(doctor),
+                                      style: TextStyle(
+                                        fontSize: 10.sp,
+                                        color: AppColors.primary,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ],
                                 ),

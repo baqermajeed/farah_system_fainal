@@ -9,7 +9,8 @@ from app.models import Patient, DoctorPatientProfile, User, Doctor, Appointment,
 from app.constants import Role
 from app.schemas import PatientUpdate
 
-MAX_PAGE_SIZE = 100
+# نرفع الحد الأقصى للصفحات إلى رقم كبير حتى لا نقيد النتائج بشكل قوي
+MAX_PAGE_SIZE = 100000
 
 
 def _normalize_pagination(skip: int = 0, limit: Optional[int] = None) -> Tuple[int, Optional[int]]:
