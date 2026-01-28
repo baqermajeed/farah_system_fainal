@@ -79,19 +79,9 @@ def _build_doctor_patient_out(patient: Patient, user: User, doctor_id: str) -> P
     doctor_profiles = build_doctor_profile_map(patient, doctor_id=doctor_id)
     doctor_profile = get_doctor_profile(patient, doctor_id=doctor_id, profiles=doctor_profiles)
     
-    # محاولة الحصول على treatment_type من doctor_profile أولاً
+    # نوع العلاج للطبيب الحالي فقط:
+    # إذا لم يُحدد الطبيب نوع العلاج لمريضه بعد، نظهر None بدلاً من أخذ نوع علاج طبيب آخر.
     treatment_type = doctor_profile.treatment_type if doctor_profile else None
-    
-    # إذا لم يكن موجوداً في doctor_profile، نأخذه من patient.treatment_type
-    if not treatment_type:
-        treatment_type = patient.treatment_type
-    
-    # إذا لم يكن موجوداً في patient.treatment_type أيضاً، نبحث في جميع doctor_profiles
-    if not treatment_type and patient.doctor_profiles:
-        for profile in patient.doctor_profiles.values():
-            if profile and profile.treatment_type:
-                treatment_type = profile.treatment_type
-                break
     
     return PatientOut(
         id=str(patient.id),

@@ -316,7 +316,8 @@ async def set_treatment_type(*, patient_id: str, doctor_id: str, treatment_type:
         raise HTTPException(status_code=404, detail="Patient not found")
     if OID(doctor_id) not in patient.doctor_ids:
         raise HTTPException(status_code=403, detail="Not your patient")
-    patient.treatment_type = treatment_type
+    # لا نستخدم بعد الآن الحقل العام patient.treatment_type لعزل نوع العلاج لكل طبيب على حدة.
+    # بدلاً من ذلك نخزّنه فقط داخل doctor_profiles[doctor_id].treatment_type
     doctor_key = str(doctor_id)
     profile = patient.doctor_profiles.get(doctor_key)
     if profile:

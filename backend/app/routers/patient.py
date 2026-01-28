@@ -23,6 +23,15 @@ async def my_profile(current=Depends(get_current_user)):
         await ensure_patient_qr(patient)
     u = current
     p = patient
+
+    # للمريض نعرض نوع علاج "عام" مشتق من أول doctor_profile لديه نوع علاج،
+    # ولا نعتمد على patient.treatment_type بعد الآن.
+    treatment_type: str | None = None
+    if p and p.doctor_profiles:
+        for profile in p.doctor_profiles.values():
+            if profile and profile.treatment_type:
+                treatment_type = profile.treatment_type
+                break
     return PatientOut(
         id=str(p.id),
         user_id=str(p.user_id),
@@ -31,7 +40,7 @@ async def my_profile(current=Depends(get_current_user)):
         gender=u.gender,
         age=u.age,
         city=u.city,
-        treatment_type=p.treatment_type,
+        treatment_type=treatment_type,
         visit_type=getattr(p, "visit_type", None),
         doctor_ids=[str(did) for did in p.doctor_ids],
         doctor_profiles=build_doctor_profile_map(p),
@@ -67,6 +76,14 @@ async def update_my_profile(data: PatientUpdate, current=Depends(get_current_use
     if patient and not patient.qr_code_data:
         await ensure_patient_qr(patient)
     
+    # إعادة حساب نوع العلاج العام للمريض بنفس منطق /patient/me
+    treatment_type: str | None = None
+    if patient and patient.doctor_profiles:
+        for profile in patient.doctor_profiles.values():
+            if profile and profile.treatment_type:
+                treatment_type = profile.treatment_type
+                break
+
     return PatientOut(
         id=str(patient.id),
         user_id=str(patient.user_id),
@@ -75,7 +92,7 @@ async def update_my_profile(data: PatientUpdate, current=Depends(get_current_use
         gender=u.gender,
         age=u.age,
         city=u.city,
-        treatment_type=patient.treatment_type,
+        treatment_type=treatment_type,
         visit_type=getattr(patient, "visit_type", None),
         doctor_ids=[str(did) for did in patient.doctor_ids],
         doctor_profiles=build_doctor_profile_map(patient),
