@@ -129,23 +129,28 @@ async def update_stage_date(
     if not stage:
         raise HTTPException(status_code=404, detail="Stage not found")
     
-    # تحديث تاريخ المرحلة
-    stage.scheduled_at = new_date
+    # نعمل دائماً بتوقيت "محلي" بدون timezone لتوحيد السلوك مع بقية المواعيد
+    base_new_date = new_date
+    if base_new_date.tzinfo is not None:
+        base_new_date = base_new_date.replace(tzinfo=None)
+
+    # تحديث تاريخ المرحلة الحالية
+    stage.scheduled_at = base_new_date
     stage.updated_at = datetime.now(timezone.utc)
     await stage.save()
     
-    # تحديث/إنشاء Appointment المرتبط
+    # تحديث/إنشاء Appointment المرتبط بالمرحلة الحالية
     if stage.appointment_id:
         appointment = await Appointment.get(stage.appointment_id)
         if appointment:
-            appointment.scheduled_at = new_date
+            appointment.scheduled_at = base_new_date
             await appointment.save()
         else:
             # إذا لم يكن الموعد موجوداً، ننشئ واحداً جديداً
             appointment = Appointment(
                 patient_id=patient.id,
                 doctor_id=OID(doctor_id),
-                scheduled_at=new_date,
+                scheduled_at=base_new_date,
                 note=f"موعد {stage_name}",
                 status="scheduled",
                 stage_name=stage_name,
@@ -158,7 +163,7 @@ async def update_stage_date(
         appointment = Appointment(
             patient_id=patient.id,
             doctor_id=OID(doctor_id),
-            scheduled_at=new_date,
+            scheduled_at=base_new_date,
             note=f"موعد {stage_name}",
             status="scheduled",
             stage_name=stage_name,
@@ -166,6 +171,78 @@ async def update_stage_date(
         await appointment.insert()
         stage.appointment_id = appointment.id
         await stage.save()
+
+    # بعد تعديل موعد هذه المرحلة، نعيد حساب مواعيد جميع المراحل التالية
+    try:
+        current_index = IMPLANT_STAGES.index(stage_name)
+        previous_stage_name = stage_name
+        previous_date = base_new_date
+
+        for next_index in range(current_index + 1, len(IMPLANT_STAGES)):
+            next_stage_name = IMPLANT_STAGES[next_index]
+
+            # جلب المرحلة التالية (إن كانت موجودة)
+            next_stage = await ImplantStage.find_one(
+                ImplantStage.patient_id == patient.id,
+                ImplantStage.stage_name == next_stage_name,
+            )
+            if not next_stage:
+                # إذا لم تكن المرحلة التالية موجودة، نتجاوز بدون إيقاف السلسلة
+                previous_stage_name = next_stage_name
+                continue
+
+            # حساب التاريخ الجديد للمرحلة التالية اعتماداً على التاريخ الحالي
+            next_date = await _get_next_stage_date(
+                previous_stage_name,
+                previous_date,
+                doctor_id,
+            )
+
+            # نزيل أي timezone ونخزن كتوقيت محلي بسيط
+            if next_date.tzinfo is not None:
+                next_date = next_date.replace(tzinfo=None)
+
+            next_stage.scheduled_at = next_date
+            next_stage.updated_at = datetime.now(timezone.utc)
+            await next_stage.save()
+
+            # تحديث/إنشاء الموعد المرتبط بالمرحلة التالية
+            if next_stage.appointment_id:
+                next_appt = await Appointment.get(next_stage.appointment_id)
+                if next_appt:
+                    next_appt.scheduled_at = next_date
+                    await next_appt.save()
+                else:
+                    next_appt = Appointment(
+                        patient_id=patient.id,
+                        doctor_id=OID(doctor_id),
+                        scheduled_at=next_date,
+                        note=f"موعد {next_stage_name}",
+                        status="scheduled",
+                        stage_name=next_stage_name,
+                    )
+                    await next_appt.insert()
+                    next_stage.appointment_id = next_appt.id
+                    await next_stage.save()
+            else:
+                next_appt = Appointment(
+                    patient_id=patient.id,
+                    doctor_id=OID(doctor_id),
+                    scheduled_at=next_date,
+                    note=f"موعد {next_stage_name}",
+                    status="scheduled",
+                    stage_name=next_stage_name,
+                )
+                await next_appt.insert()
+                next_stage.appointment_id = next_appt.id
+                await next_stage.save()
+
+            # تصبح هذه المرحلة هي "السابقة" للمرحلة التي بعدها
+            previous_stage_name = next_stage_name
+            previous_date = next_date
+    except ValueError:
+        # إذا لم تكن المرحلة الحالية ضمن القائمة الثابتة، لا نعيد حساب السلسلة
+        pass
     
     return stage
 
