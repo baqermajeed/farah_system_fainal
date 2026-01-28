@@ -275,10 +275,11 @@ async def list_doctors_for_manager(current=Depends(get_current_user)):
             doctor_key = str(log.doctor_id)
             assigned_at = getattr(log, "assigned_at", None) or now
 
-            # عدّ جميع التحويلات عبر التاريخ لهذا الطبيب
-            transfers_by_doctor[doctor_key] = transfers_by_doctor.get(doctor_key, 0) + 1
+            # عدّ تحويلات هذا اليوم فقط
+            if today_start <= assigned_at < tomorrow_start:
+                transfers_by_doctor[doctor_key] = transfers_by_doctor.get(doctor_key, 0) + 1
 
-            # حفظ آخر تاريخ تحويل (أحدث assigned_at) لهذا الطبيب
+            # حفظ آخر تاريخ تحويل (أحدث assigned_at) بغض النظر عن اليوم
             prev = last_transfer_by_doctor.get(doctor_key)
             if prev is None or assigned_at > prev:
                 last_transfer_by_doctor[doctor_key] = assigned_at
