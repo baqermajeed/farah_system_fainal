@@ -262,26 +262,30 @@ async def list_doctors_for_manager(current=Depends(get_current_user)):
     # جلب جميع سجلات التحويل لحساب:
     # - عدد التحويلات اليوم لكل طبيب
     # - تاريخ آخر تحويل لكل طبيب
-    today_transfers = await AssignmentLog.find({}).to_list()
-
-    print(f"🔍 [Doctor Router] Found {len(today_transfers)} transfer logs (all time)")
-    print(f"🔍 [Doctor Router] Today range: {today_start} to {tomorrow_start}")
-
     transfers_by_doctor: dict[str, int] = {}
     last_transfer_by_doctor: dict[str, datetime] = {}
 
-    for log in today_transfers:
-        doctor_key = str(log.doctor_id)
-        assigned_at = log.assigned_at or now
+    try:
+        logs = await AssignmentLog.find({}).to_list()
 
-        # عدّ تحويلات اليوم فقط لعرضها كعدد
-        if today_start <= assigned_at < tomorrow_start:
-            transfers_by_doctor[doctor_key] = transfers_by_doctor.get(doctor_key, 0) + 1
+        print(f"🔍 [Doctor Router] Found {len(logs)} transfer logs (all time)")
+        print(f"🔍 [Doctor Router] Today range: {today_start} to {tomorrow_start}")
 
-        # حفظ آخر تاريخ تحويل (أحدث assigned_at) لهذا الطبيب
-        prev = last_transfer_by_doctor.get(doctor_key)
-        if prev is None or assigned_at > prev:
-            last_transfer_by_doctor[doctor_key] = assigned_at
+        for log in logs:
+            doctor_key = str(log.doctor_id)
+            assigned_at = getattr(log, "assigned_at", None) or now
+
+            # عدّ تحويلات اليوم فقط لعرضها كعدد
+            if today_start <= assigned_at < tomorrow_start:
+                transfers_by_doctor[doctor_key] = transfers_by_doctor.get(doctor_key, 0) + 1
+
+            # حفظ آخر تاريخ تحويل (أحدث assigned_at) لهذا الطبيب
+            prev = last_transfer_by_doctor.get(doctor_key)
+            if prev is None or assigned_at > prev:
+                last_transfer_by_doctor[doctor_key] = assigned_at
+    except Exception as e:
+        # في حال حدوث أي خطأ، نطبع في اللوج لكن لا نمنع إرجاع قائمة الأطباء
+        logger.error(f"❌ [Doctor Router] Failed to aggregate AssignmentLog data: {e}")
 
     out = []
     for d in doctors:
