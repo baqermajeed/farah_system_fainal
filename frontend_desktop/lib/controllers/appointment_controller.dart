@@ -172,19 +172,7 @@ class AppointmentController extends GetxController {
         _customFilterEnd = customFilterEnd;
       }
       
-      if (isRefresh || isInitial) {
-        currentPage = 1;
-        hasMoreAppointments.value = true;
-        isLoading.value = true;
-        appointments.clear();
-        primaryAppointments.clear();
-        secondaryAppointments.clear();
-      } else {
-        if (!hasMoreAppointments.value || isLoadingMoreAppointments.value) return;
-        isLoadingMoreAppointments.value = true;
-      }
-
-      // حساب day و status و dateFrom/dateTo حسب الفلتر المحدد
+      // حساب day و status و dateFrom/dateTo حسب الفلتر المحدد أولاً
       String? calculatedDay;
       String? calculatedStatus;
       String? calculatedDateFrom = dateFrom;
@@ -204,36 +192,34 @@ class AppointmentController extends GetxController {
           case 'تصفية مخصصة':
             if (_customFilterStart != null && _customFilterEnd != null) {
               calculatedDateFrom = DateFormat('yyyy-MM-dd').format(_customFilterStart!);
+              // ⭐ إضافة يوم واحد ليشمل اليوم الأخير في الفلتر
               final endDate = _customFilterEnd!.add(const Duration(days: 1));
               calculatedDateTo = DateFormat('yyyy-MM-dd').format(endDate);
+              print('📅 [AppointmentController] Custom filter dates: $calculatedDateFrom to $calculatedDateTo');
+            } else {
+              print('⚠️ [AppointmentController] Custom filter selected but dates are null!');
             }
             break;
         }
       }
 
-      print('📅 [AppointmentController] Loading appointments - page: $currentPage, limit: $pageLimit, filter: $_currentFilter');
-
-      // 1) محاولة التحميل من الكاش أولاً (Hive) - بنفس طريقة eversheen
-      if (isInitial || isRefresh) {
-        try {
-          // ✅ حل نهائي: تحميل فقط أول 25 موعد من Cache لتجنب تحميل آلاف السجلات
-          final cachedAppointments = _cacheService.getFirstAppointments(pageLimit);
-          if (cachedAppointments.isNotEmpty) {
-            appointments.assignAll(cachedAppointments);
-            print(
-              '✅ [AppointmentController] Loaded ${appointments.length} appointments from cache',
-            );
-          }
-        } catch (e) {
-          print('❌ [AppointmentController] Error loading from cache: $e');
-          // مسح Cache التالف
-          try {
-            await _cacheService.clearAppointments();
-          } catch (_) {}
-        }
+      if (isRefresh || isInitial) {
+        currentPage = 1;
+        hasMoreAppointments.value = true;
+        isLoading.value = true;
+        // ⭐ مسح القائمة فوراً عند تغيير التبويب/الفلتر لضمان عدم عرض بيانات قديمة
+        appointments.clear();
+        primaryAppointments.clear();
+        secondaryAppointments.clear();
+      } else {
+        if (!hasMoreAppointments.value || isLoadingMoreAppointments.value) return;
+        isLoadingMoreAppointments.value = true;
       }
 
-      // 2) جلب من API
+      print('📅 [AppointmentController] Loading appointments - page: $currentPage, limit: $pageLimit, filter: $_currentFilter');
+
+      // ⭐ الاعتماد على API فقط - لا نستخدم الكاش لتجنب عرض بيانات قديمة من تبويب سابق
+      
       final authController = Get.find<AuthController>();
       final userType = authController.currentUser.value?.userType;
 
@@ -270,6 +256,7 @@ class AppointmentController extends GetxController {
       appointmentsList.sort((a, b) => a.date.compareTo(b.date));
 
       if (isRefresh || isInitial) {
+        // ⭐ استبدال القائمة بالبيانات الجديدة من API
         appointments.assignAll(appointmentsList);
       } else {
         // إضافة المواعيد الجديدة فقط (تجنب التكرار)
@@ -300,18 +287,7 @@ class AppointmentController extends GetxController {
         print('⚠️ [AppointmentController] No appointments returned from API!');
       }
       
-      // 3) حفظ في Cache - فقط عند التحميل الأولي أو التحديث
-      // نحفظ فقط أول 100 موعد لتجنب حجم كبير
-      if (isInitial || isRefresh) {
-        unawaited(
-          _cacheService.saveAppointments(appointments.take(100).toList()).then((_) {
-            print('💾 [AppointmentController] Cache updated with ${appointments.length > 100 ? 100 : appointments.length} appointments');
-          }).catchError((e, stackTrace) {
-            print('❌ [AppointmentController] Error updating cache: $e');
-            print('❌ [AppointmentController] Stack trace: $stackTrace');
-          }),
-        );
-      }
+      // ⭐ تم حذف حفظ الكاش - الاعتماد على API فقط لتجنب عرض بيانات قديمة
     } on ApiException catch (e) {
       if (NetworkUtils.isNetworkError(e)) {
         NetworkUtils.showNetworkErrorDialog();

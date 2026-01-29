@@ -165,8 +165,12 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
     
     // ⭐ استخدام loadPatients مع pagination (25 مريض في كل مرة)
     _patientController.loadPatients(isInitial: true, isRefresh: false);
-    // Load appointments on init - بنفس طريقة eversheen مع Pagination (25 في كل مرة)
-    _appointmentController.loadDoctorAppointments(isInitial: true, isRefresh: false);
+    // ⭐ تحميل المواعيد مع فلتر التبويب الأول (اليوم) عند بدء التطبيق
+    _appointmentController.loadDoctorAppointments(
+      isInitial: true,
+      isRefresh: false,
+      filter: 'اليوم', // ⭐ إضافة فلتر التبويب الأول
+    );
     // Listen to patient selection changes
     ever(_patientController.selectedPatient, (patient) {
       if (patient != null) {
@@ -242,15 +246,14 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
         break;
       case 3: // تصفية مخصصة
         filter = 'تصفية مخصصة';
-        // إذا لم يتم تحديد التاريخ بعد، نفتح حوار التصفية
-        if (_appointmentsRangeStart == null || _appointmentsRangeEnd == null) {
-          _showAppointmentsDateRangeDialog();
-          return;
-        }
+        // ⭐ تم حذف فتح الدايلوج تلقائياً - المستخدم يمكنه فتحه يدوياً
         break;
     }
 
-    // إعادة تحميل المواعيد مع الفلتر المناسب
+    // ⭐ مسح القائمة فوراً قبل التحميل لضمان عدم عرض بيانات قديمة
+    _appointmentController.appointments.clear();
+    
+    // إعادة تحميل المواعيد مع الفلتر المناسب من API مباشرة
     _appointmentController.loadDoctorAppointments(
       isInitial: false,
       isRefresh: true,
@@ -319,15 +322,18 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                               SizedBox(height: 8.h),
                               SizedBox(
                                 height: 200.h,
-                                child: CalendarDatePicker(
-                                  initialDate: startDate ?? DateTime.now(),
-                                  firstDate: DateTime(2020),
-                                  lastDate: DateTime(2030),
-                                  onDateChanged: (date) {
-                                    setDialogState(() {
-                                      startDate = date;
-                                    });
-                                  },
+                                child: Semantics(
+                                  excludeSemantics: true,
+                                  child: CalendarDatePicker(
+                                    initialDate: startDate ?? DateTime.now(),
+                                    firstDate: DateTime(2020),
+                                    lastDate: DateTime(2030),
+                                    onDateChanged: (date) {
+                                      setDialogState(() {
+                                        startDate = date;
+                                      });
+                                    },
+                                  ),
                                 ),
                               ),
                             ],
@@ -349,15 +355,31 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                               SizedBox(height: 8.h),
                               SizedBox(
                                 height: 200.h,
-                                child: CalendarDatePicker(
-                                  initialDate: endDate ?? DateTime.now(),
-                                  firstDate: startDate ?? DateTime(2020),
-                                  lastDate: DateTime(2030),
-                                  onDateChanged: (date) {
-                                    setDialogState(() {
-                                      endDate = date;
-                                    });
-                                  },
+                                child: Semantics(
+                                  excludeSemantics: true,
+                                  child: Builder(
+                                    builder: (context) {
+                                      // ⭐ التأكد من أن initialDate لا يكون قبل firstDate
+                                      final firstDateValue = startDate ?? DateTime(2020);
+                                      final endDateValue = endDate ?? DateTime.now();
+                                      final safeInitialDate = endDateValue.isBefore(firstDateValue)
+                                          ? (firstDateValue.isBefore(DateTime.now()) 
+                                              ? DateTime.now() 
+                                              : firstDateValue)
+                                          : endDateValue;
+                                      
+                                      return CalendarDatePicker(
+                                        initialDate: safeInitialDate,
+                                        firstDate: firstDateValue,
+                                        lastDate: DateTime(2030),
+                                        onDateChanged: (date) {
+                                          setDialogState(() {
+                                            endDate = date;
+                                          });
+                                        },
+                                      );
+                                    },
+                                  ),
                                 ),
                               ),
                             ],
@@ -1498,13 +1520,16 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
     // لا نحمل هنا لتجنب التحميل المتكرر
     
     return Obx(() {
-      if (_appointmentController.isLoading.value && 
-          _appointmentController.appointments.isEmpty) {
+      // ⭐ عرض loading indicator فقط إذا كان التحميل جارياً والقائمة فارغة
+      // إذا كانت القائمة تحتوي على بيانات، نعرضها حتى لو كان التحميل جارياً
+      final isLoading = _appointmentController.isLoading.value;
+      final filteredAppointments = _appointmentController.appointments;
+      
+      if (isLoading && filteredAppointments.isEmpty) {
         return const Center(child: CircularProgressIndicator());
       }
 
       // استخدام المواعيد مباشرة - الفلترة تتم في الـ backend
-      final filteredAppointments = _appointmentController.appointments;
       String emptyMessage = 'لا توجد مواعيد';
 
       final bool showCustomFilterControls = filter == 'تصفية مخصصة';
@@ -1570,7 +1595,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                   SizedBox(
                     width: 140.w,
                     child: Text(
-                      'رقم الهاتف / رقم المريض',
+                      'رقم الهاتف',
                       style: TextStyle(
                         fontSize: 16.sp,
                         fontWeight: FontWeight.bold,
@@ -1635,7 +1660,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                     appointment.patientId,
                   );
                   final patientName = patient?.name ?? appointment.patientName;
-                  final patientPhone = patient?.phoneNumber ?? '';
+                  // ⭐ استخدام رقم الهاتف من الموعد مباشرة (من API) أو من بيانات المريض
+                  final patientPhone = appointment.patientPhone ?? patient?.phoneNumber ?? '';
 
                   // تنسيق التاريخ
                   final dateFormat = DateFormat('yyyy/MM/dd', 'ar');
@@ -1697,37 +1723,18 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                           ),
                         ),
                         SizedBox(width: 60.w),
-                        // رقم الهاتف / رقم المريض
+                        // رقم الهاتف
                         SizedBox(
                           width: 140.w,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (patientPhone.isNotEmpty)
-                                Text(
-                                  patientPhone,
-                                  style: TextStyle(
-                                    fontSize: 14.sp,
-                                    color: const Color(0x99212F34),
-                                  ),
-                                  textAlign: TextAlign.center,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              if (patientPhone.isNotEmpty && appointment.patientId.isNotEmpty)
-                                SizedBox(height: 4.h),
-                              Text(
-                                appointment.patientId,
-                                style: TextStyle(
-                                  fontSize: 12.sp,
-                                  color: const Color(0x99212F34).withOpacity(0.7),
-                                ),
-                                textAlign: TextAlign.center,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
+                          child: Text(
+                            patientPhone.isNotEmpty ? patientPhone : '-',
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              color: const Color(0x99212F34),
+                            ),
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         SizedBox(width: 60.w),
@@ -1810,6 +1817,15 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                         _appointmentsRangeStart = start;
                         _appointmentsRangeEnd = end;
                       });
+                      
+                      // ⭐ إعادة تحميل المواعيد مع الفلتر المخصص الجديد
+                      _appointmentController.loadDoctorAppointments(
+                        isInitial: false,
+                        isRefresh: true,
+                        filter: 'تصفية مخصصة',
+                        customFilterStart: start,
+                        customFilterEnd: end,
+                      );
                     },
                     icon: Icon(
                       Icons.date_range,
@@ -1843,6 +1859,23 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
             ),
             SizedBox(height: 12.h),
             Expanded(child: tableContent),
+          ],
+        );
+      }
+
+      // ⭐ إضافة overlay للتحميل إذا كان التحميل جارياً
+      if (isLoading && filteredAppointments.isNotEmpty) {
+        return Stack(
+          children: [
+            tableContent,
+            Positioned.fill(
+              child: Container(
+                color: Colors.black.withOpacity(0.1),
+                child: const Center(
+                  child: CircularProgressIndicator(),
+                ),
+              ),
+            ),
           ],
         );
       }

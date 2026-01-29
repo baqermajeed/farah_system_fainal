@@ -819,12 +819,14 @@ async def list_my_appointments(
             try:
                 # جلب بيانات المريض
                 patient_name = None
+                patient_phone = None
                 try:
                     patient = await Patient.get(a.patient_id)
                     if patient:
                         user = await User.get(patient.user_id)
                         if user:
                             patient_name = user.name
+                            patient_phone = user.phone  # ⭐ إضافة رقم الهاتف
                 except Exception as e:
                     logger.warning(f"Could not fetch patient name for appointment {a.id}: {e}")
                 
@@ -844,6 +846,7 @@ async def list_my_appointments(
                         id=str(a.id),
                         patient_id=str(a.patient_id),
                         patient_name=patient_name,
+                        patient_phone=patient_phone,  # ⭐ إضافة رقم الهاتف
                         doctor_id=str(a.doctor_id),
                         doctor_name=doctor_name,
                         scheduled_at=a.scheduled_at.isoformat() if a.scheduled_at else datetime.now(timezone.utc).isoformat(),
@@ -934,6 +937,7 @@ async def list_patient_appointments(
         try:
             # جلب بيانات المريض والطبيب
             patient_name = None
+            patient_phone = None
             doctor_name = None
             try:
                 patient = await Patient.get(ap.patient_id)
@@ -941,6 +945,7 @@ async def list_patient_appointments(
                     user = await User.get(patient.user_id)
                     if user:
                         patient_name = user.name
+                        patient_phone = user.phone  # ⭐ إضافة رقم الهاتف
                 doctor = await Doctor.get(ap.doctor_id)
                 if doctor:
                     user = await User.get(doctor.user_id)
@@ -954,6 +959,7 @@ async def list_patient_appointments(
                     id=str(ap.id),
                     patient_id=str(ap.patient_id),
                     patient_name=patient_name,
+                    patient_phone=patient_phone,  # ⭐ إضافة رقم الهاتف
                     doctor_id=str(ap.doctor_id),
                     doctor_name=doctor_name,
                     scheduled_at=ap.scheduled_at.isoformat() if ap.scheduled_at else datetime.now(timezone.utc).isoformat(),

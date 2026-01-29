@@ -13,6 +13,9 @@ class AppointmentModel {
   @HiveField(2)
   final String patientName;
 
+  @HiveField(12)
+  final String? patientPhone;  // ⭐ إضافة رقم الهاتف
+
   @HiveField(3)
   final String doctorId;
 
@@ -41,6 +44,7 @@ class AppointmentModel {
     required this.id,
     required this.patientId,
     required this.patientName,
+    this.patientPhone,  // ⭐ إضافة رقم الهاتف
     required this.doctorId,
     required this.doctorName,
     required this.date,
@@ -107,6 +111,7 @@ class AppointmentModel {
       id: json['id']?.toString() ?? '',
       patientId: json['patient_id']?.toString() ?? json['patientId'] ?? '',
       patientName: json['patient_name'] ?? json['patientName'] ?? '',
+      patientPhone: json['patient_phone'] ?? json['patientPhone'],  // ⭐ إضافة رقم الهاتف
       doctorId: json['doctor_id']?.toString() ?? json['doctorId'] ?? '',
       doctorName: json['doctor_name'] ?? json['doctorName'] ?? '',
       date: appointmentDateTime, // ⭐ استخدام التاريخ والوقت الكامل
@@ -127,6 +132,7 @@ class AppointmentModel {
       'id': id,
       'patientId': patientId,
       'patientName': patientName,
+      'patientPhone': patientPhone,  // ⭐ إضافة رقم الهاتف
       'doctorId': doctorId,
       'doctorName': doctorName,
       'date': date.toIso8601String(),

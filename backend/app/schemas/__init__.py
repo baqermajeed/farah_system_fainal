@@ -195,6 +195,7 @@ class AppointmentOut(BaseModel):
     id: str
     patient_id: str
     patient_name: Optional[str] = None
+    patient_phone: Optional[str] = None  # ⭐ إضافة رقم الهاتف
     doctor_id: str
     doctor_name: Optional[str] = None
     scheduled_at: str
