@@ -354,15 +354,14 @@ async def list_appointments(
     """جداول مواعيد جميع المرضى (اليوم/غدًا/نطاق تاريخ)، مع خيار المتأخرون."""
     df = datetime.fromisoformat(date_from) if date_from else None
     dt = datetime.fromisoformat(date_to) if date_to else None
-    # نجلب جميع المواعيد المطابقة للفلاتر في طلب واحد (بدون حد للـ limit)
-    # مع الحفاظ على دعم skip/limit في التوقيع لعدم كسر أي عميل قديم.
+    # ✅ احترام skip/limit القادمة من العميل لتحسين الأداء ومنع تجمّد الواجهة
     apps = await patient_service.list_appointments_for_all(
         day=day,
         date_from=df,
         date_to=dt,
         status=status,
-        skip=0,
-        limit=None,
+        skip=skip,
+        limit=limit,
     )
     # نحضر معلومات المرضى والأطباء المرتبطة بهذه المواعيد
     from app.models import Patient, User, Doctor

@@ -115,8 +115,8 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
   DateTime? _appointmentsRangeEnd;
 
   Future<void> _refreshData() async {
-    await _patientController.loadPatients();
-    await _appointmentController.loadDoctorAppointments();
+    await _patientController.loadPatients(isInitial: false, isRefresh: true);
+    await _appointmentController.loadDoctorAppointments(isInitial: false, isRefresh: true);
 
     final selected = _patientController.selectedPatient.value;
     if (selected != null) {
@@ -149,8 +149,9 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
 
     // Load patients and appointments on first build
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _patientController.loadPatients();
-      _appointmentController.loadDoctorAppointments();
+      // ⭐ استخدام Pagination - بنفس طريقة eversheen (25 في كل مرة)
+      _patientController.loadPatients(isInitial: true, isRefresh: false);
+      _appointmentController.loadDoctorAppointments(isInitial: true, isRefresh: false);
     });
 
     // Listen to patient selection changes
@@ -303,10 +304,17 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
 
       final patient = result['patient'] as PatientModel;
 
-      // تحديث المريض في القائمة إذا كان موجوداً
+      // ⭐ التحقق إذا كان المريض موجود في القائمة
       final index = _patientController.patients.indexWhere((p) => p.id == patient.id);
+      
       if (index != -1) {
+        // ⭐ إذا كان موجود، نحدثه
         _patientController.patients[index] = patient;
+        print('✅ [QR Scan] Patient updated in list: ${patient.name}');
+      } else {
+        // ⭐ إذا لم يكن موجود، نضيفه للقائمة
+        _patientController.addPatient(patient);
+        print('✅ [QR Scan] Patient added to list: ${patient.name}');
       }
 
       // في شاشة الاستقبال: نختار المريض مباشرة ونحدّث واجهة الأطباء
@@ -315,6 +323,28 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
 
       // تحميل أطباء المريض للقسم الجانبي
       await _loadPatientDoctors(patient.id);
+      
+      // ⭐ تحميل بيانات المريض الكاملة
+      final userType = _authController.currentUser.value?.userType?.toLowerCase();
+      
+      if (userType == 'receptionist') {
+        await _galleryController.loadGallery(patient.id);
+      } else {
+        await Future.wait([
+          _medicalRecordController.loadPatientRecords(patient.id),
+          _galleryController.loadGallery(patient.id),
+          _appointmentController.loadPatientAppointmentsById(patient.id),
+        ]);
+        
+        if (patient.treatmentHistory != null &&
+            patient.treatmentHistory!.isNotEmpty &&
+            patient.treatmentHistory!.last == 'زراعة') {
+          final implantStageController = Get.put(ImplantStageController());
+          await implantStageController.loadStages(patient.id);
+        }
+      }
+      
+      print('✅ [QR Scan] Patient data loaded successfully');
     } catch (e) {
       Get.snackbar(
         'خطأ',

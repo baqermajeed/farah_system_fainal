@@ -1,15 +1,43 @@
+import 'package:hive/hive.dart';
+
+part 'patient_model.g.dart';
+
+@HiveType(typeId: 1)
 class PatientModel {
+  @HiveField(0)
   final String id;
+
+  @HiveField(1)
   final String name;
+
+  @HiveField(2)
   final String phoneNumber;
+
+  @HiveField(3)
   final String gender;
+
+  @HiveField(4)
   final int age;
+
+  @HiveField(5)
   final String city;
+
+  @HiveField(6)
   final String? visitType; // "مريض جديد" | "مراجع قديم"
+
+  @HiveField(7)
   final String? imageUrl;
+
+  @HiveField(8)
   final List<String> doctorIds;
+
+  @HiveField(9)
   final List<String>? treatmentHistory;
+
+  @HiveField(10)
   final String? qrCodeData;
+
+  @HiveField(11)
   final String? qrImagePath;
 
   PatientModel({

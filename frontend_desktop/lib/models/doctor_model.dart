@@ -1,10 +1,28 @@
+import 'package:hive/hive.dart';
+
+part 'doctor_model.g.dart';
+
+@HiveType(typeId: 3)
 class DoctorModel {
+  @HiveField(0)
   final String id;
+
+  @HiveField(1)
   final String userId;
+
+  @HiveField(2)
   final String? name;
+
+  @HiveField(3)
   final String phone;
+
+  @HiveField(4)
   final String? imageUrl;
+
+  @HiveField(5)
   final int todayTransfers;
+
+  @HiveField(6)
   final DateTime? lastTransferAt;
 
   DoctorModel({

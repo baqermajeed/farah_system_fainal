@@ -17,6 +17,7 @@ import 'package:frontend_desktop/views/reception_home_screen.dart';
 import 'package:frontend_desktop/views/working_hours_page.dart';
 import 'package:frontend_desktop/views/appointments_screen.dart';
 import 'package:frontend_desktop/controllers/auth_controller.dart';
+import 'package:frontend_desktop/services/cache_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:camera/camera.dart';
@@ -34,12 +35,11 @@ void main() async {
   // Initialize Arabic locale for DateFormat
   await initializeDateFormatting('ar', null);
 
-  // Initialize Hive for local cache
-  await Hive.initFlutter();
-  await Hive.openBox('patients');
-  await Hive.openBox('appointments');
-  await Hive.openBox('medicalRecords');
-  await Hive.openBox('gallery');
+  // Initialize Hive and CacheService for local cache
+  await CacheService().init();
+  
+  // Open metaData box for update timestamps
+  await Hive.openBox('metaData');
 
   // Initialize AuthController to load persisted session
   Get.put(AuthController());

@@ -110,8 +110,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
   DateTime? _appointmentsRangeEnd;
 
   Future<void> _refreshData() async {
-    await _patientController.loadPatients();
-    await _appointmentController.loadDoctorAppointments();
+    await _patientController.loadPatients(isInitial: false, isRefresh: true);
+    await _appointmentController.loadDoctorAppointments(isInitial: false, isRefresh: true);
 
     final selected = _patientController.selectedPatient.value;
     if (selected != null) {
@@ -142,10 +142,10 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
         _currentTabIndex.value = _tabController.index;
       }
     });
-    // Load patients on init
-    _patientController.loadPatients();
-    // Load appointments on init
-    _appointmentController.loadDoctorAppointments();
+    // Load patients on init - بنفس طريقة eversheen مع Pagination (25 في كل مرة)
+    _patientController.loadPatients(isInitial: true, isRefresh: false);
+    // Load appointments on init - بنفس طريقة eversheen مع Pagination (25 في كل مرة)
+    _appointmentController.loadDoctorAppointments(isInitial: true, isRefresh: false);
     // Listen to patient selection changes
     ever(_patientController.selectedPatient, (patient) {
       if (patient != null) {
@@ -698,7 +698,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                     // Clear selected patient and show appointments table
                     _patientController.selectPatient(null);
                     // إعادة تحميل مواعيد جميع المرضى
-                    _appointmentController.loadDoctorAppointments();
+                    _appointmentController.loadDoctorAppointments(isInitial: false, isRefresh: true);
                     _showAppointments.value = true;
                   },
                   child: Image.asset(
@@ -1722,14 +1722,20 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                       Align(
                         alignment: Alignment.centerRight,
                         child: Obx(() {
-                          final myRecords = _medicalRecordController.records;
+                          // نعرض نوع العلاج من patient.treatmentHistory أولاً (يأتي مباشرة من API)
                           String treatmentType = 'لا يوجد';
-                          if (myRecords.isNotEmpty) {
-                            treatmentType = myRecords.first.treatmentType;
-                            if (treatmentType.isEmpty) treatmentType = 'لا يوجد';
-                          } else if (patient.treatmentHistory != null &&
+                          if (patient.treatmentHistory != null &&
                               patient.treatmentHistory!.isNotEmpty) {
                             treatmentType = patient.treatmentHistory!.last;
+                          } else {
+                            // Fallback: إذا لم يكن موجوداً في treatmentHistory، نبحث في السجلات
+                            final myRecords = _medicalRecordController.records;
+                            if (myRecords.isNotEmpty) {
+                              final recordTreatment = myRecords.first.treatmentType;
+                              if (recordTreatment.isNotEmpty) {
+                                treatmentType = recordTreatment;
+                              }
+                            }
                           }
 
                           return Text(
@@ -2013,14 +2019,20 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                 ),
                                 // Last item at the bottom - عرض النوع الخاص بهذا الطبيب فقط
                                 Obx(() {
-                                  final myRecords = _medicalRecordController.records;
+                                  // نعرض نوع العلاج من patient.treatmentHistory أولاً (يأتي مباشرة من API)
                                   String treatmentType = 'لا يوجد';
-                                  if (myRecords.isNotEmpty) {
-                                    treatmentType = myRecords.first.treatmentType;
-                                    if (treatmentType.isEmpty) treatmentType = 'لا يوجد';
-                                  } else if (patient.treatmentHistory != null &&
+                                  if (patient.treatmentHistory != null &&
                                       patient.treatmentHistory!.isNotEmpty) {
                                     treatmentType = patient.treatmentHistory!.last;
+                                  } else {
+                                    // Fallback: إذا لم يكن موجوداً في treatmentHistory، نبحث في السجلات
+                                    final myRecords = _medicalRecordController.records;
+                                    if (myRecords.isNotEmpty) {
+                                      final recordTreatment = myRecords.first.treatmentType;
+                                      if (recordTreatment.isNotEmpty) {
+                                        treatmentType = recordTreatment;
+                                      }
+                                    }
                                   }
 
                                   return Text(
@@ -8400,7 +8412,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                 );
 
                                 // تحديث القائمة بعد التحويل
-                                await _patientController.loadPatients();
+                                await _patientController.loadPatients(isInitial: false, isRefresh: true);
 
                                 if (dialogContext.mounted) {
                                   Navigator.of(dialogContext).pop();

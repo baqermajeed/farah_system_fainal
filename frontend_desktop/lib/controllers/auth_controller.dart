@@ -1,15 +1,14 @@
 import 'package:get/get.dart';
 import 'package:frontend_desktop/models/user_model.dart';
-// import 'package:frontend_desktop/core/routes/app_routes.dart'; // Will fix routes manually or assume AppRoutes class exists and matches
 import 'package:frontend_desktop/services/auth_service.dart';
-
 import 'package:frontend_desktop/services/patient_service.dart';
-
+import 'package:frontend_desktop/services/cache_service.dart';
 import 'package:frontend_desktop/core/routes/app_routes.dart';
 import 'package:frontend_desktop/core/utils/network_utils.dart';
 
 class AuthController extends GetxController {
   final _authService = AuthService();
+  final _cacheService = CacheService();
   final Rx<UserModel?> currentUser = Rx<UserModel?>(null);
   final RxnString patientProfileId = RxnString(null);
   final RxBool isLoading = false.obs;
@@ -24,14 +23,27 @@ class AuthController extends GetxController {
   Future<void> _loadPersistedSession() async {
     try {
       print('🔍 [AuthController] Loading persisted session...');
+      
+      // محاولة قراءة من Cache أولاً - بنفس طريقة eversheen
+      final cachedUser = _cacheService.getUser();
+      if (cachedUser != null) {
+        currentUser.value = cachedUser;
+        print('✅ [AuthController] User loaded from cache: ${cachedUser.name}');
+        await _syncPatientProfileId();
+      }
+      
       final isLoggedIn = await _authService.isLoggedIn();
       if (isLoggedIn) {
-        print('✅ [AuthController] Token found, loading user info...');
+        print('✅ [AuthController] Token found, loading user info from API...');
         final res = await _authService.getCurrentUser();
         if (res['ok'] == true) {
           final userData = res['data'] as Map<String, dynamic>;
           final user = UserModel.fromJson(userData);
           currentUser.value = user;
+          
+          // حفظ في Cache - بنفس طريقة eversheen
+          await _cacheService.saveUser(user);
+          
           await _syncPatientProfileId();
           print(
             '✅ [AuthController] User loaded from session: ${user.name} (${user.userType})',
@@ -41,6 +53,7 @@ class AuthController extends GetxController {
             '⚠️ [AuthController] Failed to load user info, clearing session',
           );
           await _authService.logout();
+          await _cacheService.deleteUser();
           currentUser.value = null;
         }
       } else {
@@ -79,6 +92,10 @@ class AuthController extends GetxController {
           final userData = res['data'] as Map<String, dynamic>;
           final user = UserModel.fromJson(userData);
           currentUser.value = user;
+          
+          // حفظ في Cache - بنفس طريقة eversheen
+          await _cacheService.saveUser(user);
+          
           await _syncPatientProfileId();
           print(
             '✅ [AuthController] User loaded: ${user.name} (${user.userType})',
@@ -132,6 +149,10 @@ class AuthController extends GetxController {
           final userData = userRes['data'] as Map<String, dynamic>;
           final user = UserModel.fromJson(userData);
           currentUser.value = user;
+          
+          // حفظ في Cache - بنفس طريقة eversheen
+          await _cacheService.saveUser(user);
+          
           await _syncPatientProfileId();
 
           String targetRoute;
@@ -189,6 +210,10 @@ class AuthController extends GetxController {
   Future<void> logout() async {
     try {
       await _authService.logout();
+      
+      // حذف من Cache - بنفس طريقة eversheen
+      await _cacheService.deleteUser();
+      
       currentUser.value = null;
       patientProfileId.value = null;
       print('✅ [AuthController] Logged out successfully');

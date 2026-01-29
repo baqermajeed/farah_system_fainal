@@ -1,13 +1,14 @@
 import 'dart:io';
 import 'package:get/get.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import 'package:frontend_desktop/models/medical_record_model.dart';
 import 'package:frontend_desktop/services/doctor_service.dart';
+import 'package:frontend_desktop/services/cache_service.dart';
 import 'package:frontend_desktop/core/network/api_exception.dart';
 import 'package:frontend_desktop/core/utils/network_utils.dart';
 
 class MedicalRecordController extends GetxController {
   final _doctorService = DoctorService();
+  final _cacheService = CacheService();
   
   final RxList<MedicalRecordModel> records = <MedicalRecordModel>[].obs;
   final RxBool isLoading = false.obs;
@@ -17,27 +18,13 @@ class MedicalRecordController extends GetxController {
     try {
       isLoading.value = true;
 
-      // 1) محاولة التحميل من الكاش أولاً (Hive)
-      final box = Hive.box('medicalRecords');
-      final cacheKey = 'patient_$patientId';
-
-      final cachedList = box.get(cacheKey);
-      if (cachedList != null && cachedList is List) {
-        try {
-          final cachedRecords = cachedList
-              .map(
-                (json) => MedicalRecordModel.fromJson(
-                  Map<String, dynamic>.from(json as Map),
-                ),
-              )
-              .toList();
-          records.value = cachedRecords;
-          print(
-            '✅ [MedicalRecordController] Loaded ${records.length} records from cache',
-          );
-        } catch (e) {
-          print('❌ [MedicalRecordController] Error parsing cached records: $e');
-        }
+      // 1) محاولة التحميل من الكاش أولاً (Hive) - بنفس طريقة eversheen
+      final cachedRecords = _cacheService.getMedicalRecords(patientId);
+      if (cachedRecords.isNotEmpty) {
+        records.value = cachedRecords;
+        print(
+          '✅ [MedicalRecordController] Loaded ${records.length} records from cache',
+        );
       }
 
       final recordsList = await _doctorService.getPatientNotes(
@@ -45,13 +32,9 @@ class MedicalRecordController extends GetxController {
       );
       records.value = recordsList;
 
-      // 2) تحديث الكاش بعد نجاح الجلب من API
+      // 2) تحديث الكاش بعد نجاح الجلب من API - بنفس طريقة eversheen
       try {
-        await box.put(cacheKey, records.map((r) => r.toJson()).toList());
-        await box.put(
-          '${cacheKey}_lastUpdated',
-          DateTime.now().toIso8601String(),
-        );
+        await _cacheService.saveMedicalRecords(patientId, records.toList());
         print(
           '💾 [MedicalRecordController] Cache updated with ${records.length} records',
         );
@@ -113,6 +96,13 @@ class MedicalRecordController extends GetxController {
         records.insert(0, newRecord);
       }
 
+      // حفظ في Cache - بنفس طريقة eversheen
+      try {
+        await _cacheService.saveMedicalRecord(newRecord);
+      } catch (e) {
+        print('❌ [MedicalRecordController] Error updating cache: $e');
+      }
+
       Get.snackbar('نجح', 'تم إضافة السجل بنجاح');
     } on ApiException catch (e) {
       // Rollback
@@ -158,6 +148,14 @@ class MedicalRecordController extends GetxController {
       if (index != -1) {
         records[index] = updatedRecord;
       }
+      
+      // حفظ في Cache - بنفس طريقة eversheen
+      try {
+        await _cacheService.saveMedicalRecord(updatedRecord);
+      } catch (e) {
+        print('❌ [MedicalRecordController] Error updating cache: $e');
+      }
+      
       Get.snackbar('نجح', 'تم تحديث السجل بنجاح');
     } on ApiException catch (e) {
       if (NetworkUtils.isNetworkError(e)) {
@@ -191,6 +189,14 @@ class MedicalRecordController extends GetxController {
       );
       // حذف السجل من القائمة
       records.removeWhere((r) => r.id == recordId);
+      
+      // حذف من Cache - بنفس طريقة eversheen
+      try {
+        await _cacheService.deleteMedicalRecord(patientId, recordId);
+      } catch (e) {
+        print('❌ [MedicalRecordController] Error deleting from cache: $e');
+      }
+      
       Get.snackbar('نجح', 'تم حذف السجل بنجاح');
     } on ApiException catch (e) {
       if (NetworkUtils.isNetworkError(e)) {

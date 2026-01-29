@@ -1,11 +1,31 @@
+import 'package:hive/hive.dart';
+
+part 'medical_record_model.g.dart';
+
+@HiveType(typeId: 4)
 class MedicalRecordModel {
+  @HiveField(0)
   final String id;
+
+  @HiveField(1)
   final String patientId;
+
+  @HiveField(2)
   final String doctorId;
+
+  @HiveField(3)
   final DateTime date;
+
+  @HiveField(4)
   final String treatmentType;
+
+  @HiveField(5)
   final String diagnosis;
+
+  @HiveField(6)
   final List<String>? images;
+
+  @HiveField(7)
   final String? notes;
 
   MedicalRecordModel({

@@ -1,14 +1,40 @@
+import 'package:hive/hive.dart';
+
+part 'appointment_model.g.dart';
+
+@HiveType(typeId: 2)
 class AppointmentModel {
+  @HiveField(0)
   final String id;
+
+  @HiveField(1)
   final String patientId;
+
+  @HiveField(2)
   final String patientName;
+
+  @HiveField(3)
   final String doctorId;
+
+  @HiveField(4)
   final String doctorName;
+
+  @HiveField(5)
   final DateTime date;
+
+  @HiveField(6)
   final String time;
+
+  @HiveField(7)
   final String status;
+
+  @HiveField(8)
   final String? notes;
+
+  @HiveField(9)
   final String? imagePath;
+
+  @HiveField(10)
   final List<String> imagePaths;
 
   AppointmentModel({

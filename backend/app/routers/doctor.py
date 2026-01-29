@@ -660,16 +660,16 @@ async def list_my_appointments(
     df = datetime.fromisoformat(date_from) if date_from else None
     dt = datetime.fromisoformat(date_to) if date_to else None
     doctor_id = await _get_current_doctor_id(current)
-    # نجلب جميع مواعيد الطبيب المطابقة للفلاتر في طلب واحد (بدون حد للـ limit)
-    # مع الحفاظ على skip/limit في التوقيع لعدم كسر أي عميل قديم.
+    # ✅ احترام skip/limit القادمة من العميل بدلاً من جلب جميع المواعيد دفعة واحدة
+    # هذا يحسن الأداء بشكل كبير ويمنع تجمّد الواجهة الأمامية (frontend)
     apps = await patient_service.list_appointments_for_doctor(
         doctor_id=doctor_id,
         day=day,
         date_from=df,
         date_to=dt,
         status=status,
-        skip=0,
-        limit=None,
+        skip=skip,
+        limit=limit,
     )
     result = []
     for a in apps:

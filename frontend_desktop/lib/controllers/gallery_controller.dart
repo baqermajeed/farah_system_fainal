@@ -1,9 +1,9 @@
 import 'dart:io';
 import 'package:get/get.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import 'package:frontend_desktop/models/gallery_image_model.dart';
 import 'package:frontend_desktop/services/doctor_service.dart';
 import 'package:frontend_desktop/services/patient_service.dart';
+import 'package:frontend_desktop/services/cache_service.dart';
 import 'package:frontend_desktop/controllers/auth_controller.dart';
 import 'package:frontend_desktop/core/network/api_exception.dart';
 import 'package:frontend_desktop/core/utils/network_utils.dart';
@@ -11,6 +11,7 @@ import 'package:frontend_desktop/core/utils/network_utils.dart';
 class GalleryController extends GetxController {
   final _doctorService = DoctorService();
   final _patientService = PatientService();
+  final _cacheService = CacheService();
   final AuthController _authController = Get.find<AuthController>();
 
   final galleryImages = <GalleryImageModel>[].obs;
@@ -25,27 +26,13 @@ class GalleryController extends GetxController {
 
       final userType = _authController.currentUser.value?.userType.toLowerCase();
 
-      // 1) محاولة التحميل من الكاش أولاً (Hive) - مع الأخذ بالاعتبار نوع المستخدم
-      final box = Hive.box('gallery');
-      final cacheKey = '${userType ?? 'unknown'}_patient_$patientId';
-
-      final cachedList = box.get(cacheKey);
-      if (cachedList != null && cachedList is List) {
-        try {
-          final cachedImages = cachedList
-              .map(
-                (json) => GalleryImageModel.fromJson(
-                  Map<String, dynamic>.from(json as Map),
-                ),
-              )
-              .toList();
-          galleryImages.value = cachedImages;
-          print(
-            '✅ [GalleryController] Loaded ${galleryImages.length} images from cache',
-          );
-        } catch (e) {
-          print('❌ [GalleryController] Error parsing cached images: $e');
-        }
+      // 1) محاولة التحميل من الكاش أولاً (Hive) - بنفس طريقة eversheen
+      final cachedImages = _cacheService.getGalleryImages(patientId);
+      if (cachedImages.isNotEmpty) {
+        galleryImages.value = cachedImages;
+        print(
+          '✅ [GalleryController] Loaded ${galleryImages.length} images from cache',
+        );
       }
 
       // 2) جلب البيانات من الـ API حسب الدور
@@ -61,16 +48,9 @@ class GalleryController extends GetxController {
       }
       galleryImages.value = images;
 
-      // 3) تحديث الكاش بعد نجاح الجلب من API
+      // 3) تحديث الكاش بعد نجاح الجلب من API - بنفس طريقة eversheen
       try {
-        await box.put(
-          cacheKey,
-          galleryImages.map((img) => img.toJson()).toList(),
-        );
-        await box.put(
-          '${cacheKey}_lastUpdated',
-          DateTime.now().toIso8601String(),
-        );
+        await _cacheService.saveGalleryImages(patientId, galleryImages.toList());
         print(
           '💾 [GalleryController] Cache updated with ${galleryImages.length} images',
         );
@@ -143,6 +123,13 @@ class GalleryController extends GetxController {
         galleryImages.insert(0, newImage);
       }
 
+      // حفظ في Cache - بنفس طريقة eversheen
+      try {
+        await _cacheService.saveGalleryImage(newImage);
+      } catch (e) {
+        print('❌ [GalleryController] Error updating cache: $e');
+      }
+
       return true;
     } on ApiException catch (e) {
       errorMessage.value = e.message;
@@ -186,6 +173,13 @@ class GalleryController extends GetxController {
       if (success) {
         // إزالة الصورة من القائمة
         galleryImages.removeWhere((img) => img.id == imageId);
+        
+        // حذف من Cache - بنفس طريقة eversheen
+        try {
+          await _cacheService.deleteGalleryImage(patientId, imageId);
+        } catch (e) {
+          print('❌ [GalleryController] Error deleting from cache: $e');
+        }
       }
       
       return success;

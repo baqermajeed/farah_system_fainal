@@ -1,22 +1,30 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:get/get.dart';
 import 'package:frontend_desktop/models/appointment_model.dart';
 import 'package:frontend_desktop/services/patient_service.dart';
 import 'package:frontend_desktop/services/doctor_service.dart';
+import 'package:frontend_desktop/services/cache_service.dart';
 import 'package:frontend_desktop/core/network/api_exception.dart';
 import 'package:frontend_desktop/core/utils/network_utils.dart';
 import 'package:frontend_desktop/controllers/auth_controller.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 
 class AppointmentController extends GetxController {
   final _patientService = PatientService();
   final _doctorService = DoctorService();
+  final _cacheService = CacheService();
 
   final RxList<AppointmentModel> appointments = <AppointmentModel>[].obs;
   final RxList<AppointmentModel> primaryAppointments = <AppointmentModel>[].obs;
   final RxList<AppointmentModel> secondaryAppointments =
       <AppointmentModel>[].obs;
   final RxBool isLoading = false.obs;
+
+  // ⭐ متغيرات Pagination - بنفس طريقة eversheen
+  var currentPage = 1;
+  var isLoadingMoreAppointments = false.obs;
+  var hasMoreAppointments = true.obs;
+  final int pageLimit = 25; // 25 موعد في كل مرة (بدلاً من 10 في eversheen)
 
   /// Cache patient appointments by patientId so leaving the patient file
   /// (and loading doctor appointments) doesn't wipe the patient's view.
@@ -54,39 +62,25 @@ class AppointmentController extends GetxController {
       print('📅 [AppointmentController] loadPatientAppointments called');
       isLoading.value = true;
 
-      // 1) محاولة التحميل من الكاش أولاً (Hive) - نفس مبدأ frontend
-      final box = Hive.box('appointments');
+      // 1) محاولة التحميل من الكاش أولاً (Hive) - بنفس طريقة eversheen
       final authController = Get.find<AuthController>();
       final userType = authController.currentUser.value?.userType;
-      final cacheKey = 'patient_${userType ?? 'unknown'}';
-
-      final cachedList = box.get(cacheKey);
-      if (cachedList != null && cachedList is List) {
-        try {
-          final cachedAppointments = cachedList
-              .map(
-                (json) => AppointmentModel.fromJson(
-                  Map<String, dynamic>.from(json as Map),
-                ),
-              )
-              .toList();
-
-          if (userType == 'receptionist') {
-            appointments.value = cachedAppointments;
-            primaryAppointments.clear();
-            secondaryAppointments.clear();
-          } else {
-            appointments.value = cachedAppointments;
-            primaryAppointments.value = cachedAppointments;
+      
+      final cachedAppointments = _cacheService.getAllAppointments();
+      if (cachedAppointments.isNotEmpty) {
+        if (userType == 'receptionist') {
+          appointments.value = cachedAppointments;
+          primaryAppointments.clear();
+          secondaryAppointments.clear();
+        } else {
+          appointments.value = cachedAppointments;
+          primaryAppointments.value = cachedAppointments;
             secondaryAppointments.value = [];
           }
 
           print(
             '✅ [AppointmentController] Loaded ${appointments.length} appointments from cache',
           );
-        } catch (e) {
-          print('❌ [AppointmentController] Error parsing cached appointments: $e');
-        }
       }
 
       final userTypeForRequest =
@@ -122,16 +116,9 @@ class AppointmentController extends GetxController {
         );
       }
 
-      // 2) تحديث الكاش بعد نجاح الجلب من API
+      // 2) تحديث الكاش بعد نجاح الجلب من API - بنفس طريقة eversheen
       try {
-        await box.put(
-          cacheKey,
-          appointments.map((a) => a.toJson()).toList(),
-        );
-        await box.put(
-          '${cacheKey}_lastUpdated',
-          DateTime.now().toIso8601String(),
-        );
+        await _cacheService.saveAppointments(appointments.toList());
         print(
           '💾 [AppointmentController] Cache updated with ${appointments.length} appointments',
         );
@@ -159,22 +146,49 @@ class AppointmentController extends GetxController {
     }
   }
 
-  // جلب مواعيد الطبيب أو جميع المواعيد للاستقبال
+  // جلب مواعيد الطبيب أو جميع المواعيد للاستقبال - بنفس طريقة eversheen مع Pagination
   Future<void> loadDoctorAppointments({
     String? day,
     String? dateFrom,
     String? dateTo,
     String? status,
-    int skip = 0,
-    int limit = 100000, // جلب كل المواعيد تقريباً بدون حد فعلي
+    bool isInitial = false,
+    bool isRefresh = false,
   }) async {
     try {
-      isLoading.value = true;
+      if (isRefresh || isInitial) {
+        currentPage = 1;
+        hasMoreAppointments.value = true;
+        isLoading.value = true;
+        appointments.clear();
+        primaryAppointments.clear();
+        secondaryAppointments.clear();
+      } else {
+        if (!hasMoreAppointments.value || isLoadingMoreAppointments.value) return;
+        isLoadingMoreAppointments.value = true;
+      }
 
+      print('📅 [AppointmentController] Loading appointments - page: $currentPage, limit: $pageLimit');
+
+      // 1) محاولة التحميل من الكاش أولاً (Hive) - بنفس طريقة eversheen
+      if (isInitial || isRefresh) {
+        final cachedAppointments = _cacheService.getAllAppointments();
+        if (cachedAppointments.isNotEmpty) {
+          // عرض أول 25 موعد من الكاش
+          final initialCached = cachedAppointments.take(pageLimit).toList();
+          appointments.assignAll(initialCached);
+          print(
+            '✅ [AppointmentController] Loaded ${appointments.length} appointments from cache',
+          );
+        }
+      }
+
+      // 2) جلب من API
       final authController = Get.find<AuthController>();
       final userType = authController.currentUser.value?.userType;
 
       List<AppointmentModel> appointmentsList;
+      final skip = (currentPage - 1) * pageLimit;
 
       if (userType == 'receptionist') {
         // موظف الاستقبال: يجلب جميع المواعيد من جميع الأطباء
@@ -187,7 +201,7 @@ class AppointmentController extends GetxController {
           dateTo: dateTo,
           status: status,
           skip: skip,
-          limit: limit,
+          limit: pageLimit,
         );
       } else {
         // الطبيب: يجلب مواعيده الخاصة
@@ -198,13 +212,34 @@ class AppointmentController extends GetxController {
           dateTo: dateTo,
           status: status,
           skip: skip,
-          limit: limit,
+          limit: pageLimit,
         );
       }
 
-      appointments.value = appointmentsList;
-      print(
-        '📅 [AppointmentController] Loaded ${appointmentsList.length} appointments',
+      if (isRefresh || isInitial) {
+        appointments.assignAll(appointmentsList);
+      } else {
+        appointments.addAll(appointmentsList);
+      }
+
+      // تحديث حالة Pagination
+      hasMoreAppointments.value = appointmentsList.length >= pageLimit;
+
+      if (hasMoreAppointments.value) {
+        currentPage++;
+      }
+
+      print('✅ [AppointmentController] Loaded ${appointmentsList.length} appointments from API (total: ${appointments.length})');
+      
+      // 3) حفظ في Cache - بنفس طريقة eversheen
+      // تشغيل في الخلفية بدون انتظار لتجنب blocking UI thread
+      unawaited(
+        _cacheService.saveAppointments(appointments.toList()).then((_) {
+          print('💾 [AppointmentController] Cache updated with ${appointments.length} appointments');
+        }).catchError((e, stackTrace) {
+          print('❌ [AppointmentController] Error updating cache: $e');
+          print('❌ [AppointmentController] Stack trace: $stackTrace');
+        }),
       );
     } on ApiException catch (e) {
       if (NetworkUtils.isNetworkError(e)) {
@@ -220,13 +255,42 @@ class AppointmentController extends GetxController {
       }
     } finally {
       isLoading.value = false;
+      isLoadingMoreAppointments.value = false;
     }
+  }
+
+  // جلب المزيد من المواعيد - بنفس طريقة eversheen
+  Future<void> loadMoreAppointments({
+    String? day,
+    String? dateFrom,
+    String? dateTo,
+    String? status,
+  }) async {
+    if (!hasMoreAppointments.value || isLoadingMoreAppointments.value) return;
+    await loadDoctorAppointments(
+      day: day,
+      dateFrom: dateFrom,
+      dateTo: dateTo,
+      status: status,
+      isInitial: false,
+      isRefresh: false,
+    );
   }
 
   // جلب مواعيد مريض محدد (للطبيب) مع فلترتها للطبيب الحالي
   Future<void> loadPatientAppointmentsById(String patientId) async {
     try {
       isLoading.value = true;
+      
+      // محاولة قراءة من Cache أولاً - بنفس طريقة eversheen
+      final cachedAppointments = _cacheService.getPatientAppointments(patientId);
+      if (cachedAppointments.isNotEmpty) {
+        patientAppointmentsCache[patientId] = cachedAppointments;
+        patientAppointmentsCache.refresh();
+        appointments.value = cachedAppointments;
+        isLoading.value = false;
+      }
+      
       final appointmentsList = await _doctorService.getPatientAppointments(
         patientId,
       );
@@ -238,6 +302,15 @@ class AppointmentController extends GetxController {
       patientAppointmentsCache[patientId] = list;
       patientAppointmentsCache.refresh();
       appointments.value = list;
+      
+      // حفظ في Cache - بنفس طريقة eversheen
+      try {
+        for (var apt in list) {
+          await _cacheService.saveAppointment(apt);
+        }
+      } catch (e) {
+        print('❌ [AppointmentController] Error updating cache: $e');
+      }
     } on ApiException catch (e) {
       if (NetworkUtils.isNetworkError(e)) {
         NetworkUtils.showNetworkErrorDialog();
@@ -266,6 +339,14 @@ class AppointmentController extends GetxController {
 
       if (success) {
         appointments.removeWhere((apt) => apt.id == appointmentId);
+        
+        // حذف من Cache - بنفس طريقة eversheen
+        try {
+          await _cacheService.deleteAppointment(appointmentId);
+        } catch (e) {
+          print('❌ [AppointmentController] Error deleting from cache: $e');
+        }
+        
         Get.snackbar('نجح', 'تم حذف الموعد بنجاح');
       } else {
         throw ApiException('فشل حذف الموعد');
@@ -340,8 +421,7 @@ class AppointmentController extends GetxController {
       // 4) استبدال الموعد المؤقت بالموعد الحقيقي في كاش المريض (إن وجد)
       final cachedAfterAdd = patientAppointmentsCache[patientId];
       if (cachedAfterAdd != null &&
-          cachedAfterAdd.isNotEmpty &&
-          tempAppointment != null) {
+          cachedAfterAdd.isNotEmpty) {
         final list = List<AppointmentModel>.from(cachedAfterAdd);
         final cachedIndex =
             list.indexWhere((apt) => apt.id == tempAppointment!.id);
@@ -352,6 +432,13 @@ class AppointmentController extends GetxController {
         }
         patientAppointmentsCache[patientId] = list;
         patientAppointmentsCache.refresh();
+      }
+
+      // حفظ في Cache - بنفس طريقة eversheen
+      try {
+        await _cacheService.saveAppointment(appointment);
+      } catch (e) {
+        print('❌ [AppointmentController] Error updating cache: $e');
       }
 
       Get.snackbar('نجح', 'تم إضافة الموعد بنجاح');
@@ -415,6 +502,13 @@ class AppointmentController extends GetxController {
       final index = appointments.indexWhere((apt) => apt.id == appointmentId);
       if (index != -1) {
         appointments[index] = updatedAppointment;
+      }
+
+      // حفظ في Cache - بنفس طريقة eversheen
+      try {
+        await _cacheService.saveAppointment(updatedAppointment);
+      } catch (e) {
+        print('❌ [AppointmentController] Error updating cache: $e');
       }
 
       // تحديث الموعد في كاش المريض (إن وجد)

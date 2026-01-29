@@ -1,9 +1,25 @@
+import 'package:hive/hive.dart';
+
+part 'gallery_image_model.g.dart';
+
+@HiveType(typeId: 5)
 class GalleryImageModel {
+  @HiveField(0)
   final String id;
+
+  @HiveField(1)
   final String patientId;
+
+  @HiveField(2)
   final String? doctorId;
+
+  @HiveField(3)
   final String imagePath;
+
+  @HiveField(4)
   final String? note;
+
+  @HiveField(5)
   final String createdAt;
 
   GalleryImageModel({
