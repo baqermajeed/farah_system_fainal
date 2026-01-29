@@ -423,30 +423,30 @@ async def list_appointments(
         df = None
         dt = None
         if date_from:
-        try:
-            # دعم تنسيق yyyy-MM-dd و yyyy-MM-ddTHH:mm:ss
-            if 'T' in date_from:
-                df = datetime.fromisoformat(date_from.replace('Z', '+00:00'))
-            else:
-                # إذا كان التاريخ فقط بدون وقت، نضيف وقت 00:00:00
-                df = datetime.fromisoformat(f"{date_from}T00:00:00+00:00")
-            if df.tzinfo is None:
-                df = df.replace(tzinfo=timezone.utc)
-        except (ValueError, AttributeError) as e:
-            raise HTTPException(status_code=400, detail=f"Invalid date_from format: {date_from}")
+            try:
+                # دعم تنسيق yyyy-MM-dd و yyyy-MM-ddTHH:mm:ss
+                if 'T' in date_from:
+                    df = datetime.fromisoformat(date_from.replace('Z', '+00:00'))
+                else:
+                    # إذا كان التاريخ فقط بدون وقت، نضيف وقت 00:00:00
+                    df = datetime.fromisoformat(f"{date_from}T00:00:00+00:00")
+                if df.tzinfo is None:
+                    df = df.replace(tzinfo=timezone.utc)
+            except (ValueError, AttributeError) as e:
+                raise HTTPException(status_code=400, detail=f"Invalid date_from format: {date_from}")
         
         if date_to:
-        try:
-            # دعم تنسيق yyyy-MM-dd و yyyy-MM-ddTHH:mm:ss
-            if 'T' in date_to:
-                dt = datetime.fromisoformat(date_to.replace('Z', '+00:00'))
-            else:
-                # إذا كان التاريخ فقط بدون وقت، نضيف وقت 23:59:59
-                dt = datetime.fromisoformat(f"{date_to}T23:59:59+00:00")
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-        except (ValueError, AttributeError) as e:
-            raise HTTPException(status_code=400, detail=f"Invalid date_to format: {date_to}")
+            try:
+                # دعم تنسيق yyyy-MM-dd و yyyy-MM-ddTHH:mm:ss
+                if 'T' in date_to:
+                    dt = datetime.fromisoformat(date_to.replace('Z', '+00:00'))
+                else:
+                    # إذا كان التاريخ فقط بدون وقت، نضيف وقت 23:59:59
+                    dt = datetime.fromisoformat(f"{date_to}T23:59:59+00:00")
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+            except (ValueError, AttributeError) as e:
+                raise HTTPException(status_code=400, detail=f"Invalid date_to format: {date_to}")
         
         # ✅ احترام skip/limit القادمة من العميل لتحسين الأداء ومنع تجمّد الواجهة
         apps = await patient_service.list_appointments_for_all(
