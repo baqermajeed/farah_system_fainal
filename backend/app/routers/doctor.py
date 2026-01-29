@@ -396,7 +396,7 @@ async def my_patients(
         {
             "$unwind": {
                 "path": "$user_data",
-                "preserveNullAndEmptyArrays": False
+                "preserveNullAndEmptyArrays": True
             }
         }
     ]
@@ -443,6 +443,10 @@ async def my_patients(
             continue
             
         user_data = item.get("user_data", {})
+        # ✅ التحقق من وجود user_data قبل استخدامه
+        if not user_data or not user_data.get("_id"):
+            continue  # تخطي المرضى بدون user_data
+        
         # إنشاء User object من البيانات
         try:
             u = await User.get(OID(user_data.get("_id")))
