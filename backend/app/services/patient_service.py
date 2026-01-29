@@ -596,19 +596,23 @@ async def list_appointments_for_doctor(
     now = datetime.now(timezone.utc)
     
     if status == "late":
-        # المواعيد المتأخرة: الموعد عبر وحالة الموعد لا تزال pending
+        # المواعيد المتأخرة: الموعد عبر وحالة الموعد لا تزال pending أو scheduled (للتوافق مع البيانات القديمة)
         query = query.find(
             And(
                 Appointment.scheduled_at < now,
-                Appointment.status == "pending"
+                In(Appointment.status, ["pending", "scheduled"])
             )
         )
     elif status:
         # تصفية حسب الحالة المحددة
-        query = query.find(Appointment.status == status)
+        # للتوافق مع البيانات القديمة: إذا طلبنا "pending"، نعرض أيضاً "scheduled"
+        if status == "pending":
+            query = query.find(In(Appointment.status, ["pending", "scheduled"]))
+        else:
+            query = query.find(Appointment.status == status)
     else:
         # الافتراضي: استبعاد المواعيد المكتملة والملغية
-        # نعرض فقط: pending, late
+        # نعرض فقط: pending, late, scheduled (للتوافق مع البيانات القديمة)
         query = query.find(
             And(
                 Appointment.status != "completed",
@@ -620,7 +624,21 @@ async def list_appointments_for_doctor(
     query = query.sort(+Appointment.scheduled_at).skip(skip)
     if limit is not None:
         query = query.limit(limit)
-    return await query.to_list()
+    appointments = await query.to_list()
+    
+    # تحديث المواعيد القديمة من "scheduled" إلى "pending" تلقائياً
+    updated_count = 0
+    for apt in appointments:
+        if apt.status == "scheduled":
+            apt.status = "pending"
+            apt.updated_at = datetime.now(timezone.utc)
+            await apt.save()
+            updated_count += 1
+    
+    if updated_count > 0:
+        print(f"✅ [list_appointments_for_doctor] Updated {updated_count} appointments from 'scheduled' to 'pending'")
+    
+    return appointments
 
 async def list_appointments_for_all(
     *,
@@ -641,7 +659,7 @@ async def list_appointments_for_all(
     """
     start, end = await _date_bounds(day, date_from, date_to)
     skip, limit = _normalize_pagination(skip, limit)
-    query = Appointment.find({})
+    query = Appointment.find()
     
     if start:
         query = query.find(Appointment.scheduled_at >= start)
@@ -651,16 +669,20 @@ async def list_appointments_for_all(
     now = datetime.now(timezone.utc)
     
     if status == "late":
-        # المواعيد المتأخرة: الموعد عبر وحالة الموعد لا تزال pending
+        # المواعيد المتأخرة: الموعد عبر وحالة الموعد لا تزال pending أو scheduled (للتوافق مع البيانات القديمة)
         query = query.find(
             And(
                 Appointment.scheduled_at < now,
-                Appointment.status == "pending"
+                In(Appointment.status, ["pending", "scheduled"])
             )
         )
     elif status:
         # تصفية حسب الحالة المحددة
-        query = query.find(Appointment.status == status)
+        # للتوافق مع البيانات القديمة: إذا طلبنا "pending"، نعرض أيضاً "scheduled"
+        if status == "pending":
+            query = query.find(In(Appointment.status, ["pending", "scheduled"]))
+        else:
+            query = query.find(Appointment.status == status)
     else:
         # الافتراضي: استبعاد المواعيد المكتملة والملغية
         # نعرض فقط: pending, late
@@ -675,7 +697,21 @@ async def list_appointments_for_all(
     query = query.sort(+Appointment.scheduled_at).skip(skip)
     if limit is not None:
         query = query.limit(limit)
-    return await query.to_list()
+    appointments = await query.to_list()
+    
+    # تحديث المواعيد القديمة من "scheduled" إلى "pending" تلقائياً
+    updated_count = 0
+    for apt in appointments:
+        if apt.status == "scheduled":
+            apt.status = "pending"
+            apt.updated_at = datetime.now(timezone.utc)
+            await apt.save()
+            updated_count += 1
+    
+    if updated_count > 0:
+        print(f"✅ [list_appointments_for_all] Updated {updated_count} appointments from 'scheduled' to 'pending'")
+    
+    return appointments
 
 async def delete_appointment(*, appointment_id: str, patient_id: str, doctor_id: str) -> bool:
     """حذف موعد للمريض."""
