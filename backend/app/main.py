@@ -302,6 +302,8 @@ async def on_startup():
     
     # Initialize and start appointment reminder scheduler
     try:
+        from app.services.patient_service import update_late_appointments
+        
         scheduler = AsyncIOScheduler()
         # Schedule reminder check every hour
         scheduler.add_job(
@@ -312,9 +314,19 @@ async def on_startup():
             id="appointment_reminders",
             replace_existing=True
         )
+        # Schedule late appointments update every hour (at minute 5)
+        scheduler.add_job(
+            update_late_appointments,
+            trigger="cron",
+            hour="*",  # Every hour
+            minute=5,  # At minute 5 (5 minutes after the hour)
+            id="update_late_appointments",
+            replace_existing=True
+        )
         scheduler.start()
         logger.info("Appointment reminder scheduler started")
         print("✅ [STARTUP] Appointment reminder scheduler started (runs every hour)")
+        print("✅ [STARTUP] Late appointments updater started (runs every hour at :05)")
     except Exception as e:
         logger.error(f"Failed to start appointment reminder scheduler: {e}")
         print(f"⚠️ [STARTUP] Failed to start appointment reminder scheduler: {e}")

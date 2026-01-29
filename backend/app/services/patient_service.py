@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Tuple
 from fastapi import HTTPException
 from beanie import PydanticObjectId as OID
-from beanie.operators import In
+from beanie.operators import In, NotIn
 
 from app.models import Patient, DoctorPatientProfile, User, Doctor, Appointment, TreatmentNote, GalleryImage
 from app.constants import Role
@@ -480,6 +480,10 @@ async def delete_gallery_image(*, gallery_image_id: str, patient_id: str, doctor
 async def create_appointment(
     *, patient_id: str, doctor_id: str, scheduled_at: datetime, note: Optional[str], image_path: Optional[str] = None, image_paths: Optional[List[str]] = None
 ) -> Appointment:
+    """
+    إنشاء موعد جديد للمريض.
+    الموعد الجديد يأخذ حالة "pending" (قيد الانتظار) افتراضياً.
+    """
     # Validate ownership
     patient = await Patient.get(OID(patient_id))
     if not patient:
@@ -492,6 +496,13 @@ async def create_appointment(
     # للتوافق مع البيانات القديمة، احتفظ بأول صورة في image_path
     final_image_path = final_image_paths[0] if final_image_paths else None
 
+    # التأكد من أن scheduled_at له timezone
+    if scheduled_at.tzinfo is None:
+        scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
+    else:
+        scheduled_at = scheduled_at.astimezone(timezone.utc)
+
+    now = datetime.now(timezone.utc)
     ap = Appointment(
         patient_id=patient.id,
         doctor_id=OID(doctor_id),
@@ -499,6 +510,9 @@ async def create_appointment(
         note=note,
         image_path=final_image_path,
         image_paths=final_image_paths,
+        status="pending",  # الحالة الافتراضية: قيد الانتظار
+        created_at=now,
+        updated_at=now,
     )
     await ap.insert()
     _record_doctor_activity(patient, doctor_id)
@@ -561,20 +575,44 @@ async def list_appointments_for_doctor(
     skip: int = 0,
     limit: Optional[int] = None,
 ) -> List[Appointment]:
+    """
+    جلب مواعيد الطبيب مع التصفية حسب:
+    - day: "today" (اليوم), "month" (هذا الشهر)
+    - date_from, date_to: تصفية حسب التاريخ
+    - status: "late" (المتأخرون), "pending", "completed", "cancelled"
+    
+    القاعدة: المواعيد المكتملة والملغية لا تظهر في الجداول، فقط في ملف المريض.
+    """
     start, end = await _date_bounds(day, date_from, date_to)
     skip, limit = _normalize_pagination(skip, limit)
     did = OID(doctor_id)
     query = Appointment.find(Appointment.doctor_id == did)
+    
     if start:
         query = query.find(Appointment.scheduled_at >= start)
     if end:
         query = query.find(Appointment.scheduled_at < end)
+    
+    now = datetime.now(timezone.utc)
+    
     if status == "late":
-        now = datetime.now(timezone.utc)
-        query = query.find((Appointment.scheduled_at < now) & (Appointment.status == "scheduled"))
+        # المواعيد المتأخرة: الموعد عبر وحالة الموعد لا تزال pending
+        query = query.find(
+            (Appointment.scheduled_at < now) & 
+            (Appointment.status == "pending")
+        )
     elif status:
+        # تصفية حسب الحالة المحددة
         query = query.find(Appointment.status == status)
-    # ترتيب تصاعدي: من الأقدم للأحدث (من أول موعد في اليوم/الشهر إلى آخر موعد)
+    else:
+        # الافتراضي: استبعاد المواعيد المكتملة والملغية
+        # نعرض فقط: pending, late
+        query = query.find(
+            (Appointment.status != "completed") & 
+            (Appointment.status != "cancelled")
+        )
+    
+    # ترتيب تصاعدي: من الأقدم للأحدث
     query = query.sort(+Appointment.scheduled_at).skip(skip)
     if limit is not None:
         query = query.limit(limit)
@@ -589,19 +627,43 @@ async def list_appointments_for_all(
     skip: int = 0,
     limit: Optional[int] = None,
 ) -> List[Appointment]:
+    """
+    جلب جميع المواعيد (لموظف الاستقبال) مع التصفية حسب:
+    - day: "today" (اليوم), "month" (هذا الشهر)
+    - date_from, date_to: تصفية حسب التاريخ
+    - status: "late" (المتأخرون), "pending", "completed", "cancelled"
+    
+    القاعدة: المواعيد المكتملة والملغية لا تظهر في الجداول، فقط في ملف المريض.
+    """
     start, end = await _date_bounds(day, date_from, date_to)
     skip, limit = _normalize_pagination(skip, limit)
     query = Appointment.find({})
+    
     if start:
         query = query.find(Appointment.scheduled_at >= start)
     if end:
         query = query.find(Appointment.scheduled_at < end)
+    
+    now = datetime.now(timezone.utc)
+    
     if status == "late":
-        now = datetime.now(timezone.utc)
-        query = query.find((Appointment.scheduled_at < now) & (Appointment.status == "scheduled"))
+        # المواعيد المتأخرة: الموعد عبر وحالة الموعد لا تزال pending
+        query = query.find(
+            (Appointment.scheduled_at < now) & 
+            (Appointment.status == "pending")
+        )
     elif status:
+        # تصفية حسب الحالة المحددة
         query = query.find(Appointment.status == status)
-    # ترتيب تصاعدي: من الأقدم للأحدث (من أول موعد في اليوم/الشهر إلى آخر موعد)
+    else:
+        # الافتراضي: استبعاد المواعيد المكتملة والملغية
+        # نعرض فقط: pending, late
+        query = query.find(
+            (Appointment.status != "completed") & 
+            (Appointment.status != "cancelled")
+        )
+    
+    # ترتيب تصاعدي: من الأقدم للأحدث
     query = query.sort(+Appointment.scheduled_at).skip(skip)
     if limit is not None:
         query = query.limit(limit)
@@ -627,7 +689,14 @@ async def delete_appointment(*, appointment_id: str, patient_id: str, doctor_id:
 async def update_appointment_status(
     *, appointment_id: str, patient_id: str, doctor_id: str, status: str
 ) -> Appointment | None:
-    """تحديث حالة موعد."""
+    """
+    تحديث حالة الموعد.
+    الحالات: pending, completed, cancelled, late
+    - completed: يختفي من الجداول، يبقى في ملف المريض
+    - cancelled: يختفي من الجداول، يبقى في ملف المريض
+    - pending: يظهر في الجداول وملف المريض
+    - late: يظهر في تبويب المتأخرين
+    """
     try:
         appointment = await Appointment.get(OID(appointment_id))
         if not appointment:
@@ -641,20 +710,104 @@ async def update_appointment_status(
         patient = await Patient.get(OID(patient_id))
         if patient and OID(doctor_id) not in patient.doctor_ids:
             return None
+        
+        status_lower = status.lower()
+        # التحقق من صحة الحالة
+        valid_statuses = ["pending", "completed", "cancelled", "late"]
+        if status_lower not in valid_statuses:
+            return None
+        
         # تحديث الحالة
-        appointment.status = status.lower()
+        appointment.status = status_lower
+        appointment.updated_at = datetime.now(timezone.utc)
         await appointment.save()
         return appointment
     except Exception as e:
         print(f"Error updating appointment status {appointment_id}: {e}")
         return None
 
+async def update_appointment_datetime(
+    *, appointment_id: str, patient_id: str, doctor_id: str, scheduled_at: datetime
+) -> Appointment | None:
+    """
+    تعديل تاريخ ووقت الموعد.
+    عند التعديل، يتم حفظ التاريخ القديم في previous_scheduled_at
+    ويتم تحديث الموعد في كل الأماكن.
+    """
+    try:
+        appointment = await Appointment.get(OID(appointment_id))
+        if not appointment:
+            return None
+        # التحقق من أن الموعد يخص المريض والطبيب المحددين
+        if str(appointment.patient_id) != patient_id:
+            return None
+        if str(appointment.doctor_id) != doctor_id:
+            return None
+        # التحقق من أن الطبيب في قائمة أطباء المريض
+        patient = await Patient.get(OID(patient_id))
+        if patient and OID(doctor_id) not in patient.doctor_ids:
+            return None
+        
+        # التأكد من أن scheduled_at له timezone
+        if scheduled_at.tzinfo is None:
+            scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
+        else:
+            scheduled_at = scheduled_at.astimezone(timezone.utc)
+        
+        # حفظ التاريخ القديم
+        appointment.previous_scheduled_at = appointment.scheduled_at
+        # تحديث التاريخ الجديد
+        appointment.scheduled_at = scheduled_at
+        appointment.updated_at = datetime.now(timezone.utc)
+        
+        # إذا كان الموعد متأخراً وأصبح في المستقبل، نعيد الحالة إلى pending
+        now = datetime.now(timezone.utc)
+        if appointment.status == "late" and scheduled_at >= now:
+            appointment.status = "pending"
+        
+        await appointment.save()
+        return appointment
+    except Exception as e:
+        print(f"Error updating appointment datetime {appointment_id}: {e}")
+        return None
+
+async def update_late_appointments() -> int:
+    """
+    تحديث المواعيد المتأخرة تلقائياً.
+    المواعيد التي عبرت وحالتها لا تزال pending تصبح late.
+    يُستدعى هذه الدالة بشكل دوري (مثلاً كل ساعة).
+    """
+    try:
+        now = datetime.now(timezone.utc)
+        # جلب جميع المواعيد التي عبرت وحالتها pending
+        late_appointments = await Appointment.find(
+            (Appointment.scheduled_at < now) & 
+            (Appointment.status == "pending")
+        ).to_list()
+        
+        updated_count = 0
+        for appointment in late_appointments:
+            appointment.status = "late"
+            appointment.updated_at = now
+            await appointment.save()
+            updated_count += 1
+        
+        return updated_count
+    except Exception as e:
+        print(f"Error updating late appointments: {e}")
+        return 0
+
 async def list_patient_appointments_grouped(*, patient_id: str) -> tuple[List[Appointment], List[Appointment]]:
-    """Group appointments by doctor. Returns (appointments_for_first_doctor, all_other_appointments)."""
+    """
+    جلب جميع مواعيد المريض (لحساب المريض).
+    يعرض جميع المواعيد بما فيها المكتملة والملغية.
+    Group appointments by doctor. Returns (appointments_for_first_doctor, all_other_appointments).
+    """
     p = await Patient.get(OID(patient_id))
     if not p:
         return [], []
-    # ترتيب تصاعدي: من الأقدم للأحدث (من أول موعد إلى آخر موعد)
+    # ترتيب تصاعدي: من الأقدم للأحدث
+    # في حساب المريض نعرض جميع المواعيد (بما فيها المكتملة والملغية)
     apps = await Appointment.find(Appointment.patient_id == p.id).sort(+Appointment.scheduled_at).to_list()
     if not p.doctor_ids:
         return [], apps  # No doctors assigned, return all as "other"
@@ -678,7 +831,10 @@ async def list_patient_appointments_grouped(*, patient_id: str) -> tuple[List[Ap
 async def list_patient_appointments_for_doctor(
     *, patient_id: str, doctor_id: str, skip: int = 0, limit: Optional[int] = None
 ) -> List[Appointment]:
-    """Return appointments for a specific doctor-patient pair."""
+    """
+    جلب مواعيد المريض في ملف المريض في حساب الطبيب.
+    يعرض جميع المواعيد بما فيها المكتملة والملغية.
+    """
     skip, limit = _normalize_pagination(skip, limit)
     patient = await Patient.get(OID(patient_id))
     if not patient:
@@ -686,7 +842,8 @@ async def list_patient_appointments_for_doctor(
     if OID(doctor_id) not in patient.doctor_ids:
         return []
 
-    # ترتيب تصاعدي: من الأقدم للأحدث (من أول موعد إلى آخر موعد)
+    # ترتيب تصاعدي: من الأقدم للأحدث
+    # في ملف المريض نعرض جميع المواعيد (بما فيها المكتملة والملغية)
     query = Appointment.find(
         Appointment.patient_id == patient.id,
         Appointment.doctor_id == OID(doctor_id),

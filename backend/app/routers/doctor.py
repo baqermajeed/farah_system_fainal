@@ -13,6 +13,7 @@ from app.schemas import (
     AppointmentCreate,
     AppointmentOut,
     AppointmentStatusUpdate,
+    AppointmentDateTimeUpdate,
     PatientUpdate,
     PatientCreate,
     PatientTransferIn,
@@ -719,15 +720,23 @@ async def add_gallery_image(
 
 @router.get("/appointments", response_model=List[AppointmentOut])
 async def list_my_appointments(
-    day: str | None = None,
-    date_from: str | None = None,
-    date_to: str | None = None,
-    status: str | None = None,
+    day: str | None = Query(None, description="today (مواعيد اليوم) | month (مواعيد هذا الشهر)"),
+    date_from: str | None = Query(None, description="تاريخ البداية (ISO format) - للتصفية من"),
+    date_to: str | None = Query(None, description="تاريخ النهاية (ISO format) - للتصفية إلى"),
+    status: str | None = Query(None, description="late (المواعيد المتأخرة) | pending | completed | cancelled"),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1),
     current=Depends(get_current_user),
 ):
-    """مواعيدي: اليوم/غدًا/الشهر أو نطاق (مع المتأخرون)."""
+    """
+    مواعيد الطبيب مع التبويبات:
+    1. day=today: مواعيد اليوم
+    2. day=month: مواعيد هذا الشهر
+    3. status=late: المواعيد المتأخرة
+    4. date_from & date_to: تصفية حسب التاريخ (من - إلى)
+    
+    المواعيد المكتملة والملغية لا تظهر في الجداول، فقط في ملف المريض.
+    """
     df = datetime.fromisoformat(date_from) if date_from else None
     dt = datetime.fromisoformat(date_to) if date_to else None
     doctor_id = await _get_current_doctor_id(current)
@@ -846,7 +855,10 @@ async def list_patient_appointments(
     limit: int = Query(50, ge=1, le=100),
     current=Depends(get_current_user),
 ):
-    """قائمة مواعيد المريض."""
+    """
+    قائمة مواعيد المريض في ملف المريض في حساب الطبيب.
+    يعرض جميع المواعيد بما فيها المكتملة والملغية.
+    """
     doctor_id = await _get_current_doctor_id(current)
     appointments = await patient_service.list_patient_appointments_for_doctor(
         patient_id=patient_id, doctor_id=doctor_id, skip=skip, limit=limit
@@ -854,11 +866,30 @@ async def list_patient_appointments(
     result = []
     for ap in appointments:
         try:
+            # جلب بيانات المريض والطبيب
+            patient_name = None
+            doctor_name = None
+            try:
+                patient = await Patient.get(ap.patient_id)
+                if patient:
+                    user = await User.get(patient.user_id)
+                    if user:
+                        patient_name = user.name
+                doctor = await Doctor.get(ap.doctor_id)
+                if doctor:
+                    user = await User.get(doctor.user_id)
+                    if user:
+                        doctor_name = user.name
+            except Exception:
+                pass
+            
             result.append(
                 AppointmentOut(
                     id=str(ap.id),
                     patient_id=str(ap.patient_id),
+                    patient_name=patient_name,
                     doctor_id=str(ap.doctor_id),
+                    doctor_name=doctor_name,
                     scheduled_at=ap.scheduled_at.isoformat() if ap.scheduled_at else datetime.now(timezone.utc).isoformat(),
                     note=ap.note,
                     image_path=ap.image_path,
@@ -931,7 +962,7 @@ async def update_appointment_status(
     status_update: AppointmentStatusUpdate,
     current=Depends(get_current_user),
 ):
-    """تحديث حالة موعد."""
+    """تحديث حالة موعد (pending, completed, cancelled, late)."""
     doctor_id = await _get_current_doctor_id(current)
     appointment = await patient_service.update_appointment_status(
         appointment_id=appointment_id,
@@ -941,11 +972,85 @@ async def update_appointment_status(
     )
     if not appointment:
         raise HTTPException(status_code=404, detail="Appointment not found or unauthorized")
-    
+
+    # جلب بيانات المريض والطبيب
+    patient_name = None
+    doctor_name = None
+    try:
+        patient = await Patient.get(appointment.patient_id)
+        if patient:
+            user = await User.get(patient.user_id)
+            if user:
+                patient_name = user.name
+        doctor = await Doctor.get(appointment.doctor_id)
+        if doctor:
+            user = await User.get(doctor.user_id)
+            if user:
+                doctor_name = user.name
+    except Exception:
+        pass
+
     return AppointmentOut(
         id=str(appointment.id),
         patient_id=str(appointment.patient_id),
+        patient_name=patient_name,
         doctor_id=str(appointment.doctor_id),
+        doctor_name=doctor_name,
+        scheduled_at=appointment.scheduled_at.isoformat() if appointment.scheduled_at else datetime.now(timezone.utc).isoformat(),
+        note=appointment.note,
+        image_path=appointment.image_path,
+        image_paths=getattr(appointment, 'image_paths', []) if hasattr(appointment, 'image_paths') else (([appointment.image_path] if appointment.image_path else [])),
+        status=appointment.status,
+    )
+
+@router.patch("/patients/{patient_id}/appointments/{appointment_id}/datetime", response_model=AppointmentOut)
+async def update_appointment_datetime(
+    patient_id: str,
+    appointment_id: str,
+    datetime_update: AppointmentDateTimeUpdate,
+    current=Depends(get_current_user),
+):
+    """تعديل تاريخ ووقت الموعد. يتم تحديث الموعد في كل الأماكن."""
+    doctor_id = await _get_current_doctor_id(current)
+    
+    # تحويل ISO string إلى datetime
+    try:
+        scheduled_at = datetime.fromisoformat(datetime_update.scheduled_at)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid datetime format")
+    
+    appointment = await patient_service.update_appointment_datetime(
+        appointment_id=appointment_id,
+        patient_id=patient_id,
+        doctor_id=doctor_id,
+        scheduled_at=scheduled_at,
+    )
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Appointment not found or unauthorized")
+
+    # جلب بيانات المريض والطبيب
+    patient_name = None
+    doctor_name = None
+    try:
+        patient = await Patient.get(appointment.patient_id)
+        if patient:
+            user = await User.get(patient.user_id)
+            if user:
+                patient_name = user.name
+        doctor = await Doctor.get(appointment.doctor_id)
+        if doctor:
+            user = await User.get(doctor.user_id)
+            if user:
+                doctor_name = user.name
+    except Exception:
+        pass
+
+    return AppointmentOut(
+        id=str(appointment.id),
+        patient_id=str(appointment.patient_id),
+        patient_name=patient_name,
+        doctor_id=str(appointment.doctor_id),
+        doctor_name=doctor_name,
         scheduled_at=appointment.scheduled_at.isoformat() if appointment.scheduled_at else datetime.now(timezone.utc).isoformat(),
         note=appointment.note,
         image_path=appointment.image_path,

@@ -400,14 +400,25 @@ async def list_my_uploaded_gallery_images(
 
 @router.get("/appointments", response_model=List[ReceptionAppointmentOut])
 async def list_appointments(
-    day: str | None = None,
-    date_from: str | None = None,
-    date_to: str | None = None,
-    status: str | None = None,
+    day: str | None = Query(None, description="today (اليوم) | month (هذا الشهر)"),
+    date_from: str | None = Query(None, description="تاريخ البداية (ISO format)"),
+    date_to: str | None = Query(None, description="تاريخ النهاية (ISO format)"),
+    status: str | None = Query(None, description="late (المتأخرون) | pending | completed | cancelled"),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1),
 ):
-    """جداول مواعيد جميع المرضى (اليوم/غدًا/نطاق تاريخ)، مع خيار المتأخرون."""
+    """
+    جداول مواعيد جميع المرضى لموظف الاستقبال.
+    
+    التبويبات:
+    - day=today: مواعيد اليوم
+    - day=month: مواعيد هذا الشهر
+    - status=late: المواعيد المتأخرة
+    - date_from & date_to: تصفية حسب التاريخ (من - إلى)
+    
+    يعرض: صورة المريض، اسم المريض، اسم الطبيب، يوم الموعد، تاريخ الموعد، الساعة، رقم هاتف المريض.
+    المواعيد المكتملة والملغية لا تظهر في الجداول.
+    """
     df = datetime.fromisoformat(date_from) if date_from else None
     dt = datetime.fromisoformat(date_to) if date_to else None
     # ✅ احترام skip/limit القادمة من العميل لتحسين الأداء ومنع تجمّد الواجهة

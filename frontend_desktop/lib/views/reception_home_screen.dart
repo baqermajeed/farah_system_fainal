@@ -160,11 +160,28 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
     // ⭐ إضافة listener للبحث - بنفس طريقة eversheen
     _searchController.addListener(_onSearchChanged);
     
+    // Listen to appointments tab changes
+    _appointmentsTabController.addListener(() {
+      if (!_appointmentsTabController.indexIsChanging) {
+        final filters = ['اليوم', 'هذا الشهر', 'المتأخرون', 'تصفية مخصصة'];
+        final filter = filters[_appointmentsTabController.index];
+        _appointmentController.loadDoctorAppointments(
+          isInitial: true,
+          isRefresh: true,
+          filter: filter,
+        );
+      }
+    });
+    
     // Load patients and appointments on first build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // ⭐ استخدام loadPatients مع pagination (25 مريض في كل مرة)
       _patientController.loadPatients(isInitial: true, isRefresh: false);
-      _appointmentController.loadDoctorAppointments(isInitial: true, isRefresh: false);
+      _appointmentController.loadDoctorAppointments(
+        isInitial: true, 
+        isRefresh: false,
+        filter: 'هذا الشهر', // فلتر افتراضي
+      );
     });
 
     // Listen to patient selection changes
@@ -1170,51 +1187,28 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
   }
 
   Widget _buildAppointmentsTableContent(String filter) {
+    // تحميل المواعيد عند تغيير التبويب
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (filter == 'تصفية مخصصة') {
+        // سيتم التعامل مع التصفية المخصصة في مكان آخر
+        return;
+      }
+      _appointmentController.loadDoctorAppointments(
+        isInitial: true,
+        isRefresh: true,
+        filter: filter,
+      );
+    });
+    
     return Obx(() {
-      if (_appointmentController.isLoading.value) {
+      if (_appointmentController.isLoading.value && 
+          _appointmentController.appointments.isEmpty) {
         return const Center(child: CircularProgressIndicator());
       }
 
-      List<AppointmentModel> filteredAppointments = [];
-      String emptyMessage = '';
-
-      // تحديد المواعيد حسب نوع الفلتر
-      switch (filter) {
-        case 'اليوم':
-          filteredAppointments = _appointmentController.getTodayAppointments();
-          emptyMessage = 'لا توجد مواعيد اليوم';
-          break;
-        case 'المتأخرون':
-          filteredAppointments = _appointmentController.getLateAppointments();
-          emptyMessage = 'لا توجد مواعيد متأخرة';
-          break;
-        case 'هذا الشهر':
-          filteredAppointments =
-              _appointmentController.getThisMonthAppointments();
-          emptyMessage = 'لا توجد مواعيد هذا الشهر';
-          break;
-        case 'تصفية مخصصة':
-          if (_appointmentsRangeStart != null &&
-              _appointmentsRangeEnd != null) {
-            final start = _appointmentsRangeStart!;
-            final end = _appointmentsRangeEnd!;
-            filteredAppointments = _appointmentController.appointments
-                .where((apt) =>
-                    !apt.date.isBefore(
-                        DateTime(start.year, start.month, start.day)) &&
-                    !apt.date.isAfter(
-                        DateTime(end.year, end.month, end.day)))
-                .toList();
-            emptyMessage = 'لا توجد مواعيد في هذه الفترة';
-          } else {
-            filteredAppointments = [];
-            emptyMessage = 'اختر تاريخاً (من / إلى) لعرض المواعيد';
-          }
-          break;
-      }
-
-      // ترتيب المواعيد حسب التاريخ
-      filteredAppointments.sort((a, b) => a.date.compareTo(b.date));
+      // استخدام المواعيد مباشرة - الفلترة تتم في الـ backend
+      final filteredAppointments = _appointmentController.appointments;
+      String emptyMessage = 'لا توجد مواعيد';
 
       final bool showCustomFilterControls = filter == 'تصفية مخصصة';
 
@@ -1318,10 +1312,28 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
             ),
             // Table Rows
             Expanded(
-              child: ListView.builder(
-                itemCount: filteredAppointments.length,
-                itemBuilder: (context, index) {
-                  final appointment = filteredAppointments[index];
+              child: NotificationListener<ScrollNotification>(
+                onNotification: (ScrollNotification scrollInfo) {
+                  // عند الوصول لنهاية القائمة، جلب المزيد من المواعيد
+                  if (scrollInfo.metrics.pixels >= scrollInfo.metrics.maxScrollExtent - 200 &&
+                      !_appointmentController.isLoadingMoreAppointments.value &&
+                      _appointmentController.hasMoreAppointments.value) {
+                    _appointmentController.loadMoreAppointments(filter: filter);
+                  }
+                  return false;
+                },
+                child: ListView.builder(
+                  itemCount: filteredAppointments.length +
+                      (_appointmentController.isLoadingMoreAppointments.value ? 1 : 0),
+                  itemBuilder: (context, index) {
+                    // عرض loading indicator في النهاية
+                    if (index == filteredAppointments.length) {
+                      return Padding(
+                        padding: EdgeInsets.all(16.h),
+                        child: const Center(child: CircularProgressIndicator()),
+                      );
+                    }
+                    final appointment = filteredAppointments[index];
                   final patient = _patientController.getPatientById(
                     appointment.patientId,
                   );
@@ -1438,7 +1450,8 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                       ],
                     ),
                   );
-                },
+                  },
+                ),
               ),
             ),
           ],

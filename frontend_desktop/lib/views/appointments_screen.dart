@@ -267,33 +267,9 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
         return const LoadingWidget(message: 'جاري تحميل المواعيد...');
       }
 
-      List<AppointmentModel> filteredAppointments = [];
-      String emptyMessage = '';
-
-      switch (filter) {
-        case 'اليوم':
-          filteredAppointments = appointmentController.getTodayAppointments();
-          emptyMessage = 'لا توجد مواعيد اليوم';
-          break;
-        case 'المتأخرون':
-          filteredAppointments = appointmentController.getLateAppointments();
-          emptyMessage = 'لا توجد مواعيد متأخرة';
-          break;
-        case 'هذا الشهر':
-          filteredAppointments = appointmentController
-              .getThisMonthAppointments();
-          emptyMessage = 'لا توجد مواعيد هذا الشهر';
-          break;
-      }
-
-      // إضافة مراحل الزراعة كمواعيد (من cache بدل حسابها كل rebuild)
-      filteredAppointments = [
-        ...filteredAppointments,
-        ..._filterImplantAppointments(filter),
-      ];
-
-      // ترتيب المواعيد حسب التاريخ
-      filteredAppointments.sort((a, b) => a.date.compareTo(b.date));
+      // استخدام المواعيد مباشرة - الفلترة تتم في الـ backend
+      final filteredAppointments = appointmentController.appointments;
+      String emptyMessage = 'لا توجد مواعيد';
 
       if (filteredAppointments.isEmpty) {
         return EmptyStateWidget(
@@ -823,28 +799,5 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
     }
   }
 
-  List<AppointmentModel> _filterImplantAppointments(String filter) {
-    if (_implantAppointmentsAll.isEmpty) return const [];
-
-    final now = DateTime.now();
-    switch (filter) {
-      case 'اليوم':
-        return _implantAppointmentsAll.where((a) {
-          return a.date.year == now.year &&
-              a.date.month == now.month &&
-              a.date.day == now.day;
-        }).toList();
-      case 'المتأخرون':
-        return _implantAppointmentsAll.where((a) {
-          return a.date.isBefore(now) &&
-              (a.status == 'pending' || a.status == 'scheduled');
-        }).toList();
-      case 'هذا الشهر':
-        return _implantAppointmentsAll.where((a) {
-          return a.date.year == now.year && a.date.month == now.month;
-        }).toList();
-      default:
-        return const [];
-    }
-  }
+  // تم إزالة _filterImplantAppointments لأننا نستخدم pagination فقط
 }

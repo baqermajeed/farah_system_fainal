@@ -274,20 +274,26 @@ class AppointmentController extends GetxController {
         );
       }
       
-      // ترتيب المواعيد حسب التاريخ (من الأقدم للأحدث)
+      // ترتيب المواعيد حسب التاريخ (من الأقدم للأحدث) - Backend يرتبها بالفعل، لكن للتأكد
       appointmentsList.sort((a, b) => a.date.compareTo(b.date));
 
       if (isRefresh || isInitial) {
         appointments.assignAll(appointmentsList);
       } else {
-        appointments.addAll(appointmentsList);
+        // إضافة المواعيد الجديدة فقط (تجنب التكرار)
+        final existingIds = appointments.map((a) => a.id).toSet();
+        final newAppointments = appointmentsList.where((a) => !existingIds.contains(a.id)).toList();
+        appointments.addAll(newAppointments);
       }
 
-      // تحديث حالة Pagination
+      // تحديث حالة Pagination - بناءً على عدد المواعيد الجديدة فقط
       hasMoreAppointments.value = appointmentsList.length >= pageLimit;
 
       if (hasMoreAppointments.value) {
         currentPage++;
+      } else {
+        // لا توجد مواعيد أكثر، توقف عن الجلب
+        print('📅 [AppointmentController] No more appointments available. Stopping pagination.');
       }
 
       print('✅ [AppointmentController] Loaded ${appointmentsList.length} appointments from API (total: ${appointments.length})');
@@ -302,16 +308,18 @@ class AppointmentController extends GetxController {
         print('⚠️ [AppointmentController] No appointments returned from API!');
       }
       
-      // 3) حفظ في Cache - بنفس طريقة eversheen
-      // تشغيل في الخلفية بدون انتظار لتجنب blocking UI thread
-      unawaited(
-        _cacheService.saveAppointments(appointments.toList()).then((_) {
-          print('💾 [AppointmentController] Cache updated with ${appointments.length} appointments');
-        }).catchError((e, stackTrace) {
-          print('❌ [AppointmentController] Error updating cache: $e');
-          print('❌ [AppointmentController] Stack trace: $stackTrace');
-        }),
-      );
+      // 3) حفظ في Cache - فقط عند التحميل الأولي أو التحديث
+      // نحفظ فقط أول 100 موعد لتجنب حجم كبير
+      if (isInitial || isRefresh) {
+        unawaited(
+          _cacheService.saveAppointments(appointments.take(100).toList()).then((_) {
+            print('💾 [AppointmentController] Cache updated with ${appointments.length > 100 ? 100 : appointments.length} appointments');
+          }).catchError((e, stackTrace) {
+            print('❌ [AppointmentController] Error updating cache: $e');
+            print('❌ [AppointmentController] Stack trace: $stackTrace');
+          }),
+        );
+      }
     } on ApiException catch (e) {
       if (NetworkUtils.isNetworkError(e)) {
         NetworkUtils.showNetworkErrorDialog();
@@ -620,61 +628,6 @@ class AppointmentController extends GetxController {
     }
   }
 
-  List<AppointmentModel> getUpcomingAppointments() {
-    final now = DateTime.now();
-    return appointments.where((appointment) {
-      return appointment.date.isAfter(now) &&
-          (appointment.status == 'pending' ||
-              appointment.status == 'scheduled');
-    }).toList()..sort((a, b) => a.date.compareTo(b.date));
-  }
-
-  List<AppointmentModel> getPastAppointments() {
-    final now = DateTime.now();
-    return appointments.where((appointment) {
-      return appointment.date.isBefore(now) ||
-          appointment.status == 'completed' ||
-          appointment.status == 'cancelled';
-    }).toList()..sort((a, b) => b.date.compareTo(a.date));
-  }
-
-  // مواعيد اليوم
-  List<AppointmentModel> getTodayAppointments() {
-    final now = DateTime.now();
-    final todayStart = DateTime(now.year, now.month, now.day);
-    final todayEnd = todayStart.add(const Duration(days: 1));
-    
-    return appointments.where((appointment) {
-      final appointmentDate = appointment.date;
-      return appointmentDate.isAfter(todayStart) && 
-             appointmentDate.isBefore(todayEnd) &&
-          (appointment.status == 'pending' ||
-              appointment.status == 'scheduled');
-    }).toList()..sort((a, b) => a.date.compareTo(b.date));
-  }
-
-  // المواعيد المتأخرة (مواعيد فاتت ولم تكتمل)
-  List<AppointmentModel> getLateAppointments() {
-    final now = DateTime.now();
-    return appointments.where((appointment) {
-      return appointment.date.isBefore(now) && 
-          (appointment.status == 'pending' ||
-              appointment.status == 'scheduled');
-    }).toList()..sort((a, b) => a.date.compareTo(b.date));
-  }
-
-  // مواعيد هذا الشهر
-  List<AppointmentModel> getThisMonthAppointments() {
-    final now = DateTime.now();
-    final monthStart = DateTime(now.year, now.month, 1);
-    final monthEnd = DateTime(now.year, now.month + 1, 1);
-    
-    return appointments.where((appointment) {
-      final appointmentDate = appointment.date;
-      return appointmentDate.isAfter(monthStart) && 
-             appointmentDate.isBefore(monthEnd) &&
-          (appointment.status == 'pending' ||
-              appointment.status == 'scheduled');
-    }).toList()..sort((a, b) => a.date.compareTo(b.date));
-  }
+  // تم إزالة الدوال getTodayAppointments, getLateAppointments, getThisMonthAppointments
+  // لأننا نستخدم pagination فقط - الفلترة تتم في الـ backend
 }

@@ -158,7 +158,11 @@ async def my_doctors(current=Depends(get_current_user)):
 
 @router.get("/appointments", response_model=PatientAppointmentsOut)
 async def my_appointments(current=Depends(get_current_user)):
-    """مواعيدي مقسّمة حسب الطبيب الأساسي والثانوي."""
+    """
+    مواعيد المريض في حسابه.
+    يعرض جميع المواعيد بما فيها المكتملة والملغية.
+    مقسّمة حسب الطبيب الأساسي والثانوي.
+    """
     # الحصول على ملف المريض المرتبط بهذا المستخدم
     patient = await Patient.find_one(Patient.user_id == current.id)
     if not patient:
@@ -198,7 +202,7 @@ async def my_appointments(current=Depends(get_current_user)):
             patient_name=patient_name,
             doctor_id=str(a.doctor_id),
             doctor_name=doctor_name,
-            scheduled_at=a.scheduled_at.isoformat(),
+            scheduled_at=a.scheduled_at.isoformat() if a.scheduled_at else datetime.now(timezone.utc).isoformat(),
             note=a.note,
             image_path=a.image_path,
             image_paths=a.image_paths or [],
@@ -206,6 +210,7 @@ async def my_appointments(current=Depends(get_current_user)):
         )
     
     # استخدام asyncio.gather لتنفيذ جميع العمليات بشكل متوازي
+    import asyncio
     primary_out = await asyncio.gather(*[build_appointment_out(a) for a in primary])
     secondary_out = await asyncio.gather(*[build_appointment_out(a) for a in secondary])
     

@@ -1362,46 +1362,9 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
         return const Center(child: CircularProgressIndicator());
       }
 
-      List<AppointmentModel> filteredAppointments = [];
-      String emptyMessage = '';
-
-      // تحديد المواعيد حسب نوع الفلتر
-      switch (filter) {
-        case 'اليوم':
-          filteredAppointments = _appointmentController.getTodayAppointments();
-          emptyMessage = 'لا توجد مواعيد اليوم';
-          break;
-        case 'المتأخرون':
-          filteredAppointments = _appointmentController.getLateAppointments();
-          emptyMessage = 'لا توجد مواعيد متأخرة';
-          break;
-        case 'هذا الشهر':
-          filteredAppointments =
-              _appointmentController.getThisMonthAppointments();
-          emptyMessage = 'لا توجد مواعيد هذا الشهر';
-          break;
-        case 'تصفية مخصصة':
-          if (_appointmentsRangeStart != null &&
-              _appointmentsRangeEnd != null) {
-            final start = _appointmentsRangeStart!;
-            final end = _appointmentsRangeEnd!;
-            filteredAppointments = _appointmentController.appointments
-                .where((apt) =>
-                    !apt.date.isBefore(
-                        DateTime(start.year, start.month, start.day)) &&
-                    !apt.date.isAfter(
-                        DateTime(end.year, end.month, end.day)))
-                .toList();
-            emptyMessage = 'لا توجد مواعيد في هذه الفترة';
-          } else {
-            filteredAppointments = [];
-            emptyMessage = 'اختر تاريخاً (من / إلى) لعرض المواعيد';
-          }
-          break;
-      }
-
-      // ترتيب المواعيد حسب التاريخ (موجود بالفعل في controller)
-      // filteredAppointments.sort((a, b) => a.date.compareTo(b.date));
+      // استخدام المواعيد مباشرة - الفلترة تتم في الـ backend
+      final filteredAppointments = _appointmentController.appointments;
+      String emptyMessage = 'لا توجد مواعيد';
 
       final bool showCustomFilterControls = filter == 'تصفية مخصصة';
 

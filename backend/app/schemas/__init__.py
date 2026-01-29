@@ -164,15 +164,32 @@ class AppointmentCreate(BaseModel):
 
 class AppointmentStatusUpdate(BaseModel):
     """Schema لتحديث حالة الموعد."""
-    status: str = Field(..., description="الحالة الجديدة: scheduled, completed, cancelled, no_show")
+    status: str = Field(..., description="الحالة الجديدة: pending, completed, cancelled, late")
 
     @field_validator("status")
     @classmethod
     def validate_status(cls, v: str) -> str:
-        allowed_statuses = ["scheduled", "completed", "cancelled", "canceled", "no_show"]
+        allowed_statuses = ["pending", "completed", "cancelled", "late"]
         if v.lower() not in allowed_statuses:
             raise ValueError(f"Status must be one of: {', '.join(allowed_statuses)}")
         return v.lower()
+
+class AppointmentDateTimeUpdate(BaseModel):
+    """Schema لتعديل تاريخ ووقت الموعد."""
+    scheduled_at: str  # ISO datetime string
+
+    @field_validator("scheduled_at")
+    @classmethod
+    def must_include_time(cls, v: str) -> str:
+        """يجب أن يحتوي التاريخ على وقت (ساعة:دقيقة)."""
+        if not isinstance(v, str):
+            raise ValueError("scheduled_at must be ISO string with time")
+        sep = "T" if "T" in v else (" " if " " in v else None)
+        if sep:
+            time_part = v.split(sep, 1)[1]
+            if ":" in time_part:
+                return v
+        raise ValueError("scheduled_at يجب أن يتضمن التاريخ والوقت مثل 2025-11-01T14:30")
 
 class AppointmentOut(BaseModel):
     id: str

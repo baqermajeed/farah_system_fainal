@@ -31,11 +31,11 @@ async def check_and_send_reminders():
         start_date = today_9am
         end_date = today_9am + timedelta(days=4)
         
-        # جلب جميع المواعيد المجدولة في المستقبل
+        # جلب جميع المواعيد المجدولة في المستقبل (حالة pending فقط)
         upcoming_appointments = await Appointment.find(
             Appointment.scheduled_at >= start_date,
             Appointment.scheduled_at <= end_date,
-            Appointment.status == "scheduled"
+            Appointment.status == "pending"
         ).to_list()
         
         logger.info(f"🔍 Checking {len(upcoming_appointments)} upcoming appointments for reminders at 9 AM")
