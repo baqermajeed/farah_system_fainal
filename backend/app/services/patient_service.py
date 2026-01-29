@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Tuple
 from fastapi import HTTPException
 from beanie import PydanticObjectId as OID
-from beanie.operators import In, NotIn, And
+from beanie.operators import In, NotIn, And, Or
 
 from app.models import Patient, DoctorPatientProfile, User, Doctor, Appointment, TreatmentNote, GalleryImage
 from app.constants import Role
@@ -596,11 +596,16 @@ async def list_appointments_for_doctor(
     now = datetime.now(timezone.utc)
     
     if status == "late":
-        # المواعيد المتأخرة: الموعد عبر وحالة الموعد لا تزال pending أو scheduled (للتوافق مع البيانات القديمة)
+        # ⭐ المواعيد المتأخرة: 
+        # 1. المواعيد التي حالتها late مباشرة
+        # 2. المواعيد التي عبرت (scheduled_at < now) وحالتها pending أو scheduled
         query = query.find(
-            And(
-                Appointment.scheduled_at < now,
-                In(Appointment.status, ["pending", "scheduled"])
+            Or(
+                Appointment.status == "late",
+                And(
+                    Appointment.scheduled_at < now,
+                    In(Appointment.status, ["pending", "scheduled"])
+                )
             )
         )
     elif status:
@@ -669,11 +674,16 @@ async def list_appointments_for_all(
     now = datetime.now(timezone.utc)
     
     if status == "late":
-        # المواعيد المتأخرة: الموعد عبر وحالة الموعد لا تزال pending أو scheduled (للتوافق مع البيانات القديمة)
+        # ⭐ المواعيد المتأخرة: 
+        # 1. المواعيد التي حالتها late مباشرة
+        # 2. المواعيد التي عبرت (scheduled_at < now) وحالتها pending أو scheduled
         query = query.find(
-            And(
-                Appointment.scheduled_at < now,
-                In(Appointment.status, ["pending", "scheduled"])
+            Or(
+                Appointment.status == "late",
+                And(
+                    Appointment.scheduled_at < now,
+                    In(Appointment.status, ["pending", "scheduled"])
+                )
             )
         )
     elif status:
