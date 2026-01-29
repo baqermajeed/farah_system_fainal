@@ -105,13 +105,16 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
   final TextEditingController _qrScanController = TextEditingController();
   final GlobalKey _qrPrintKey = GlobalKey();
 
+  // ⭐ ScrollController للـ Pagination
+  final ScrollController _patientsScrollController = ScrollController();
+
   // Appointments filtering (custom tab: date range from / to)
   DateTime? _appointmentsRangeStart;
   DateTime? _appointmentsRangeEnd;
 
   Future<void> _refreshData() async {
-    // نستخدم التحميل الذكي لضمان جلب أحدث المرضى وليس فقط أول 25 من الـ API أو الـ Cache
-    await _patientController.loadPatientsSmart();
+    // ⭐ استخدام loadPatients مع pagination بدلاً من loadPatientsSmart
+    await _patientController.loadPatients(isInitial: false, isRefresh: true);
     await _appointmentController.loadDoctorAppointments(
       isInitial: false,
       isRefresh: true,
@@ -146,9 +149,15 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
         _currentTabIndex.value = _tabController.index;
       }
     });
-    // Load patients on init باستخدام التحميل الذكي مع الكاش
-    // هذا يجلب أحدث المرضى (وليس فقط أول 25) ويُكمل تحميل الباقي في الخلفية.
-    _patientController.loadPatientsSmart();
+    
+    // ⭐ إضافة listener للتمرير لتحميل المزيد من المرضى
+    _patientsScrollController.addListener(_onPatientsScroll);
+    
+    // ⭐ إضافة listener للبحث - بنفس طريقة eversheen
+    _searchController.addListener(_onSearchChanged);
+    
+    // ⭐ استخدام loadPatients مع pagination (25 مريض في كل مرة)
+    _patientController.loadPatients(isInitial: true, isRefresh: false);
     // Load appointments on init - بنفس طريقة eversheen مع Pagination (25 في كل مرة)
     _appointmentController.loadDoctorAppointments(isInitial: true, isRefresh: false);
     // Listen to patient selection changes
@@ -176,11 +185,50 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
 
   @override
   void dispose() {
+    // ⭐ تنظيف ScrollController
+    _patientsScrollController.removeListener(_onPatientsScroll);
+    _patientsScrollController.dispose();
+    // ⭐ تنظيف search listener
+    _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
     _qrScanController.dispose();
     _tabController.dispose();
     _appointmentsTabController.dispose();
     super.dispose();
+  }
+  
+  // ⭐ دالة للتحقق من الوصول لنهاية القائمة وتحميل المزيد
+  void _onPatientsScroll() {
+    if (_patientsScrollController.position.pixels >= 
+        _patientsScrollController.position.maxScrollExtent - 200) {
+      // عندما نصل لـ 200 بكسل قبل النهاية، نحمل المزيد
+      final query = _searchController.text.trim();
+      if (query.isNotEmpty) {
+        // إذا كان هناك بحث، نحمل المزيد من نتائج البحث
+        if (_patientController.hasMoreSearchResults.value && 
+            !_patientController.isLoadingMoreSearch.value) {
+          _patientController.loadMoreSearchResults();
+        }
+      } else {
+        // إذا لم يكن هناك بحث، نحمل المزيد من القائمة العادية
+        if (_patientController.hasMorePatients.value && 
+            !_patientController.isLoadingMorePatients.value) {
+          _patientController.loadMorePatients();
+        }
+      }
+    }
+  }
+  
+  // ⭐ دالة للبحث - بنفس طريقة eversheen
+  void _onSearchChanged() {
+    final query = _searchController.text.trim();
+    if (query.isNotEmpty) {
+      // البحث من API
+      _patientController.searchPatients(searchQuery: query);
+    } else {
+      // مسح البحث والعودة للقائمة العادية
+      _patientController.clearSearch();
+    }
   }
 
   @override
@@ -1021,18 +1069,25 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
       child: RefreshIndicator(
         onRefresh: _refreshData,
         child: Obx(() {
+          final query = _searchController.text.trim();
+          final isSearching = _patientController.isSearching.value;
           final isLoading = _patientController.isLoading.value;
-          final patients = _patientController.patients.toList();
-          final query = _searchController.text.toLowerCase();
-          final filteredPatients = patients.where((p) {
-            return p.name.toLowerCase().contains(query) ||
-                p.phoneNumber.contains(query);
-          }).toList();
+          final isLoadingMore = query.isNotEmpty 
+              ? _patientController.isLoadingMoreSearch.value
+              : _patientController.isLoadingMorePatients.value;
+          final hasMore = query.isNotEmpty
+              ? _patientController.hasMoreSearchResults.value
+              : _patientController.hasMorePatients.value;
+          
+          // ⭐ استخدام نتائج البحث إذا كان هناك بحث، وإلا استخدام القائمة العادية
+          final patientsList = query.isNotEmpty
+              ? _patientController.searchResults.toList()
+              : _patientController.patients.toList();
 
           // ترتيب المرضى من الأحدث إلى الأقدم حسب الـ id
-          filteredPatients.sort((a, b) => b.id.compareTo(a.id));
+          patientsList.sort((a, b) => b.id.compareTo(a.id));
 
-          if (isLoading) {
+          if (isSearching || (isLoading && query.isEmpty)) {
             return ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               children: const [
@@ -1044,16 +1099,30 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
             );
           }
 
-          if (filteredPatients.isEmpty) {
+          if (patientsList.isEmpty) {
             return ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               children: [
                 SizedBox(
                   height: 260.h,
                   child: Center(
-                    child: Text(
-                      'لا يوجد مرضى',
-                      style: TextStyle(fontSize: 16.sp, color: Colors.grey),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.search_off, size: 60.sp, color: Colors.grey),
+                        SizedBox(height: 16.h),
+                        Text(
+                          query.isNotEmpty ? 'لا توجد نتائج للبحث' : 'لا يوجد مرضى',
+                          style: TextStyle(fontSize: 16.sp, color: Colors.grey),
+                        ),
+                        if (query.isNotEmpty) ...[
+                          SizedBox(height: 8.h),
+                          Text(
+                            'جرب البحث بكلمات مختلفة',
+                            style: TextStyle(fontSize: 14.sp, color: Colors.grey[600]),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 ),
@@ -1062,11 +1131,24 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
           }
 
           return ListView.builder(
+            controller: _patientsScrollController, // ⭐ إضافة ScrollController
             physics: const AlwaysScrollableScrollPhysics(),
             padding: EdgeInsets.all(20.w),
-            itemCount: filteredPatients.length,
+            itemCount: patientsList.length + (hasMore ? 1 : 0), // ⭐ إضافة 1 لعرض loading indicator
             itemBuilder: (context, index) {
-              final patient = filteredPatients[index];
+              // ⭐ إذا وصلنا للنهاية ونعرض loading indicator
+              if (index == patientsList.length) {
+                return Container(
+                  padding: EdgeInsets.all(20.w),
+                  child: Center(
+                    child: isLoadingMore
+                        ? CircularProgressIndicator()
+                        : SizedBox.shrink(),
+                  ),
+                );
+              }
+              
+              final patient = patientsList[index];
               return _buildPatientCard(patient: patient);
             },
           );

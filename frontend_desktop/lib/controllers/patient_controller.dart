@@ -26,6 +26,14 @@ class PatientController extends GetxController {
   var hasMorePatients = true.obs;
   final int pageLimit = 25; // 25 مريض في كل مرة (بدلاً من 10 في eversheen)
   
+  // ⭐ متغيرات البحث - بنفس طريقة eversheen
+  RxList<PatientModel> searchResults = <PatientModel>[].obs;
+  RxBool isSearching = false.obs;
+  var searchPage = 1;
+  var hasMoreSearchResults = true.obs;
+  var isLoadingMoreSearch = false.obs;
+  var lastSearchQuery = ''.obs;
+  
   // ⭐ متغيرات للجلب الذكي (للتوافق مع الكود القديم)
   final RxInt loadedPatientsCount = 0.obs;
   final RxString loadingProgress = ''.obs;
@@ -690,5 +698,110 @@ class PatientController extends GetxController {
     try {
       await _cacheService.savePatient(patient);
     } catch (_) {}
+  }
+
+  // ⭐ دوال البحث - بنفس طريقة eversheen
+  Future<void> searchPatients({required String searchQuery}) async {
+    try {
+      if (searchQuery.trim().isEmpty) {
+        clearSearch();
+        return;
+      }
+
+      // إذا كان نفس البحث، لا تعيد البحث
+      if (searchQuery == lastSearchQuery.value && searchResults.isNotEmpty) {
+        return;
+      }
+
+      // بحث جديد
+      searchPage = 1;
+      hasMoreSearchResults.value = true;
+      lastSearchQuery.value = searchQuery;
+      isSearching.value = true;
+      searchResults.clear();
+
+      final authController = Get.find<AuthController>();
+      final userType = authController.currentUser.value?.userType;
+
+      List<PatientModel> results;
+      if (userType == 'receptionist') {
+        results = await _patientService.searchPatients(
+          searchQuery: searchQuery.trim(),
+          skip: (searchPage - 1) * pageLimit,
+          limit: pageLimit,
+        );
+      } else {
+        results = await _doctorService.searchMyPatients(
+          searchQuery: searchQuery.trim(),
+          skip: (searchPage - 1) * pageLimit,
+          limit: pageLimit,
+        );
+      }
+
+      searchResults.assignAll(results);
+
+      // تحقق من وجود المزيد
+      hasMoreSearchResults.value = results.length >= pageLimit;
+      if (hasMoreSearchResults.value) {
+        searchPage = 2; // الصفحة التالية
+      }
+    } catch (e) {
+      print('❌ [PatientController] Error searching patients: $e');
+    } finally {
+      isSearching.value = false;
+    }
+  }
+
+  // ⭐ دالة لتحميل المزيد من نتائج البحث
+  Future<void> loadMoreSearchResults() async {
+    if (isLoadingMoreSearch.value || !hasMoreSearchResults.value) {
+      return;
+    }
+
+    isLoadingMoreSearch.value = true;
+
+    try {
+      final authController = Get.find<AuthController>();
+      final userType = authController.currentUser.value?.userType;
+
+      List<PatientModel> results;
+      if (userType == 'receptionist') {
+        results = await _patientService.searchPatients(
+          searchQuery: lastSearchQuery.value,
+          skip: (searchPage - 1) * pageLimit,
+          limit: pageLimit,
+        );
+      } else {
+        results = await _doctorService.searchMyPatients(
+          searchQuery: lastSearchQuery.value,
+          skip: (searchPage - 1) * pageLimit,
+          limit: pageLimit,
+        );
+      }
+
+      if (results.isNotEmpty) {
+        searchResults.addAll(results);
+        searchPage++;
+
+        // تحقق من وجود المزيد
+        hasMoreSearchResults.value = results.length >= pageLimit;
+      } else {
+        hasMoreSearchResults.value = false;
+      }
+    } catch (e) {
+      print('❌ [PatientController] Error loading more search results: $e');
+    } finally {
+      isLoadingMoreSearch.value = false;
+    }
+  }
+
+  // ⭐ مسح البحث والعودة للقائمة العادية
+  void clearSearch() {
+    lastSearchQuery.value = '';
+    searchPage = 1;
+    hasMoreSearchResults.value = true;
+    isLoadingMoreSearch.value = false;
+    isSearching.value = false;
+    searchResults.clear();
   }
 }

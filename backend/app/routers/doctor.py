@@ -359,6 +359,7 @@ async def upload_patient_profile_image(
 async def my_patients(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1),
+    search: Optional[str] = Query(None, description="بحث في اسم المريض أو رقم الهاتف"),
     current=Depends(get_current_user),
 ):
     """يعرض المرضى الخاصين بالطبيب (أساسي/ثانوي) مرتبة حسب الأحدث أولاً."""
@@ -396,7 +397,23 @@ async def my_patients(
                 "path": "$user_data",
                 "preserveNullAndEmptyArrays": False
             }
-        },
+        }
+    ]
+    
+    # ⭐ إضافة البحث إذا كان موجوداً
+    if search and search.strip():
+        search_lower = search.strip().lower()
+        pipeline.insert(-1, {
+            "$match": {
+                "$or": [
+                    {"user_data.name": {"$regex": search_lower, "$options": "i"}},
+                    {"user_data.phone": {"$regex": search_lower, "$options": "i"}},
+                ]
+            }
+        })
+    
+    # إضافة الترتيب والـ pagination
+    pipeline.extend([
         {
             "$sort": {"user_data.created_at": -1}  # الأحدث أولاً
         },
@@ -406,7 +423,7 @@ async def my_patients(
         {
             "$limit": limit
         }
-    ]
+    ])
     
     patients_with_users = await Patient.aggregate(pipeline).to_list()
     

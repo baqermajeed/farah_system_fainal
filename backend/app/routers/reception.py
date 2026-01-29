@@ -43,6 +43,7 @@ working_hours_service = DoctorWorkingHoursService()
 async def list_patients(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
+    search: Optional[str] = Query(None, description="بحث في اسم المريض أو رقم الهاتف"),
 ):
     """يعرض جميع المرضى مع بياناتهم الأساسية مرتبة حسب الأحدث أولاً."""
     # جلب جميع المرضى مع المستخدمين المرتبطين بهم
@@ -62,7 +63,23 @@ async def list_patients(
                 "path": "$user_data",
                 "preserveNullAndEmptyArrays": False  # نتجاهل المرضى بدون users
             }
-        },
+        }
+    ]
+    
+    # ⭐ إضافة البحث إذا كان موجوداً
+    if search and search.strip():
+        search_lower = search.strip().lower()
+        pipeline.insert(-1, {
+            "$match": {
+                "$or": [
+                    {"user_data.name": {"$regex": search_lower, "$options": "i"}},
+                    {"user_data.phone": {"$regex": search_lower, "$options": "i"}},
+                ]
+            }
+        })
+    
+    # إضافة الترتيب والـ pagination
+    pipeline.extend([
         {
             "$sort": {"user_data.created_at": -1}  # الأحدث أولاً
         },
@@ -72,7 +89,7 @@ async def list_patients(
         {
             "$limit": limit
         }
-    ]
+    ])
     
     patients_with_users = await Patient.aggregate(pipeline).to_list()
     

@@ -200,6 +200,36 @@ class PatientService {
     }
   }
 
+  // ⭐ البحث عن المرضى (للاستقبال) - بنفس طريقة eversheen
+  Future<List<PatientModel>> searchPatients({
+    required String searchQuery,
+    int skip = 0,
+    int limit = 50,
+  }) async {
+    try {
+      final response = await _api.get(
+        ApiConstants.receptionPatients,
+        queryParameters: {
+          'skip': skip,
+          'limit': limit,
+          'search': searchQuery,
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = response.data as List;
+        return data.map((json) => _mapPatientOutToModel(json)).toList();
+      } else {
+        throw ApiException('فشل البحث عن المرضى');
+      }
+    } catch (e) {
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('فشل البحث عن المرضى: ${e.toString()}');
+    }
+  }
+
   // جلب قائمة جميع الأطباء (للاستقبال)
   Future<List<DoctorModel>> getAllDoctors() async {
     try {

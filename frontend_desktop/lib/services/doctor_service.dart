@@ -157,6 +157,47 @@ class DoctorService {
     }
   }
 
+  // ⭐ البحث عن المرضى (للطبيب) - بنفس طريقة eversheen
+  Future<List<PatientModel>> searchMyPatients({
+    required String searchQuery,
+    int skip = 0,
+    int limit = 50,
+  }) async {
+    try {
+      final response = await _api.get(
+        ApiConstants.doctorPatients,
+        queryParameters: {
+          'skip': skip,
+          'limit': limit,
+          'search': searchQuery,
+        },
+      );
+
+      if (response.statusCode == 200) {
+        dynamic responseData = response.data;
+        if (responseData is! List) {
+          if (responseData is Map) {
+            if (responseData.containsKey('data')) {
+              responseData = responseData['data'];
+            } else if (responseData.containsKey('patients')) {
+              responseData = responseData['patients'];
+            }
+          }
+        }
+
+        final data = responseData as List;
+        return data.map((json) => _mapPatientOutToModel(json)).toList();
+      } else {
+        throw ApiException('فشل البحث عن المرضى');
+      }
+    } catch (e) {
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('فشل البحث عن المرضى: ${e.toString()}');
+    }
+  }
+
   // جلب قائمة جميع الأطباء (للطبيب المدير فقط)
   Future<List<DoctorModel>> getAllDoctorsForManager() async {
     try {
