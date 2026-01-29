@@ -103,52 +103,37 @@ def _build_doctor_patient_out(patient: Patient, user: User, doctor_id: str) -> P
 
 
 def _build_doctor_patient_out_from_agg(patient_doc: dict, user_doc: dict, doctor_id: str) -> PatientOut:
-    """بناء PatientOut من بيانات aggregation مباشرة بدون إعادة جلب من Beanie."""
+    """Build PatientOut directly from aggregation result (no Beanie re-fetch)."""
+
     from app.schemas import DoctorPatientProfileOut
-    
-    doctor_profiles_dict = patient_doc.get("doctor_profiles", {})
+
     doctor_key = str(doctor_id)
-    
-    # استخراج doctor_profiles للطبيب المحدد
+    doctor_profiles_raw = patient_doc.get("doctor_profiles", {}) or {}
+
     doctor_profiles_out: Dict[str, DoctorPatientProfileOut] = {}
-    if doctor_profiles_dict:
-        profile = doctor_profiles_dict.get(doctor_key)
-        if profile:
-            # معالجة التواريخ إذا كانت strings
-            assigned_at = profile.get("assigned_at")
-            if isinstance(assigned_at, str):
+
+    profile = doctor_profiles_raw.get(doctor_key)
+    if profile:
+        def parse_dt(v):
+            if isinstance(v, str):
                 try:
-                    assigned_at = datetime.fromisoformat(assigned_at.replace('Z', '+00:00'))
-                except:
-                    assigned_at = None
-            
-            last_action_at = profile.get("last_action_at")
-            if isinstance(last_action_at, str):
-                try:
-                    last_action_at = datetime.fromisoformat(last_action_at.replace('Z', '+00:00'))
-                except:
-                    last_action_at = None
-            
-            inactive_since = profile.get("inactive_since")
-            if isinstance(inactive_since, str):
-                try:
-                    inactive_since = datetime.fromisoformat(inactive_since.replace('Z', '+00:00'))
-                except:
-                    inactive_since = None
-            
-            doctor_profiles_out[doctor_key] = DoctorPatientProfileOut(
-                treatment_type=profile.get("treatment_type"),
-                assigned_at=assigned_at,
-                last_action_at=last_action_at,
-                status=profile.get("status"),
-                inactive_since=inactive_since,
-            )
-    
-    # نوع العلاج للطبيب الحالي فقط
+                    return datetime.fromisoformat(v.replace("Z", "+00:00"))
+                except Exception:
+                    return None
+            return v
+
+        doctor_profiles_out[doctor_key] = DoctorPatientProfileOut(
+            treatment_type=profile.get("treatment_type"),
+            assigned_at=parse_dt(profile.get("assigned_at")),
+            last_action_at=parse_dt(profile.get("last_action_at")),
+            status=profile.get("status"),
+            inactive_since=parse_dt(profile.get("inactive_since")),
+        )
+
     treatment_type = None
-    if doctor_profiles_dict and doctor_key in doctor_profiles_dict:
-        treatment_type = doctor_profiles_dict[doctor_key].get("treatment_type")
-    
+    if profile:
+        treatment_type = profile.get("treatment_type")
+
     return PatientOut(
         id=str(patient_doc["_id"]),
         user_id=str(patient_doc.get("user_id")),
@@ -165,6 +150,7 @@ def _build_doctor_patient_out_from_agg(patient_doc: dict, user_doc: dict, doctor
         qr_image_path=patient_doc.get("qr_image_path"),
         imageUrl=user_doc.get("imageUrl"),
     )
+
 
 @router.post("/patients", response_model=PatientOut)
 async def add_patient(
@@ -428,21 +414,13 @@ async def my_patients(
     search: Optional[str] = Query(None, description="بحث في اسم المريض أو رقم الهاتف"),
     current=Depends(get_current_user),
 ):
-    """يعرض المرضى الخاصين بالطبيب (أساسي/ثانوي) مرتبة حسب الأحدث أولاً."""
     doctor_id = await _get_current_doctor_id(current)
-    
-    # جلب المرضى مع المستخدمين وترتيب حسب created_at (الأحدث أولاً)
-    # نستخدم aggregation pipeline للترتيب الصحيح
-    
+
     try:
         did = OID(doctor_id)
     except Exception as e:
-        print(f"❌ Error converting doctor_id to OID: {doctor_id}, error: {e}")
         raise HTTPException(status_code=400, detail=f"Invalid doctor_id format: {doctor_id}")
-    
-    doctor_key = str(did)
-    
-    # استخدام aggregation pipeline لترتيب حسب user.created_at
+
     pipeline = [
         {
             "$match": {
@@ -454,105 +432,84 @@ async def my_patients(
                 "from": "users",
                 "localField": "user_id",
                 "foreignField": "_id",
-                "as": "user_data"
+                "as": "user_data",
             }
         },
         {
             "$unwind": {
                 "path": "$user_data",
-                "preserveNullAndEmptyArrays": True
+                "preserveNullAndEmptyArrays": True,
             }
-        }
+        },
     ]
-    
-    # ⭐ إضافة البحث إذا كان موجوداً
+
     if search and search.strip():
-        search_lower = search.strip().lower()
-        pipeline.insert(-1, {
-            "$match": {
-                "$or": [
-                    {"user_data.name": {"$regex": search_lower, "$options": "i"}},
-                    {"user_data.phone": {"$regex": search_lower, "$options": "i"}},
-                ]
+        search_lower = search.strip()
+        pipeline.append(
+            {
+                "$match": {
+                    "$or": [
+                        {"user_data.name": {"$regex": search_lower, "$options": "i"}},
+                        {"user_data.phone": {"$regex": search_lower, "$options": "i"}},
+                    ]
+                }
             }
-        })
-    
-    # إضافة الترتيب والـ pagination
-    # ✅ إضافة حقل sort_date للتعامل مع user_data الفارغ
-    pipeline.insert(-1, {
-        "$addFields": {
-            "sort_date": {
-                "$ifNull": ["$user_data.created_at", "$_id"]
+        )
+
+    pipeline.append(
+        {
+            "$addFields": {
+                "sort_date": {"$ifNull": ["$user_data.created_at", "$_id"]}
             }
         }
-    })
-    
-    pipeline.extend([
-        {
-            "$sort": {"sort_date": -1}  # الأحدث أولاً
-        },
-        {
-            "$skip": skip
-        },
-        {
-            "$limit": limit
-        }
-    ])
-    
+    )
+
+    pipeline.extend(
+        [
+            {"$sort": {"sort_date": -1}},
+            {"$skip": skip},
+            {"$limit": limit},
+        ]
+    )
+
     patients_with_users = await Patient.aggregate(pipeline).to_list()
-    
-    # ✅ Logging للتحقق من عدد المرضى
-    logger.info(f"📊 [my_patients] Doctor ID: {doctor_id}, Found {len(patients_with_users)} patients from aggregation")
-    
-    # ✅ استخدام بيانات aggregation مباشرة بدون إعادة جلب من Beanie
+
+    logger.info(
+        f"📊 [my_patients] Doctor ID: {doctor_id}, Found {len(patients_with_users)} patients from aggregation"
+    )
+
     out: List[PatientOut] = []
     skipped_no_user_data = 0
-    
+
     for item in patients_with_users:
         user_data = item.get("user_data")
-        
-        # ✅ التحقق من وجود user_data
+
         if not user_data or not user_data.get("_id"):
             skipped_no_user_data += 1
-            patient_id = item.get("_id")
-            logger.warning(f"⚠️ [my_patients] Skipping patient {patient_id}: no user_data")
+            logger.warning(
+                f"⚠️ [my_patients] Skipping patient {item.get('_id')}: no user_data"
+            )
             continue
-        
-        # ✅ استخدام البيانات من aggregation مباشرة
+
         try:
-            patient_out = _build_doctor_patient_out_from_agg(item, user_data, doctor_id)
-            out.append(patient_out)
+            out.append(
+                _build_doctor_patient_out_from_agg(
+                    patient_doc=item,
+                    user_doc=user_data,
+                    doctor_id=doctor_id,
+                )
+            )
         except Exception as e:
-            patient_id = item.get("_id")
-            logger.error(f"❌ [my_patients] Error building PatientOut for {patient_id}: {e}")
-            continue
-    
-    # ✅ Logging نهائي
-    logger.info(f"✅ [my_patients] Returning {len(out)} patients (skipped: {skipped_no_user_data} no user_data)")
-    return out
+            logger.error(
+                f"❌ [my_patients] Error building PatientOut for {item.get('_id')}: {e}"
+            )
 
-
-@router.get("/patients/inactive", response_model=List[PatientOut])
-async def my_inactive_patients(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1),
-    current=Depends(get_current_user),
-):
-    """List patients that became inactive for this doctor."""
-    doctor_id = await _get_current_doctor_id(current)
-    patients = await patient_service.list_inactive_patients_for_doctor(
-        doctor_id, skip=skip, limit=limit
+    logger.info(
+        f"✅ [my_patients] Returning {len(out)} patients (skipped: {skipped_no_user_data} no user_data)"
     )
-    out: List[PatientOut] = []
-    for p in patients:
-        try:
-            u = await User.get(p.user_id)
-            if not u:
-                continue
-        except Exception:
-            continue
-        out.append(_build_doctor_patient_out(p, u, doctor_id))
+
     return out
+
 
 @router.post("/patients/{patient_id}/treatment", response_model=PatientOut)
 async def set_treatment(patient_id: str, treatment_type: str = Query(...), current=Depends(get_current_user)):
