@@ -163,13 +163,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
     // Listen to appointments tab changes
     _appointmentsTabController.addListener(() {
       if (!_appointmentsTabController.indexIsChanging) {
-        final filters = ['اليوم', 'هذا الشهر', 'المتأخرون', 'تصفية مخصصة'];
-        final filter = filters[_appointmentsTabController.index];
-        _appointmentController.loadDoctorAppointments(
-          isInitial: true,
-          isRefresh: true,
-          filter: filter,
-        );
+        _onAppointmentsTabChanged(_appointmentsTabController.index);
       }
     });
     
@@ -266,6 +260,199 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
       // مسح البحث والعودة للقائمة العادية
       _patientController.clearSearch();
     }
+  }
+
+  // ⭐ دالة لتغيير تبويبات المواعيد
+  void _onAppointmentsTabChanged(int index) {
+    String? filter;
+
+    switch (index) {
+      case 0: // اليوم
+        filter = 'اليوم';
+        break;
+      case 1: // هذا الشهر
+        filter = 'هذا الشهر';
+        break;
+      case 2: // المتأخرون
+        filter = 'المتأخرون';
+        break;
+      case 3: // تصفية مخصصة
+        filter = 'تصفية مخصصة';
+        // إذا لم يتم تحديد التاريخ بعد، نفتح حوار التصفية
+        if (_appointmentsRangeStart == null || _appointmentsRangeEnd == null) {
+          _showAppointmentsDateRangeDialog();
+          return;
+        }
+        break;
+    }
+
+    // إعادة تحميل المواعيد مع الفلتر المناسب
+    _appointmentController.loadDoctorAppointments(
+      isInitial: false,
+      isRefresh: true,
+      filter: filter,
+      customFilterStart: _appointmentsRangeStart,
+      customFilterEnd: _appointmentsRangeEnd,
+    );
+  }
+
+  // ⭐ دالة لعرض حوار التصفية المخصصة (من-إلى)
+  void _showAppointmentsDateRangeDialog() {
+    DateTime? startDate = _appointmentsRangeStart;
+    DateTime? endDate = _appointmentsRangeEnd;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16.r),
+              ),
+              child: Container(
+                width: MediaQuery.of(context).size.width * 0.9,
+                padding: EdgeInsets.all(16.w),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'تصفية حسب التاريخ (من - إلى)',
+                      style: TextStyle(
+                        fontSize: 18.sp,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    SizedBox(height: 16.h),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'من تاريخ:',
+                                style: TextStyle(
+                                  fontSize: 14.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              SizedBox(height: 8.h),
+                              SizedBox(
+                                height: 200.h,
+                                child: CalendarDatePicker(
+                                  initialDate: startDate ?? DateTime.now(),
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime(2030),
+                                  onDateChanged: (date) {
+                                    setDialogState(() {
+                                      startDate = date;
+                                    });
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(width: 16.w),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'إلى تاريخ:',
+                                style: TextStyle(
+                                  fontSize: 14.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              SizedBox(height: 8.h),
+                              SizedBox(
+                                height: 200.h,
+                                child: CalendarDatePicker(
+                                  initialDate: endDate ?? DateTime.now(),
+                                  firstDate: startDate ?? DateTime(2020),
+                                  lastDate: DateTime(2030),
+                                  onDateChanged: (date) {
+                                    setDialogState(() {
+                                      endDate = date;
+                                    });
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 16.h),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: Text(
+                            'إلغاء',
+                            style: TextStyle(color: AppColors.textSecondary),
+                          ),
+                        ),
+                        ElevatedButton(
+                          onPressed: () {
+                            if (startDate != null && endDate != null) {
+                              if (endDate!.isBefore(startDate!)) {
+                                Get.snackbar(
+                                  'تنبيه',
+                                  'تاريخ النهاية يجب أن يكون بعد تاريخ البداية',
+                                  snackPosition: SnackPosition.BOTTOM,
+                                  backgroundColor: Colors.orange,
+                                  colorText: AppColors.white,
+                                );
+                                return;
+                              }
+                              setState(() {
+                                _appointmentsRangeStart = startDate;
+                                _appointmentsRangeEnd = endDate;
+                              });
+                              Navigator.of(context).pop();
+                              _appointmentController.loadDoctorAppointments(
+                                isInitial: true,
+                                isRefresh: true,
+                                filter: 'تصفية مخصصة',
+                                customFilterStart: startDate,
+                                customFilterEnd: endDate,
+                              );
+                            } else {
+                              Get.snackbar(
+                                'تنبيه',
+                                'يرجى اختيار تاريخ البداية والنهاية',
+                                snackPosition: SnackPosition.BOTTOM,
+                                backgroundColor: Colors.orange,
+                                colorText: AppColors.white,
+                              );
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                          ),
+                          child: Text(
+                            'عرض المواعيد',
+                            style: TextStyle(color: AppColors.white),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -1187,18 +1374,8 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
   }
 
   Widget _buildAppointmentsTableContent(String filter) {
-    // تحميل المواعيد عند تغيير التبويب
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (filter == 'تصفية مخصصة') {
-        // سيتم التعامل مع التصفية المخصصة في مكان آخر
-        return;
-      }
-      _appointmentController.loadDoctorAppointments(
-        isInitial: true,
-        isRefresh: true,
-        filter: filter,
-      );
-    });
+    // ⭐ بنفس طريقة عرض المرضى: التحميل يتم في _onAppointmentsTabChanged
+    // لا نحمل هنا لتجنب التحميل المتكرر
     
     return Obx(() {
       if (_appointmentController.isLoading.value && 
@@ -1286,6 +1463,19 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                   SizedBox(
                     width: 140.w,
                     child: Text(
+                      'اسم الطبيب',
+                      style: TextStyle(
+                        fontSize: 16.sp,
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF76C6D1),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  SizedBox(width: 60.w),
+                  SizedBox(
+                    width: 140.w,
+                    child: Text(
                       'الموعد',
                       style: TextStyle(
                         fontSize: 16.sp,
@@ -1305,6 +1495,19 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                         color: const Color(0xFF76C6D1),
                       ),
                       textAlign: TextAlign.right,
+                    ),
+                  ),
+                  SizedBox(width: 60.w),
+                  SizedBox(
+                    width: 60.w,
+                    child: Text(
+                      'الصورة',
+                      style: TextStyle(
+                        fontSize: 16.sp,
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF76C6D1),
+                      ),
+                      textAlign: TextAlign.center,
                     ),
                   ),
                 ],
@@ -1339,10 +1542,24 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                   );
                   final patientName = patient?.name ?? appointment.patientName;
                   final patientPhone = patient?.phoneNumber ?? '';
+                  final patientImageUrl = patient?.imageUrl;
+                  final doctorName = appointment.doctorName;
 
                   // تنسيق التاريخ
                   final dateFormat = DateFormat('yyyy/MM/dd', 'ar');
                   final formattedDate = dateFormat.format(appointment.date);
+
+                  // أسماء الأيام بالعربية
+                  final weekDays = [
+                    'الأحد',
+                    'الاثنين',
+                    'الثلاثاء',
+                    'الأربعاء',
+                    'الخميس',
+                    'الجمعة',
+                    'السبت',
+                  ];
+                  final dayName = weekDays[appointment.date.weekday % 7];
 
                   // تنسيق الوقت
                   final timeParts = appointment.time.split(':');
@@ -1354,13 +1571,12 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                       : (hour == 0 ? 12 : hour);
                   final timeText = '$displayHour:$minute ${isPM ? 'م' : 'ص'}';
 
-                  final appointmentText = '$formattedDate $timeText';
+                  final appointmentText = 'يوم $dayName - $formattedDate - $timeText';
 
                   final isLate =
                       filter == 'المتأخرون' ||
                       (appointment.date.isBefore(DateTime.now()) &&
-                          (appointment.status == 'scheduled' ||
-                              appointment.status == 'pending'));
+                          (appointment.status == 'pending'));
 
                   return Container(
                     padding: EdgeInsets.symmetric(
@@ -1371,7 +1587,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        // العمود الرابع: زر عرض
+                        // العمود الأول: زر عرض
                         SizedBox(
                           width: 100.w,
                           height: 30.h,
@@ -1416,7 +1632,22 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                           ),
                         ),
                         SizedBox(width: 60.w),
-                        // الموعد
+                        // اسم الطبيب
+                        SizedBox(
+                          width: 140.w,
+                          child: Text(
+                            doctorName,
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              color: const Color(0x99212F34),
+                            ),
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        SizedBox(width: 60.w),
+                        // الموعد (يوم - تاريخ - ساعة)
                         SizedBox(
                           width: 140.w,
                           child: Text(
@@ -1428,7 +1659,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                                   : const Color(0x99212F34),
                             ),
                             textAlign: TextAlign.center,
-                            maxLines: 1,
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -1445,6 +1676,70 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                             textAlign: TextAlign.right,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        SizedBox(width: 60.w),
+                        // صورة المريض
+                        SizedBox(
+                          width: 60.w,
+                          height: 60.w,
+                          child: Builder(
+                            builder: (context) {
+                              final validImageUrl = ImageUtils.convertToValidUrl(patientImageUrl);
+                              final hasImage = validImageUrl != null && ImageUtils.isValidImageUrl(validImageUrl);
+                              
+                              return Container(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: isLate
+                                        ? Colors.red
+                                        : AppColors.primary.withOpacity(0.3),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: ClipOval(
+                                  child: hasImage
+                                      ? CachedNetworkImage(
+                                          imageUrl: validImageUrl,
+                                          fit: BoxFit.cover,
+                                          width: 60.w,
+                                          height: 60.w,
+                                          fadeInDuration: Duration.zero,
+                                          fadeOutDuration: Duration.zero,
+                                          memCacheWidth: 60,
+                                          memCacheHeight: 60,
+                                          placeholder: (context, url) => Container(
+                                            color: const Color.fromARGB(255, 255, 255, 255),
+                                            child: Center(
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                valueColor: AlwaysStoppedAnimation<Color>(
+                                                  AppColors.primary,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          errorWidget: (context, url, error) => Container(
+                                            color: AppColors.divider,
+                                            child: Icon(
+                                              Icons.person,
+                                              color: AppColors.textSecondary,
+                                              size: 30.sp,
+                                            ),
+                                          ),
+                                        )
+                                      : Container(
+                                          color: AppColors.divider,
+                                          child: Icon(
+                                            Icons.person,
+                                            color: AppColors.textSecondary,
+                                            size: 30.sp,
+                                          ),
+                                        ),
+                                ),
+                              );
+                            },
                           ),
                         ),
                       ],

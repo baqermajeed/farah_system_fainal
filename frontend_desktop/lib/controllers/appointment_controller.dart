@@ -184,30 +184,22 @@ class AppointmentController extends GetxController {
         isLoadingMoreAppointments.value = true;
       }
 
-      // حساب dateFrom و dateTo حسب الفلتر المحدد
+      // حساب day و status و dateFrom/dateTo حسب الفلتر المحدد
+      String? calculatedDay;
+      String? calculatedStatus;
       String? calculatedDateFrom = dateFrom;
       String? calculatedDateTo = dateTo;
       
       if (_currentFilter != null) {
-        final now = DateTime.now();
         switch (_currentFilter) {
           case 'اليوم':
-            final todayStart = DateTime(now.year, now.month, now.day);
-            calculatedDateFrom = DateFormat('yyyy-MM-dd').format(todayStart);
-            final todayEnd = todayStart.add(const Duration(days: 1));
-            calculatedDateTo = DateFormat('yyyy-MM-dd').format(todayEnd);
+            calculatedDay = 'today';
             break;
           case 'هذا الشهر':
-            final monthStart = DateTime(now.year, now.month, 1);
-            calculatedDateFrom = DateFormat('yyyy-MM-dd').format(monthStart);
-            final monthEnd = DateTime(now.year, now.month + 1, 1);
-            calculatedDateTo = DateFormat('yyyy-MM-dd').format(monthEnd);
+            calculatedDay = 'month';
             break;
           case 'المتأخرون':
-            // المواعيد المتأخرة هي التي قبل اليوم
-            final todayStart = DateTime(now.year, now.month, now.day);
-            calculatedDateTo = DateFormat('yyyy-MM-dd').format(todayStart);
-            // لا نحدد dateFrom للسماح بجلب جميع المواعيد المتأخرة
+            calculatedStatus = 'late';
             break;
           case 'تصفية مخصصة':
             if (_customFilterStart != null && _customFilterEnd != null) {
@@ -254,10 +246,10 @@ class AppointmentController extends GetxController {
           '📅 [AppointmentController] Loading all appointments for receptionist',
         );
         appointmentsList = await _doctorService.getAllAppointmentsForReception(
-          day: day,
-          dateFrom: calculatedDateFrom ?? dateFrom,
-          dateTo: calculatedDateTo ?? dateTo,
-          status: status,
+          day: calculatedDay ?? day,
+          dateFrom: calculatedDateFrom,
+          dateTo: calculatedDateTo,
+          status: calculatedStatus ?? status,
           skip: skip,
           limit: pageLimit,
         );
@@ -265,10 +257,10 @@ class AppointmentController extends GetxController {
         // الطبيب: يجلب مواعيده الخاصة
         print('📅 [AppointmentController] Loading appointments for doctor');
         appointmentsList = await _doctorService.getMyAppointments(
-          day: day,
-          dateFrom: calculatedDateFrom ?? dateFrom,
-          dateTo: calculatedDateTo ?? dateTo,
-          status: status,
+          day: calculatedDay ?? day,
+          dateFrom: calculatedDateFrom,
+          dateTo: calculatedDateTo,
+          status: calculatedStatus ?? status,
           skip: skip,
           limit: pageLimit,
         );
@@ -467,7 +459,7 @@ class AppointmentController extends GetxController {
         date: scheduledAt,
         time:
             '${scheduledAt.hour.toString().padLeft(2, '0')}:${scheduledAt.minute.toString().padLeft(2, '0')}',
-        status: 'scheduled',
+        status: 'pending',
         notes: note,
         imagePath: null,
         imagePaths: const [],
@@ -621,6 +613,65 @@ class AppointmentController extends GetxController {
         NetworkUtils.showNetworkErrorDialog();
       } else {
         Get.snackbar('خطأ', 'حدث خطأ أثناء تحديث حالة الموعد');
+      }
+      rethrow;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  // تحديث تاريخ ووقت الموعد
+  Future<void> updateAppointmentDateTime(
+    String patientId,
+    String appointmentId,
+    DateTime scheduledAt,
+  ) async {
+    try {
+      isLoading.value = true;
+      final updatedAppointment = await _doctorService.updateAppointmentDateTime(
+        patientId,
+        appointmentId,
+        scheduledAt,
+      );
+
+      // تحديث الموعد في القائمة
+      final index = appointments.indexWhere((apt) => apt.id == appointmentId);
+      if (index != -1) {
+        appointments[index] = updatedAppointment;
+      }
+
+      // حفظ في Cache - بنفس طريقة eversheen
+      try {
+        await _cacheService.saveAppointment(updatedAppointment);
+      } catch (e) {
+        print('❌ [AppointmentController] Error updating cache: $e');
+      }
+
+      // تحديث الموعد في كاش المريض (إن وجد)
+      final cached = patientAppointmentsCache[patientId];
+      if (cached != null && cached.isNotEmpty) {
+        final cachedIndex = cached.indexWhere((apt) => apt.id == appointmentId);
+        if (cachedIndex != -1) {
+          final newList = List<AppointmentModel>.from(cached);
+          newList[cachedIndex] = updatedAppointment;
+          patientAppointmentsCache[patientId] = newList;
+          patientAppointmentsCache.refresh();
+        }
+      }
+
+      Get.snackbar('نجح', 'تم تحديث تاريخ الموعد بنجاح');
+    } on ApiException catch (e) {
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', e.message);
+      }
+      rethrow;
+    } catch (e) {
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', 'حدث خطأ أثناء تحديث تاريخ الموعد');
       }
       rethrow;
     } finally {

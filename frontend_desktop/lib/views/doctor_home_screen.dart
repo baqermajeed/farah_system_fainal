@@ -228,35 +228,35 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
 
   // ⭐ دالة لإعادة تحميل المواعيد عند تغيير التبويب
   void _onAppointmentsTabChanged(int index) {
-    String? day;
-    String? dateFrom;
-    String? dateTo;
-    String? status;
+    String? filter;
 
     switch (index) {
       case 0: // اليوم
-        day = 'today';
+        filter = 'اليوم';
         break;
       case 1: // هذا الشهر
-        // ⭐ استخدام day='month' بدلاً من dateFrom/dateTo لأن الـ backend يدعمها
-        day = 'month';
+        filter = 'هذا الشهر';
         break;
       case 2: // المتأخرون
-        status = 'late';
+        filter = 'المتأخرون';
         break;
       case 3: // تصفية مخصصة
-        // لا نحمل أي شيء هنا، سيتم التحميل عند اختيار التاريخ
-        return;
+        filter = 'تصفية مخصصة';
+        // إذا لم يتم تحديد التاريخ بعد، نفتح حوار التصفية
+        if (_appointmentsRangeStart == null || _appointmentsRangeEnd == null) {
+          _showAppointmentsDateRangeDialog();
+          return;
+        }
+        break;
     }
 
     // إعادة تحميل المواعيد مع الفلتر المناسب
     _appointmentController.loadDoctorAppointments(
-      day: day,
-      dateFrom: dateFrom,
-      dateTo: dateTo,
-      status: status,
       isInitial: false,
       isRefresh: true,
+      filter: filter,
+      customFilterStart: _appointmentsRangeStart,
+      customFilterEnd: _appointmentsRangeEnd,
     );
   }
   
@@ -270,6 +270,165 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
       // مسح البحث والعودة للقائمة العادية
       _patientController.clearSearch();
     }
+  }
+
+  // ⭐ دالة لعرض حوار التصفية المخصصة (من-إلى)
+  void _showAppointmentsDateRangeDialog() {
+    DateTime? startDate = _appointmentsRangeStart;
+    DateTime? endDate = _appointmentsRangeEnd;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16.r),
+              ),
+              child: Container(
+                width: MediaQuery.of(context).size.width * 0.9,
+                padding: EdgeInsets.all(16.w),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'تصفية حسب التاريخ (من - إلى)',
+                      style: TextStyle(
+                        fontSize: 18.sp,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    SizedBox(height: 16.h),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'من تاريخ:',
+                                style: TextStyle(
+                                  fontSize: 14.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              SizedBox(height: 8.h),
+                              SizedBox(
+                                height: 200.h,
+                                child: CalendarDatePicker(
+                                  initialDate: startDate ?? DateTime.now(),
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime(2030),
+                                  onDateChanged: (date) {
+                                    setDialogState(() {
+                                      startDate = date;
+                                    });
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(width: 16.w),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'إلى تاريخ:',
+                                style: TextStyle(
+                                  fontSize: 14.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              SizedBox(height: 8.h),
+                              SizedBox(
+                                height: 200.h,
+                                child: CalendarDatePicker(
+                                  initialDate: endDate ?? DateTime.now(),
+                                  firstDate: startDate ?? DateTime(2020),
+                                  lastDate: DateTime(2030),
+                                  onDateChanged: (date) {
+                                    setDialogState(() {
+                                      endDate = date;
+                                    });
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 16.h),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: Text(
+                            'إلغاء',
+                            style: TextStyle(color: AppColors.textSecondary),
+                          ),
+                        ),
+                        ElevatedButton(
+                          onPressed: () {
+                            if (startDate != null && endDate != null) {
+                              if (endDate!.isBefore(startDate!)) {
+                                Get.snackbar(
+                                  'تنبيه',
+                                  'تاريخ النهاية يجب أن يكون بعد تاريخ البداية',
+                                  snackPosition: SnackPosition.BOTTOM,
+                                  backgroundColor: Colors.orange,
+                                  colorText: AppColors.white,
+                                );
+                                return;
+                              }
+                              setState(() {
+                                _appointmentsRangeStart = startDate;
+                                _appointmentsRangeEnd = endDate;
+                              });
+                              Navigator.of(context).pop();
+                              _appointmentController.loadDoctorAppointments(
+                                isInitial: true,
+                                isRefresh: true,
+                                filter: 'تصفية مخصصة',
+                                customFilterStart: startDate,
+                                customFilterEnd: endDate,
+                              );
+                            } else {
+                              Get.snackbar(
+                                'تنبيه',
+                                'يرجى اختيار تاريخ البداية والنهاية',
+                                snackPosition: SnackPosition.BOTTOM,
+                                backgroundColor: Colors.orange,
+                                colorText: AppColors.white,
+                              );
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                          ),
+                          child: Text(
+                            'عرض المواعيد',
+                            style: TextStyle(color: AppColors.white),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -1335,26 +1494,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
   }
 
   Widget _buildAppointmentsTableContent(String filter) {
-    // تحميل المواعيد عند تغيير التبويب
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (filter == 'تصفية مخصصة') {
-        if (_appointmentsRangeStart != null && _appointmentsRangeEnd != null) {
-          _appointmentController.loadDoctorAppointments(
-            isInitial: true,
-            isRefresh: true,
-            filter: filter,
-            customFilterStart: _appointmentsRangeStart,
-            customFilterEnd: _appointmentsRangeEnd,
-          );
-        }
-      } else {
-        _appointmentController.loadDoctorAppointments(
-          isInitial: true,
-          isRefresh: true,
-          filter: filter,
-        );
-      }
-    });
+    // ⭐ بنفس طريقة عرض المرضى: التحميل يتم في _onAppointmentsTabChanged
+    // لا نحمل هنا لتجنب التحميل المتكرر
     
     return Obx(() {
       if (_appointmentController.isLoading.value && 
@@ -1515,8 +1656,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                   final isLate =
                       filter == 'المتأخرون' ||
                       (appointment.date.isBefore(DateTime.now()) &&
-                          (appointment.status == 'scheduled' ||
-                              appointment.status == 'pending'));
+                          (appointment.status == 'pending'));
 
                   return Container(
                     padding: EdgeInsets.symmetric(
@@ -2626,7 +2766,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
       // نعرض فقط المواعيد النشطة (scheduled أو pending)
       final appointments = allAppointments.where((apt) {
         final status = apt.status.toLowerCase();
-        return status == 'scheduled' || status == 'pending';
+        return status == 'pending';
       }).toList();
 
       if (appointments.isEmpty) {
@@ -2679,7 +2819,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
 
             // تحديد إذا كان الموعد قادم أم سابق بناءً على الحالة
             final isUpcoming =
-                appointmentStatus == 'scheduled' &&
+                appointmentStatus == 'pending' &&
                 (appointment.date.isAfter(now) ||
                     appointment.date.isAfter(now.subtract(Duration(hours: 1))));
 
@@ -2690,7 +2830,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                 appointmentStatus == 'canceled' ||
                 appointmentStatus == 'no_show';
             final bool isPending =
-                appointmentStatus == 'scheduled' ||
+                appointmentStatus == 'pending' ||
                 appointmentStatus == 'pending';
 
             // Format date in Arabic
@@ -8706,7 +8846,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
     String patientId,
   ) {
     final statusOptions = [
-      {'value': 'scheduled', 'label': 'قيد الانتظار', 'icon': Icons.schedule},
+      {'value': 'pending', 'label': 'قيد الانتظار', 'icon': Icons.schedule},
       {'value': 'completed', 'label': 'مكتمل', 'icon': Icons.check_circle},
       {'value': 'cancelled', 'label': 'ملغي', 'icon': Icons.cancel},
       {'value': 'no_show', 'label': 'لم يحضر', 'icon': Icons.person_off},

@@ -737,63 +737,95 @@ async def list_my_appointments(
     
     المواعيد المكتملة والملغية لا تظهر في الجداول، فقط في ملف المريض.
     """
-    df = datetime.fromisoformat(date_from) if date_from else None
-    dt = datetime.fromisoformat(date_to) if date_to else None
-    doctor_id = await _get_current_doctor_id(current)
-    # ✅ احترام skip/limit القادمة من العميل بدلاً من جلب جميع المواعيد دفعة واحدة
-    # هذا يحسن الأداء بشكل كبير ويمنع تجمّد الواجهة الأمامية (frontend)
-    apps = await patient_service.list_appointments_for_doctor(
-        doctor_id=doctor_id,
-        day=day,
-        date_from=df,
-        date_to=dt,
-        status=status,
-        skip=skip,
-        limit=limit,
-    )
-    result = []
-    for a in apps:
-        try:
-            # جلب بيانات المريض
-            patient_name = None
+    try:
+        df = None
+        dt = None
+        if date_from:
             try:
-                patient = await Patient.get(a.patient_id)
-                if patient:
-                    user = await User.get(patient.user_id)
-                    if user:
-                        patient_name = user.name
-            except Exception as e:
-                logger.warning(f"Could not fetch patient name for appointment {a.id}: {e}")
-            
-            # جلب بيانات الطبيب
-            doctor_name = None
+                # دعم تنسيق yyyy-MM-dd و yyyy-MM-ddTHH:mm:ss
+                if 'T' in date_from:
+                    df = datetime.fromisoformat(date_from.replace('Z', '+00:00'))
+                else:
+                    # إذا كان التاريخ فقط بدون وقت، نضيف وقت 00:00:00
+                    df = datetime.fromisoformat(f"{date_from}T00:00:00+00:00")
+                if df.tzinfo is None:
+                    df = df.replace(tzinfo=timezone.utc)
+            except (ValueError, AttributeError) as e:
+                logger.error(f"Invalid date_from format: {date_from}, error: {e}")
+                raise HTTPException(status_code=400, detail=f"Invalid date_from format: {date_from}")
+        
+        if date_to:
             try:
-                doctor = await Doctor.get(a.doctor_id)
-                if doctor:
-                    user = await User.get(doctor.user_id)
-                    if user:
-                        doctor_name = user.name
-            except Exception as e:
-                logger.warning(f"Could not fetch doctor name for appointment {a.id}: {e}")
-            
-            result.append(
-                AppointmentOut(
-                    id=str(a.id),
-                    patient_id=str(a.patient_id),
-                    patient_name=patient_name,
-                    doctor_id=str(a.doctor_id),
-                    doctor_name=doctor_name,
-                    scheduled_at=a.scheduled_at.isoformat() if a.scheduled_at else datetime.now(timezone.utc).isoformat(),
-                    note=a.note,
-                    image_path=a.image_path,
-                    image_paths=getattr(a, 'image_paths', []) if hasattr(a, 'image_paths') else (([a.image_path] if a.image_path else [])),
-                    status=a.status,
+                # دعم تنسيق yyyy-MM-dd و yyyy-MM-ddTHH:mm:ss
+                if 'T' in date_to:
+                    dt = datetime.fromisoformat(date_to.replace('Z', '+00:00'))
+                else:
+                    # إذا كان التاريخ فقط بدون وقت، نضيف وقت 23:59:59
+                    dt = datetime.fromisoformat(f"{date_to}T23:59:59+00:00")
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+            except (ValueError, AttributeError) as e:
+                logger.error(f"Invalid date_to format: {date_to}, error: {e}")
+                raise HTTPException(status_code=400, detail=f"Invalid date_to format: {date_to}")
+        
+        doctor_id = await _get_current_doctor_id(current)
+        # ✅ احترام skip/limit القادمة من العميل بدلاً من جلب جميع المواعيد دفعة واحدة
+        # هذا يحسن الأداء بشكل كبير ويمنع تجمّد الواجهة الأمامية (frontend)
+        apps = await patient_service.list_appointments_for_doctor(
+            doctor_id=doctor_id,
+            day=day,
+            date_from=df,
+            date_to=dt,
+            status=status,
+            skip=skip,
+            limit=limit,
+        )
+        result = []
+        for a in apps:
+            try:
+                # جلب بيانات المريض
+                patient_name = None
+                try:
+                    patient = await Patient.get(a.patient_id)
+                    if patient:
+                        user = await User.get(patient.user_id)
+                        if user:
+                            patient_name = user.name
+                except Exception as e:
+                    logger.warning(f"Could not fetch patient name for appointment {a.id}: {e}")
+                
+                # جلب بيانات الطبيب
+                doctor_name = None
+                try:
+                    doctor = await Doctor.get(a.doctor_id)
+                    if doctor:
+                        user = await User.get(doctor.user_id)
+                        if user:
+                            doctor_name = user.name
+                except Exception as e:
+                    logger.warning(f"Could not fetch doctor name for appointment {a.id}: {e}")
+                
+                result.append(
+                    AppointmentOut(
+                        id=str(a.id),
+                        patient_id=str(a.patient_id),
+                        patient_name=patient_name,
+                        doctor_id=str(a.doctor_id),
+                        doctor_name=doctor_name,
+                        scheduled_at=a.scheduled_at.isoformat() if a.scheduled_at else datetime.now(timezone.utc).isoformat(),
+                        note=a.note,
+                        image_path=a.image_path,
+                        image_paths=getattr(a, 'image_paths', []) if hasattr(a, 'image_paths') else (([a.image_path] if a.image_path else [])),
+                        status=a.status,
+                    )
                 )
-            )
-        except Exception as e:
-            logger.error(f"Error converting appointment {a.id}: {e}")
-            continue
-    return result
+            except Exception as e:
+                logger.error(f"Error converting appointment {a.id}: {e}")
+                continue
+        return result
+    except Exception as e:
+        logger.error(f"Error in list_my_appointments: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @router.patch("/patients/{patient_id}", response_model=PatientOut)
 async def update_patient(patient_id: int, payload: PatientUpdate, db: AsyncSession = Depends(get_db), current=Depends(get_current_user)):

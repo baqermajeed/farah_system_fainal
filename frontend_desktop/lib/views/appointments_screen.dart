@@ -56,6 +56,8 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   String _currentFilter = 'هذا الشهر'; // تتبع الفلتر الحالي
+  DateTime? _customFilterStart;
+  DateTime? _customFilterEnd;
 
   // Cache implant stages converted into appointments to avoid heavy recomputation inside Obx/build.
   List<AppointmentModel> _implantAppointmentsAll = const [];
@@ -64,7 +66,8 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    // 4 تبويبات: اليوم، هذا الشهر، المتأخرون، التصفية
+    _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(_onTabChanged);
 
     final appointmentController = Get.find<AppointmentController>();
@@ -80,7 +83,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
       );
       // Load patients to get their names and images
       if (patientController.patients.isEmpty) {
-        patientController.loadPatientsSmart();
+        patientController.loadPatients(isInitial: true);
       }
       // Load implant stages for patients with زراعة treatment
       _loadImplantStages();
@@ -95,17 +98,26 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
 
   void _onTabChanged() {
     if (!_tabController.indexIsChanging) {
-      final filters = ['المتأخرون', 'هذا الشهر', 'اليوم'];
+      final filters = ['اليوم', 'هذا الشهر', 'المتأخرون', 'تصفية مخصصة'];
       final newFilter = filters[_tabController.index];
       if (newFilter != _currentFilter) {
         setState(() {
           _currentFilter = newFilter;
         });
         final appointmentController = Get.find<AppointmentController>();
+        
+        // إذا كان التبويب هو "تصفية مخصصة" ولم يتم تحديد التاريخ بعد، نفتح حوار التصفية
+        if (newFilter == 'تصفية مخصصة' && (_customFilterStart == null || _customFilterEnd == null)) {
+          _showDateRangeFilterDialog(context);
+          return;
+        }
+        
         appointmentController.loadDoctorAppointments(
           isInitial: true,
           isRefresh: true,
           filter: newFilter,
+          customFilterStart: _customFilterStart,
+          customFilterEnd: _customFilterEnd,
         );
       }
     }
@@ -232,9 +244,10 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
                                   fontWeight: FontWeight.normal,
                                 ),
                                 tabs: const [
-                                  Tab(text: 'المتأخرون'),
-                                  Tab(text: 'هذا الشهر'),
                                   Tab(text: 'اليوم'),
+                                  Tab(text: 'هذا الشهر'),
+                                  Tab(text: 'المتأخرون'),
+                                  Tab(text: 'تصفية'),
                                 ],
                               ),
                             ),
@@ -245,9 +258,10 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
                   body: TabBarView(
                     controller: _tabController,
                     children: [
-                      _buildAppointmentsList('المتأخرون'),
-                      _buildAppointmentsList('هذا الشهر'),
                       _buildAppointmentsList('اليوم'),
+                      _buildAppointmentsList('هذا الشهر'),
+                      _buildAppointmentsList('المتأخرون'),
+                      _buildAppointmentsList('تصفية مخصصة'),
                     ],
                   ),
                 ),
@@ -314,7 +328,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
             // "متأخر" = موعد قبل الآن ولسه حالته scheduled/pending
             final isLate = filter == 'المتأخرون' ||
                 (appointment.date.isBefore(now) &&
-                    (status == 'scheduled' || status == 'pending'));
+                    (status == 'pending'));
 
             return Padding(
               padding: EdgeInsets.only(bottom: 16.h),
@@ -638,7 +652,13 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
   }
 
   void _showDateFilterDialog(BuildContext context) {
-    DateTime? selectedDate;
+    // فتح حوار التصفية المخصصة (من-إلى)
+    _showDateRangeFilterDialog(context);
+  }
+
+  void _showDateRangeFilterDialog(BuildContext context) {
+    DateTime? startDate = _customFilterStart;
+    DateTime? endDate = _customFilterEnd;
 
     showDialog(
       context: context,
@@ -656,7 +676,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'اختر التاريخ',
+                      'تصفية حسب التاريخ (من - إلى)',
                       style: TextStyle(
                         fontSize: 18.sp,
                         fontWeight: FontWeight.bold,
@@ -665,19 +685,68 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
                       textAlign: TextAlign.center,
                     ),
                     SizedBox(height: 16.h),
-                    SizedBox(
-                      height: 300.h,
-                      width: double.infinity,
-                      child: CalendarDatePicker(
-                        initialDate: selectedDate ?? DateTime.now(),
-                        firstDate: DateTime(2020),
-                        lastDate: DateTime(2030),
-                        onDateChanged: (date) {
-                          setDialogState(() {
-                            selectedDate = date;
-                          });
-                        },
-                      ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'من تاريخ:',
+                                style: TextStyle(
+                                  fontSize: 14.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              SizedBox(height: 8.h),
+                              SizedBox(
+                                height: 200.h,
+                                child: CalendarDatePicker(
+                                  initialDate: startDate ?? DateTime.now(),
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime(2030),
+                                  onDateChanged: (date) {
+                                    setDialogState(() {
+                                      startDate = date;
+                                    });
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(width: 16.w),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'إلى تاريخ:',
+                                style: TextStyle(
+                                  fontSize: 14.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              SizedBox(height: 8.h),
+                              SizedBox(
+                                height: 200.h,
+                                child: CalendarDatePicker(
+                                  initialDate: endDate ?? DateTime.now(),
+                                  firstDate: startDate ?? DateTime(2020),
+                                  lastDate: DateTime(2030),
+                                  onDateChanged: (date) {
+                                    setDialogState(() {
+                                      endDate = date;
+                                    });
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                     SizedBox(height: 16.h),
                     Row(
@@ -691,28 +760,37 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
                           ),
                         ),
                         ElevatedButton(
-                          onPressed: () async {
-                            if (selectedDate != null) {
+                          onPressed: () {
+                            if (startDate != null && endDate != null) {
+                              if (endDate!.isBefore(startDate!)) {
+                                Get.snackbar(
+                                  'تنبيه',
+                                  'تاريخ النهاية يجب أن يكون بعد تاريخ البداية',
+                                  snackPosition: SnackPosition.BOTTOM,
+                                  backgroundColor: Colors.orange,
+                                  colorText: AppColors.white,
+                                );
+                                return;
+                              }
+                              setState(() {
+                                _customFilterStart = startDate;
+                                _customFilterEnd = endDate;
+                                _currentFilter = 'تصفية مخصصة';
+                              });
                               Navigator.of(context).pop();
-                              // Normalize date to local date (remove time component)
-                              final normalizedDate = DateTime(
-                                selectedDate!.year,
-                                selectedDate!.month,
-                                selectedDate!.day,
-                              );
-                              // Navigate to appointments by date screen
-                              await Get.toNamed(
-                                AppRoutes.appointmentsByDate,
-                                arguments: {'date': normalizedDate},
-                              );
-                              // Reload appointments when returning from filter screen
                               final appointmentController =
                                   Get.find<AppointmentController>();
-                              appointmentController.loadDoctorAppointments();
+                              appointmentController.loadDoctorAppointments(
+                                isInitial: true,
+                                isRefresh: true,
+                                filter: 'تصفية مخصصة',
+                                customFilterStart: startDate,
+                                customFilterEnd: endDate,
+                              );
                             } else {
                               Get.snackbar(
                                 'تنبيه',
-                                'يرجى اختيار تاريخ',
+                                'يرجى اختيار تاريخ البداية والنهاية',
                                 snackPosition: SnackPosition.BOTTOM,
                                 backgroundColor: Colors.orange,
                                 colorText: AppColors.white,
@@ -785,7 +863,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
           date: stageDate,
           time:
               '${stageDate.hour.toString().padLeft(2, '0')}:${stageDate.minute.toString().padLeft(2, '0')}',
-          status: stage.isCompleted ? 'completed' : 'scheduled',
+          status: stage.isCompleted ? 'completed' : 'pending',
           notes: 'مرحلة: ${stage.stageName}',
         ),
       );

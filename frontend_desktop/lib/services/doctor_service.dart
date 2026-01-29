@@ -489,18 +489,19 @@ class DoctorService {
     }
   }
 
-  // جلب مواعيد الطبيب
+  // جلب مواعيد الطبيب - بنفس طريقة getMyPatients مع التبويبات الجديدة
   Future<List<AppointmentModel>> getMyAppointments({
-    String? day,
+    String? day, // 'today' | 'month'
     String? dateFrom,
     String? dateTo,
-    String? status,
+    String? status, // 'late' | 'pending' | 'completed' | 'cancelled'
     int skip = 0,
     int limit = 50,
   }) async {
     try {
       final queryParams = <String, dynamic>{'skip': skip, 'limit': limit};
 
+      // التبويبات الجديدة: day=today, day=month, status=late, date_from/date_to
       if (day != null) queryParams['day'] = day;
       if (dateFrom != null) queryParams['date_from'] = dateFrom;
       if (dateTo != null) queryParams['date_to'] = dateTo;
@@ -614,12 +615,12 @@ class DoctorService {
     }
   }
 
-  // جلب جميع مواعيد المرضى (للاستقبال)
+  // جلب جميع مواعيد المرضى (للاستقبال) - بنفس طريقة getMyAppointments
   Future<List<AppointmentModel>> getAllAppointmentsForReception({
-    String? day,
+    String? day, // 'today' | 'month'
     String? dateFrom,
     String? dateTo,
-    String? status,
+    String? status, // 'late' | 'pending' | 'completed' | 'cancelled'
     int skip = 0,
     int limit = 50,
   }) async {
@@ -629,6 +630,7 @@ class DoctorService {
         'limit': limit,
       };
 
+      // التبويبات الجديدة: day=today, day=month, status=late, date_from/date_to
       if (day != null) queryParams['day'] = day;
       if (dateFrom != null) queryParams['date_from'] = dateFrom;
       if (dateTo != null) queryParams['date_to'] = dateTo;
@@ -708,7 +710,7 @@ class DoctorService {
     }
   }
 
-  // تحديث حالة الموعد
+  // تحديث حالة الموعد (pending, completed, cancelled, late)
   Future<AppointmentModel> updateAppointmentStatus(
     String patientId,
     String appointmentId,
@@ -730,6 +732,31 @@ class DoctorService {
         rethrow;
       }
       throw ApiException('فشل تحديث حالة الموعد: ${e.toString()}');
+    }
+  }
+
+  // تحديث تاريخ ووقت الموعد
+  Future<AppointmentModel> updateAppointmentDateTime(
+    String patientId,
+    String appointmentId,
+    DateTime scheduledAt,
+  ) async {
+    try {
+      final response = await _api.patch(
+        ApiConstants.doctorUpdateAppointmentDateTime(patientId, appointmentId),
+        data: {'scheduled_at': scheduledAt.toIso8601String()},
+      );
+
+      if (response.statusCode == 200) {
+        return AppointmentModel.fromJson(response.data);
+      } else {
+        throw ApiException('فشل تحديث تاريخ الموعد');
+      }
+    } catch (e) {
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('فشل تحديث تاريخ الموعد: ${e.toString()}');
     }
   }
 

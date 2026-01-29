@@ -90,6 +90,10 @@ class ApiConstants {
     String patientId,
     String appointmentId,
   ) => '/doctor/patients/$patientId/appointments/$appointmentId/status';
+  static String doctorUpdateAppointmentDateTime(
+    String patientId,
+    String appointmentId,
+  ) => '/doctor/patients/$patientId/appointments/$appointmentId/datetime';
   static String doctorWorkingHours = '/doctor/working-hours';
   static String doctorAvailableSlots(String date) =>
       '/doctor/available-slots/$date';

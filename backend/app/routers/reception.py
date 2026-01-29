@@ -419,66 +419,96 @@ async def list_appointments(
     يعرض: صورة المريض، اسم المريض، اسم الطبيب، يوم الموعد، تاريخ الموعد، الساعة، رقم هاتف المريض.
     المواعيد المكتملة والملغية لا تظهر في الجداول.
     """
-    df = datetime.fromisoformat(date_from) if date_from else None
-    dt = datetime.fromisoformat(date_to) if date_to else None
-    # ✅ احترام skip/limit القادمة من العميل لتحسين الأداء ومنع تجمّد الواجهة
-    apps = await patient_service.list_appointments_for_all(
-        day=day,
-        date_from=df,
-        date_to=dt,
-        status=status,
-        skip=skip,
-        limit=limit,
-    )
-    # نحضر معلومات المرضى والأطباء المرتبطة بهذه المواعيد
-    from app.models import Patient, User, Doctor
-    from beanie.operators import In as BeanieIn
-
-    patient_ids = list({a.patient_id for a in apps})
-    doctor_ids = list({a.doctor_id for a in apps})
-
-    patients = (
-        await Patient.find(BeanieIn(Patient.id, patient_ids)).to_list()
-        if patient_ids
-        else []
-    )
-    doctors = (
-        await Doctor.find(BeanieIn(Doctor.id, doctor_ids)).to_list()
-        if doctor_ids
-        else []
-    )
-
-    user_ids = list({p.user_id for p in patients if p.user_id})
-    user_ids += [d.user_id for d in doctors if d.user_id]
-    user_ids = list(set(user_ids))
-
-    users = await User.find(BeanieIn(User.id, user_ids)).to_list() if user_ids else []
-    user_map = {u.id: u for u in users}
-
-    patient_map = {p.id: p for p in patients}
-    doctor_map = {d.id: d for d in doctors}
-
-    out: List[ReceptionAppointmentOut] = []
-    for a in apps:
-        p = patient_map.get(a.patient_id)
-        d = doctor_map.get(a.doctor_id)
-        pu = user_map.get(p.user_id) if p else None
-        du = user_map.get(d.user_id) if d else None
-
-        out.append(
-            ReceptionAppointmentOut(
-                id=str(a.id),
-                patient_id=str(a.patient_id),
-                patient_name=pu.name if pu else None,
-                patient_phone=pu.phone if pu else None,
-                doctor_id=str(a.doctor_id),
-                doctor_name=du.name if du else None,
-                scheduled_at=a.scheduled_at.isoformat()
-                if isinstance(a.scheduled_at, datetime)
-                else str(a.scheduled_at),
-                note=a.note,
-                image_path=a.image_path,
-                status=a.status,
-            )
+    try:
+        df = None
+        dt = None
+        if date_from:
+        try:
+            # دعم تنسيق yyyy-MM-dd و yyyy-MM-ddTHH:mm:ss
+            if 'T' in date_from:
+                df = datetime.fromisoformat(date_from.replace('Z', '+00:00'))
+            else:
+                # إذا كان التاريخ فقط بدون وقت، نضيف وقت 00:00:00
+                df = datetime.fromisoformat(f"{date_from}T00:00:00+00:00")
+            if df.tzinfo is None:
+                df = df.replace(tzinfo=timezone.utc)
+        except (ValueError, AttributeError) as e:
+            raise HTTPException(status_code=400, detail=f"Invalid date_from format: {date_from}")
+        
+        if date_to:
+        try:
+            # دعم تنسيق yyyy-MM-dd و yyyy-MM-ddTHH:mm:ss
+            if 'T' in date_to:
+                dt = datetime.fromisoformat(date_to.replace('Z', '+00:00'))
+            else:
+                # إذا كان التاريخ فقط بدون وقت، نضيف وقت 23:59:59
+                dt = datetime.fromisoformat(f"{date_to}T23:59:59+00:00")
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+        except (ValueError, AttributeError) as e:
+            raise HTTPException(status_code=400, detail=f"Invalid date_to format: {date_to}")
+        
+        # ✅ احترام skip/limit القادمة من العميل لتحسين الأداء ومنع تجمّد الواجهة
+        apps = await patient_service.list_appointments_for_all(
+            day=day,
+            date_from=df,
+            date_to=dt,
+            status=status,
+            skip=skip,
+            limit=limit,
         )
-    return out
+        # نحضر معلومات المرضى والأطباء المرتبطة بهذه المواعيد
+        from app.models import Patient, User, Doctor
+        from beanie.operators import In as BeanieIn
+
+        patient_ids = list({a.patient_id for a in apps})
+        doctor_ids = list({a.doctor_id for a in apps})
+
+        patients = (
+            await Patient.find(BeanieIn(Patient.id, patient_ids)).to_list()
+            if patient_ids
+            else []
+        )
+        doctors = (
+            await Doctor.find(BeanieIn(Doctor.id, doctor_ids)).to_list()
+            if doctor_ids
+            else []
+        )
+
+        user_ids = list({p.user_id for p in patients if p.user_id})
+        user_ids += [d.user_id for d in doctors if d.user_id]
+        user_ids = list(set(user_ids))
+
+        users = await User.find(BeanieIn(User.id, user_ids)).to_list() if user_ids else []
+        user_map = {u.id: u for u in users}
+
+        patient_map = {p.id: p for p in patients}
+        doctor_map = {d.id: d for d in doctors}
+
+        out: List[ReceptionAppointmentOut] = []
+        for a in apps:
+            p = patient_map.get(a.patient_id)
+            d = doctor_map.get(a.doctor_id)
+            pu = user_map.get(p.user_id) if p else None
+            du = user_map.get(d.user_id) if d else None
+
+            out.append(
+                ReceptionAppointmentOut(
+                    id=str(a.id),
+                    patient_id=str(a.patient_id),
+                    patient_name=pu.name if pu else None,
+                    patient_phone=pu.phone if pu else None,
+                    doctor_id=str(a.doctor_id),
+                    doctor_name=du.name if du else None,
+                    scheduled_at=a.scheduled_at.isoformat() if a.scheduled_at else datetime.now(timezone.utc).isoformat(),
+                    note=a.note,
+                    image_path=a.image_path,
+                    status=a.status,
+                )
+            )
+        return out
+    except Exception as e:
+        from app.utils.logger import get_logger
+        logger = get_logger("reception_router")
+        logger.error(f"Error in list_appointments: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")

@@ -111,7 +111,7 @@ class AppointmentModel {
       doctorName: json['doctor_name'] ?? json['doctorName'] ?? '',
       date: appointmentDateTime, // ⭐ استخدام التاريخ والوقت الكامل
       time: json['time'] ?? _extractTimeFromIso(isoString),
-      status: json['status'] ?? 'scheduled',
+      status: json['status'] ?? 'pending',
       notes: json['note'] ?? json['notes'],
       imagePath: json['image_path'],
       imagePaths: finalImagePaths,
