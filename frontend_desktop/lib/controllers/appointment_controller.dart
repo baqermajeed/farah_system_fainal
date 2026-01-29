@@ -172,14 +172,21 @@ class AppointmentController extends GetxController {
 
       // 1) محاولة التحميل من الكاش أولاً (Hive) - بنفس طريقة eversheen
       if (isInitial || isRefresh) {
-        final cachedAppointments = _cacheService.getAllAppointments();
-        if (cachedAppointments.isNotEmpty) {
-          // عرض أول 25 موعد من الكاش
-          final initialCached = cachedAppointments.take(pageLimit).toList();
-          appointments.assignAll(initialCached);
-          print(
-            '✅ [AppointmentController] Loaded ${appointments.length} appointments from cache',
-          );
+        try {
+          // ✅ حل نهائي: تحميل فقط أول 25 موعد من Cache لتجنب تحميل آلاف السجلات
+          final cachedAppointments = _cacheService.getFirstAppointments(pageLimit);
+          if (cachedAppointments.isNotEmpty) {
+            appointments.assignAll(cachedAppointments);
+            print(
+              '✅ [AppointmentController] Loaded ${appointments.length} appointments from cache',
+            );
+          }
+        } catch (e) {
+          print('❌ [AppointmentController] Error loading from cache: $e');
+          // مسح Cache التالف
+          try {
+            await _cacheService.clearAppointments();
+          } catch (_) {}
         }
       }
 

@@ -65,7 +65,8 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
       appointmentController.loadDoctorAppointments();
       // Load patients to get their names and images
       if (patientController.patients.isEmpty) {
-        patientController.loadPatients();
+        // استخدام التحميل الذكي لضمان توفر أحدث قائمة للمرضى
+        patientController.loadPatientsSmart();
       }
     });
   }

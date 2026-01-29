@@ -115,8 +115,12 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
   DateTime? _appointmentsRangeEnd;
 
   Future<void> _refreshData() async {
-    await _patientController.loadPatients(isInitial: false, isRefresh: true);
-    await _appointmentController.loadDoctorAppointments(isInitial: false, isRefresh: true);
+    // استخدام التحميل الذكي لضمان جلب أحدث المرضى مع تحديث البيانات من الـ API
+    await _patientController.loadPatientsSmart();
+    await _appointmentController.loadDoctorAppointments(
+      isInitial: false,
+      isRefresh: true,
+    );
 
     final selected = _patientController.selectedPatient.value;
     if (selected != null) {
@@ -149,8 +153,8 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
 
     // Load patients and appointments on first build
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // ⭐ استخدام Pagination - بنفس طريقة eversheen (25 في كل مرة)
-      _patientController.loadPatients(isInitial: true, isRefresh: false);
+      // استخدام التحميل الذكي بدلاً من جلب أول 25 فقط
+      _patientController.loadPatientsSmart();
       _appointmentController.loadDoctorAppointments(isInitial: true, isRefresh: false);
     });
 

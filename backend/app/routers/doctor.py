@@ -361,22 +361,76 @@ async def my_patients(
     limit: int = Query(50, ge=1),
     current=Depends(get_current_user),
 ):
-    """يعرض المرضى الخاصين بالطبيب (أساسي/ثانوي)."""
+    """يعرض المرضى الخاصين بالطبيب (أساسي/ثانوي) مرتبة حسب الأحدث أولاً."""
     doctor_id = await _get_current_doctor_id(current)
-    patients = await patient_service.list_doctor_patients(
-        doctor_id, skip=skip, limit=limit
-    )
+    
+    # جلب المرضى مع المستخدمين وترتيب حسب created_at (الأحدث أولاً)
+    # نستخدم aggregation pipeline للترتيب الصحيح
+    
+    try:
+        did = OID(doctor_id)
+    except Exception as e:
+        print(f"❌ Error converting doctor_id to OID: {doctor_id}, error: {e}")
+        raise HTTPException(status_code=400, detail=f"Invalid doctor_id format: {doctor_id}")
+    
+    doctor_key = str(did)
+    
+    # استخدام aggregation pipeline لترتيب حسب user.created_at
+    pipeline = [
+        {
+            "$match": {
+                "doctor_ids": {"$in": [did]},
+                f"doctor_profiles.{doctor_key}.status": {"$in": ["active", "inactive", "pending"]},
+            }
+        },
+        {
+            "$lookup": {
+                "from": "users",
+                "localField": "user_id",
+                "foreignField": "_id",
+                "as": "user_data"
+            }
+        },
+        {
+            "$unwind": {
+                "path": "$user_data",
+                "preserveNullAndEmptyArrays": False
+            }
+        },
+        {
+            "$sort": {"user_data.created_at": -1}  # الأحدث أولاً
+        },
+        {
+            "$skip": skip
+        },
+        {
+            "$limit": limit
+        }
+    ]
+    
+    patients_with_users = await Patient.aggregate(pipeline).to_list()
+    
     # Map to PatientOut combining user fields
     out: List[PatientOut] = []
-    for p in patients:
-        # جلب User مباشرة بدلاً من الاعتماد على p.user
+    for item in patients_with_users:
+        patient_id = item.get("_id")
+        if not patient_id:
+            continue
+            
         try:
-            u = await User.get(p.user_id)
-            if not u:
-                print(f"⚠️ Warning: Patient {p.id} has no user (user_id: {p.user_id}), skipping...")
+            p = await Patient.get(OID(patient_id))
+            if not p:
                 continue
-        except Exception as e:
-            print(f"❌ Error fetching user for patient {p.id}: {e}")
+        except Exception:
+            continue
+            
+        user_data = item.get("user_data", {})
+        # إنشاء User object من البيانات
+        try:
+            u = await User.get(OID(user_data.get("_id")))
+            if not u:
+                continue
+        except Exception:
             continue
             
         out.append(_build_doctor_patient_out(p, u, doctor_id))

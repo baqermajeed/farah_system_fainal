@@ -44,15 +44,54 @@ async def list_patients(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
 ):
-    """يعرض جميع المرضى مع بياناتهم الأساسية."""
-    patients = await Patient.find({}).sort(-Patient.id).skip(skip).limit(limit).to_list()
+    """يعرض جميع المرضى مع بياناتهم الأساسية مرتبة حسب الأحدث أولاً."""
+    # جلب جميع المرضى مع المستخدمين المرتبطين بهم
+    # نستخدم aggregation pipeline لترتيب حسب created_at من User (الأحدث أولاً)
+    
+    pipeline = [
+        {
+            "$lookup": {
+                "from": "users",
+                "localField": "user_id",
+                "foreignField": "_id",
+                "as": "user_data"
+            }
+        },
+        {
+            "$unwind": {
+                "path": "$user_data",
+                "preserveNullAndEmptyArrays": False  # نتجاهل المرضى بدون users
+            }
+        },
+        {
+            "$sort": {"user_data.created_at": -1}  # الأحدث أولاً
+        },
+        {
+            "$skip": skip
+        },
+        {
+            "$limit": limit
+        }
+    ]
+    
+    patients_with_users = await Patient.aggregate(pipeline).to_list()
+    
     out: List[PatientOut] = []
-    user_ids = list({p.user_id for p in patients if p.user_id})
-    users = await User.find(In(User.id, user_ids)).to_list() if user_ids else []
-    user_map = {u.id: u for u in users}
-
-    for p in patients:
-        u = user_map.get(p.user_id)
+    for item in patients_with_users:
+        # تحويل _id من dict إلى Patient object
+        from beanie import PydanticObjectId as OID
+        patient_id = item.get("_id")
+        if not patient_id:
+            continue
+            
+        try:
+            p = await Patient.get(OID(patient_id))
+            if not p:
+                continue
+        except Exception:
+            continue
+            
+        user_data = item.get("user_data", {})
         # محاولة الحصول على treatment_type من doctor_profiles إذا كان p.treatment_type None
         treatment_type = p.treatment_type
         if not treatment_type and p.doctor_profiles:
@@ -65,18 +104,18 @@ async def list_patients(
         out.append(PatientOut(
             id=str(p.id),
             user_id=str(p.user_id),
-            name=u.name if u else None,
-            phone=u.phone if u else "",
-            gender=u.gender if u else None,
-            age=u.age if u else None,
-            city=u.city if u else None,
+            name=user_data.get("name") if user_data else None,
+            phone=user_data.get("phone") if user_data else "",
+            gender=user_data.get("gender") if user_data else None,
+            age=user_data.get("age") if user_data else None,
+            city=user_data.get("city") if user_data else None,
             treatment_type=treatment_type,
             visit_type=getattr(p, "visit_type", None),
             doctor_ids=[str(did) for did in p.doctor_ids],
             doctor_profiles=build_doctor_profile_map(p),
             qr_code_data=p.qr_code_data,
             qr_image_path=p.qr_image_path,
-            imageUrl=u.imageUrl if u else None,
+            imageUrl=user_data.get("imageUrl") if user_data else None,
         ))
     return out
 

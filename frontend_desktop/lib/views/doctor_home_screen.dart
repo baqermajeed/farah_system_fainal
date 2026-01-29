@@ -110,8 +110,12 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
   DateTime? _appointmentsRangeEnd;
 
   Future<void> _refreshData() async {
-    await _patientController.loadPatients(isInitial: false, isRefresh: true);
-    await _appointmentController.loadDoctorAppointments(isInitial: false, isRefresh: true);
+    // نستخدم التحميل الذكي لضمان جلب أحدث المرضى وليس فقط أول 25 من الـ API أو الـ Cache
+    await _patientController.loadPatientsSmart();
+    await _appointmentController.loadDoctorAppointments(
+      isInitial: false,
+      isRefresh: true,
+    );
 
     final selected = _patientController.selectedPatient.value;
     if (selected != null) {
@@ -142,8 +146,9 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
         _currentTabIndex.value = _tabController.index;
       }
     });
-    // Load patients on init - بنفس طريقة eversheen مع Pagination (25 في كل مرة)
-    _patientController.loadPatients(isInitial: true, isRefresh: false);
+    // Load patients on init باستخدام التحميل الذكي مع الكاش
+    // هذا يجلب أحدث المرضى (وليس فقط أول 25) ويُكمل تحميل الباقي في الخلفية.
+    _patientController.loadPatientsSmart();
     // Load appointments on init - بنفس طريقة eversheen مع Pagination (25 في كل مرة)
     _appointmentController.loadDoctorAppointments(isInitial: true, isRefresh: false);
     // Listen to patient selection changes
@@ -1017,7 +1022,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
         onRefresh: _refreshData,
         child: Obx(() {
           final isLoading = _patientController.isLoading.value;
-          final patients = _patientController.patients;
+          final patients = _patientController.patients.toList();
           final query = _searchController.text.toLowerCase();
           final filteredPatients = patients.where((p) {
             return p.name.toLowerCase().contains(query) ||
@@ -1596,7 +1601,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                 return const Center(child: CircularProgressIndicator());
               }
 
-              final patients = _patientController.patients;
+              final patients = _patientController.patients.toList();
               final query = _searchController.text.toLowerCase();
               final filteredPatients = patients.where((p) {
                 return p.name.toLowerCase().contains(query) ||
@@ -1721,35 +1726,39 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                       // Treatment Type - عرض النوع الخاص بهذا الطبيب فقط
                       Align(
                         alignment: Alignment.centerRight,
-                        child: Obx(() {
-                          // نعرض نوع العلاج من patient.treatmentHistory أولاً (يأتي مباشرة من API)
-                          String treatmentType = 'لا يوجد';
-                          if (patient.treatmentHistory != null &&
-                              patient.treatmentHistory!.isNotEmpty) {
-                            treatmentType = patient.treatmentHistory!.last;
-                          } else {
-                            // Fallback: إذا لم يكن موجوداً في treatmentHistory، نبحث في السجلات
-                            final myRecords = _medicalRecordController.records;
-                            if (myRecords.isNotEmpty) {
-                              final recordTreatment = myRecords.first.treatmentType;
-                              if (recordTreatment.isNotEmpty) {
-                                treatmentType = recordTreatment;
+                        child: Builder(
+                          builder: (context) {
+                            // نعرض نوع العلاج من patient.treatmentHistory أولاً (يأتي مباشرة من API)
+                            String treatmentType = 'لا يوجد';
+                            if (patient.treatmentHistory != null &&
+                                patient.treatmentHistory!.isNotEmpty) {
+                              treatmentType = patient.treatmentHistory!.last;
+                            } else {
+                              // Fallback: إذا لم يكن موجوداً في treatmentHistory، نبحث في السجلات
+                              final myRecords = _medicalRecordController.records
+                                  .where((r) => r.patientId == patient.id)
+                                  .toList();
+                              if (myRecords.isNotEmpty) {
+                                final recordTreatment = myRecords.first.treatmentType;
+                                if (recordTreatment.isNotEmpty) {
+                                  treatmentType = recordTreatment;
+                                }
                               }
                             }
-                          }
 
-                          return Text(
-                            'نوع العلاج : $treatmentType',
-                            style: TextStyle(
-                              fontSize: 13.sp,
-                              fontWeight: FontWeight.w600,
-                              color: const Color(0xFF505558),
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.right,
-                          );
-                        }),
+                            return Text(
+                              'نوع العلاج : $treatmentType',
+                              style: TextStyle(
+                                fontSize: 13.sp,
+                                fontWeight: FontWeight.w600,
+                                color: const Color(0xFF505558),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.right,
+                            );
+                          },
+                        ),
                       ),
                     ],
                   ),
@@ -2018,35 +2027,39 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 // Last item at the bottom - عرض النوع الخاص بهذا الطبيب فقط
-                                Obx(() {
-                                  // نعرض نوع العلاج من patient.treatmentHistory أولاً (يأتي مباشرة من API)
-                                  String treatmentType = 'لا يوجد';
-                                  if (patient.treatmentHistory != null &&
-                                      patient.treatmentHistory!.isNotEmpty) {
-                                    treatmentType = patient.treatmentHistory!.last;
-                                  } else {
-                                    // Fallback: إذا لم يكن موجوداً في treatmentHistory، نبحث في السجلات
-                                    final myRecords = _medicalRecordController.records;
-                                    if (myRecords.isNotEmpty) {
-                                      final recordTreatment = myRecords.first.treatmentType;
-                                      if (recordTreatment.isNotEmpty) {
-                                        treatmentType = recordTreatment;
+                                Builder(
+                                  builder: (context) {
+                                    // نعرض نوع العلاج من patient.treatmentHistory أولاً (يأتي مباشرة من API)
+                                    String treatmentType = 'لا يوجد';
+                                    if (patient.treatmentHistory != null &&
+                                        patient.treatmentHistory!.isNotEmpty) {
+                                      treatmentType = patient.treatmentHistory!.last;
+                                    } else {
+                                      // Fallback: إذا لم يكن موجوداً في treatmentHistory، نبحث في السجلات
+                                      final myRecords = _medicalRecordController.records
+                                          .where((r) => r.patientId == patient.id)
+                                          .toList();
+                                      if (myRecords.isNotEmpty) {
+                                        final recordTreatment = myRecords.first.treatmentType;
+                                        if (recordTreatment.isNotEmpty) {
+                                          treatmentType = recordTreatment;
+                                        }
                                       }
                                     }
-                                  }
 
-                                  return Text(
-                                    'نوع العلاج : $treatmentType',
-                                    style: TextStyle(
-                                      fontSize: 12.sp,
-                                      fontWeight: FontWeight.w600,
-                                      color: const Color(0xFF505558),
-                                    ),
-                                    textAlign: TextAlign.right,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  );
-                                }),
+                                    return Text(
+                                      'نوع العلاج : $treatmentType',
+                                      style: TextStyle(
+                                        fontSize: 12.sp,
+                                        fontWeight: FontWeight.w600,
+                                        color: const Color(0xFF505558),
+                                      ),
+                                      textAlign: TextAlign.right,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    );
+                                  },
+                                ),
                                 // نوع المريض - أسفل نوع العلاج
                                 Text(
                                   'نوع المريض : ${(patient.visitType != null && patient.visitType!.trim().isNotEmpty) ? patient.visitType : 'لا يوجد'}',
@@ -3602,7 +3615,9 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
         );
       }
 
-      if (_galleryController.galleryImages.isEmpty) {
+      final galleryImages = _galleryController.galleryImages.toList();
+      
+      if (galleryImages.isEmpty) {
         return Container(
           color: const Color(0xFFF4FEFF),
           child: Center(
@@ -3643,9 +3658,9 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
             mainAxisSpacing: 8.h,
             childAspectRatio: 1.0,
           ),
-          itemCount: _galleryController.galleryImages.length,
+          itemCount: galleryImages.length,
           itemBuilder: (context, index) {
-            final image = _galleryController.galleryImages[index];
+            final image = galleryImages[index];
             final imageUrl = ImageUtils.convertToValidUrl(image.imagePath);
             return GestureDetector(
               onTap: () {
@@ -7466,7 +7481,9 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
 
     Widget _buildDayCard(int dayIndex) {
       return Obx(() {
-        final day = controller.workingHours[dayIndex];
+        // ✅ استخدام observable variables داخل Obx
+        final workingHours = controller.workingHours.toList();
+        final day = workingHours[dayIndex];
         final isWorking = day['isWorking'] as bool;
         final isExpanded = controller.expandedDays[dayIndex] ?? false;
 

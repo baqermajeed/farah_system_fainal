@@ -244,14 +244,21 @@ class PatientController extends GetxController {
 
       // 1) محاولة التحميل من الكاش أولاً (Hive) - بنفس طريقة eversheen
       if (isInitial || isRefresh) {
-        final cachedPatients = _cacheService.getAllPatients();
-        if (cachedPatients.isNotEmpty) {
-          // عرض أول 25 مريض من الكاش
-          final initialCached = cachedPatients.take(pageLimit).toList();
-          patients.assignAll(initialCached);
-          print(
-            '✅ [PatientController] Loaded ${patients.length} patients from cache',
-          );
+        try {
+          // ✅ حل نهائي: تحميل فقط أول 25 مريض من Cache لتجنب تحميل آلاف السجلات
+          final cachedPatients = _cacheService.getFirstPatients(pageLimit);
+          if (cachedPatients.isNotEmpty) {
+            patients.assignAll(cachedPatients);
+            print(
+              '✅ [PatientController] Loaded ${patients.length} patients from cache',
+            );
+          }
+        } catch (e) {
+          print('❌ [PatientController] Error loading from cache: $e');
+          // مسح Cache التالف
+          try {
+            await _cacheService.clearPatients();
+          } catch (_) {}
         }
       }
 

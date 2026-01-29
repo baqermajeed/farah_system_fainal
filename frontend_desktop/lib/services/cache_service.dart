@@ -92,14 +92,17 @@ class CacheService {
 
   // ==================== Patients Operations ====================
 
-  /// حفظ قائمة المرضى
+  /// حفظ قائمة المرضى (يحفظ فقط أول 100 مريض لتجنب Cache كبير)
   Future<void> savePatients(List<PatientModel> patients) async {
     try {
       if (patients.isEmpty) return;
       
+      // ✅ حل نهائي: حفظ فقط أول 100 مريض في Cache لتجنب حجم كبير
+      final patientsToCache = patients.take(100).toList();
+      
       // استخدام batch operations لتجنب blocking UI thread
       final Map<String, PatientModel> patientsMap = {};
-      for (var patient in patients) {
+      for (var patient in patientsToCache) {
         if (patient.id.isNotEmpty) {
           patientsMap[patient.id] = patient;
         }
@@ -111,6 +114,8 @@ class CacheService {
       await _patientsBox.clear();
       await _patientsBox.putAll(patientsMap);
       await setLastUpdateTime('patients');
+      
+      print('💾 [CacheService] Saved ${patientsMap.length} patients to cache (limited to 100)');
     } catch (e, stackTrace) {
       print('❌ [CacheService] Error saving patients: $e');
       print('❌ [CacheService] Stack trace: $stackTrace');
@@ -118,12 +123,29 @@ class CacheService {
     }
   }
 
-  /// الحصول على جميع المرضى
+  /// الحصول على جميع المرضى (مرتبة حسب الأحدث أولاً)
   List<PatientModel> getAllPatients() {
     try {
-      return _patientsBox.values.toList();
+      final all = _patientsBox.values.toList();
+      // ترتيب حسب ID (تنازلي) للحصول على الأحدث أولاً
+      // MongoDB ObjectIds تحتوي على timestamp، لذا الأكبر = الأحدث
+      all.sort((a, b) => b.id.compareTo(a.id));
+      return all;
     } catch (e) {
       print('❌ [CacheService] Error getting all patients: $e');
+      return [];
+    }
+  }
+
+  /// الحصول على أول N مريض من Cache (مرتبة حسب الأحدث أولاً)
+  List<PatientModel> getFirstPatients(int limit) {
+    try {
+      final all = _patientsBox.values.toList();
+      // ترتيب حسب ID (تنازلي) للحصول على الأحدث أولاً
+      all.sort((a, b) => b.id.compareTo(a.id));
+      return all.take(limit).toList();
+    } catch (e) {
+      print('❌ [CacheService] Error getting first patients: $e');
       return [];
     }
   }
@@ -156,14 +178,17 @@ class CacheService {
 
   // ==================== Appointments Operations ====================
 
-  /// حفظ قائمة المواعيد
+  /// حفظ قائمة المواعيد (يحفظ فقط أول 100 موعد لتجنب Cache كبير)
   Future<void> saveAppointments(List<AppointmentModel> appointments) async {
     try {
       if (appointments.isEmpty) return;
       
+      // ✅ حل نهائي: حفظ فقط أول 100 موعد في Cache لتجنب حجم كبير
+      final appointmentsToCache = appointments.take(100).toList();
+      
       // استخدام batch operations لتجنب blocking UI thread
       final Map<String, AppointmentModel> appointmentsMap = {};
-      for (var appointment in appointments) {
+      for (var appointment in appointmentsToCache) {
         if (appointment.id.isNotEmpty) {
           appointmentsMap[appointment.id] = appointment;
         }
@@ -175,6 +200,8 @@ class CacheService {
       await _appointmentsBox.clear();
       await _appointmentsBox.putAll(appointmentsMap);
       await setLastUpdateTime('appointments');
+      
+      print('💾 [CacheService] Saved ${appointmentsMap.length} appointments to cache (limited to 100)');
     } catch (e, stackTrace) {
       print('❌ [CacheService] Error saving appointments: $e');
       print('❌ [CacheService] Stack trace: $stackTrace');
@@ -188,6 +215,17 @@ class CacheService {
       return _appointmentsBox.values.toList();
     } catch (e) {
       print('❌ [CacheService] Error getting all appointments: $e');
+      return [];
+    }
+  }
+
+  /// الحصول على أول N موعد من Cache (لتحسين الأداء)
+  List<AppointmentModel> getFirstAppointments(int limit) {
+    try {
+      final all = _appointmentsBox.values.toList();
+      return all.take(limit).toList();
+    } catch (e) {
+      print('❌ [CacheService] Error getting first appointments: $e');
       return [];
     }
   }

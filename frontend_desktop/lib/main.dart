@@ -38,6 +38,20 @@ void main() async {
   // Initialize Hive and CacheService for local cache
   await CacheService().init();
   
+  // ✅ حل نهائي: مسح Cache القديم عند التحميل الأولي (اختياري - يمكن تعطيله لاحقاً)
+  try {
+    final cacheService = CacheService();
+    // التحقق من حجم Cache - إذا كان كبير جداً، نمسحه
+    final totalCached = cacheService.totalCachedItems;
+    if (totalCached > 500) {
+      print('⚠️ [Main] Large cache detected ($totalCached items), clearing old cache...');
+      await cacheService.clearAll();
+      print('✅ [Main] Old cache cleared');
+    }
+  } catch (e) {
+    print('⚠️ [Main] Error checking cache size: $e');
+  }
+  
   // Open metaData box for update timestamps
   await Hive.openBox('metaData');
 
