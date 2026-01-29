@@ -55,23 +55,22 @@ class AppointmentModel {
     // Backend/Hive support logic adapted
     final scheduledAt = json['scheduled_at'] ?? json['date'];
 
-    // نحاول قراءة التاريخ فقط (اليوم/الشهر/السنة) بدون الاعتماد على المنطقة الزمنية
-    DateTime dateOnly;
+    // ⭐ إصلاح: نحتفظ بالتاريخ والوقت الكامل بدلاً من التاريخ فقط
+    DateTime appointmentDateTime;
     String? isoString;
     if (scheduledAt is String) {
       isoString = scheduledAt;
       try {
-        final dt = DateTime.parse(scheduledAt);
-        dateOnly = DateTime(dt.year, dt.month, dt.day);
+        // تحويل إلى Local time للحفاظ على الوقت الصحيح
+        appointmentDateTime = DateTime.parse(scheduledAt).toLocal();
       } catch (_) {
-        dateOnly = DateTime.now();
+        appointmentDateTime = DateTime.now();
       }
     } else if (scheduledAt is DateTime) {
-      final dt = scheduledAt;
-      dateOnly = DateTime(dt.year, dt.month, dt.day);
-      isoString = dt.toIso8601String();
+      appointmentDateTime = scheduledAt.toLocal();
+      isoString = scheduledAt.toIso8601String();
     } else {
-      dateOnly = DateTime.now();
+      appointmentDateTime = DateTime.now();
     }
 
     // استخراج الوقت (HH:mm) من الـ ISO string
@@ -110,7 +109,7 @@ class AppointmentModel {
       patientName: json['patient_name'] ?? json['patientName'] ?? '',
       doctorId: json['doctor_id']?.toString() ?? json['doctorId'] ?? '',
       doctorName: json['doctor_name'] ?? json['doctorName'] ?? '',
-      date: dateOnly,
+      date: appointmentDateTime, // ⭐ استخدام التاريخ والوقت الكامل
       time: json['time'] ?? _extractTimeFromIso(isoString),
       status: json['status'] ?? 'scheduled',
       notes: json['note'] ?? json['notes'],

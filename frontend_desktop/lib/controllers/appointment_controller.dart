@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:async';
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
 import 'package:frontend_desktop/models/appointment_model.dart';
 import 'package:frontend_desktop/services/patient_service.dart';
 import 'package:frontend_desktop/services/doctor_service.dart';
@@ -25,6 +26,11 @@ class AppointmentController extends GetxController {
   var isLoadingMoreAppointments = false.obs;
   var hasMoreAppointments = true.obs;
   final int pageLimit = 25; // 25 موعد في كل مرة (بدلاً من 10 في eversheen)
+  
+  // متغيرات لتتبع الفلتر الحالي
+  String? _currentFilter; // 'اليوم', 'هذا الشهر', 'المتأخرون', 'تصفية مخصصة'
+  DateTime? _customFilterStart;
+  DateTime? _customFilterEnd;
 
   /// Cache patient appointments by patientId so leaving the patient file
   /// (and loading doctor appointments) doesn't wipe the patient's view.
@@ -154,8 +160,18 @@ class AppointmentController extends GetxController {
     String? status,
     bool isInitial = false,
     bool isRefresh = false,
+    String? filter, // 'اليوم', 'هذا الشهر', 'المتأخرون', 'تصفية مخصصة'
+    DateTime? customFilterStart,
+    DateTime? customFilterEnd,
   }) async {
     try {
+      // تحديث الفلتر الحالي إذا تم تمريره
+      if (filter != null) {
+        _currentFilter = filter;
+        _customFilterStart = customFilterStart;
+        _customFilterEnd = customFilterEnd;
+      }
+      
       if (isRefresh || isInitial) {
         currentPage = 1;
         hasMoreAppointments.value = true;
@@ -168,7 +184,42 @@ class AppointmentController extends GetxController {
         isLoadingMoreAppointments.value = true;
       }
 
-      print('📅 [AppointmentController] Loading appointments - page: $currentPage, limit: $pageLimit');
+      // حساب dateFrom و dateTo حسب الفلتر المحدد
+      String? calculatedDateFrom = dateFrom;
+      String? calculatedDateTo = dateTo;
+      
+      if (_currentFilter != null) {
+        final now = DateTime.now();
+        switch (_currentFilter) {
+          case 'اليوم':
+            final todayStart = DateTime(now.year, now.month, now.day);
+            calculatedDateFrom = DateFormat('yyyy-MM-dd').format(todayStart);
+            final todayEnd = todayStart.add(const Duration(days: 1));
+            calculatedDateTo = DateFormat('yyyy-MM-dd').format(todayEnd);
+            break;
+          case 'هذا الشهر':
+            final monthStart = DateTime(now.year, now.month, 1);
+            calculatedDateFrom = DateFormat('yyyy-MM-dd').format(monthStart);
+            final monthEnd = DateTime(now.year, now.month + 1, 1);
+            calculatedDateTo = DateFormat('yyyy-MM-dd').format(monthEnd);
+            break;
+          case 'المتأخرون':
+            // المواعيد المتأخرة هي التي قبل اليوم
+            final todayStart = DateTime(now.year, now.month, now.day);
+            calculatedDateTo = DateFormat('yyyy-MM-dd').format(todayStart);
+            // لا نحدد dateFrom للسماح بجلب جميع المواعيد المتأخرة
+            break;
+          case 'تصفية مخصصة':
+            if (_customFilterStart != null && _customFilterEnd != null) {
+              calculatedDateFrom = DateFormat('yyyy-MM-dd').format(_customFilterStart!);
+              final endDate = _customFilterEnd!.add(const Duration(days: 1));
+              calculatedDateTo = DateFormat('yyyy-MM-dd').format(endDate);
+            }
+            break;
+        }
+      }
+
+      print('📅 [AppointmentController] Loading appointments - page: $currentPage, limit: $pageLimit, filter: $_currentFilter');
 
       // 1) محاولة التحميل من الكاش أولاً (Hive) - بنفس طريقة eversheen
       if (isInitial || isRefresh) {
@@ -204,8 +255,8 @@ class AppointmentController extends GetxController {
         );
         appointmentsList = await _doctorService.getAllAppointmentsForReception(
           day: day,
-          dateFrom: dateFrom,
-          dateTo: dateTo,
+          dateFrom: calculatedDateFrom ?? dateFrom,
+          dateTo: calculatedDateTo ?? dateTo,
           status: status,
           skip: skip,
           limit: pageLimit,
@@ -215,13 +266,16 @@ class AppointmentController extends GetxController {
         print('📅 [AppointmentController] Loading appointments for doctor');
         appointmentsList = await _doctorService.getMyAppointments(
           day: day,
-          dateFrom: dateFrom,
-          dateTo: dateTo,
+          dateFrom: calculatedDateFrom ?? dateFrom,
+          dateTo: calculatedDateTo ?? dateTo,
           status: status,
           skip: skip,
           limit: pageLimit,
         );
       }
+      
+      // ترتيب المواعيد حسب التاريخ (من الأقدم للأحدث)
+      appointmentsList.sort((a, b) => a.date.compareTo(b.date));
 
       if (isRefresh || isInitial) {
         appointments.assignAll(appointmentsList);
@@ -237,6 +291,16 @@ class AppointmentController extends GetxController {
       }
 
       print('✅ [AppointmentController] Loaded ${appointmentsList.length} appointments from API (total: ${appointments.length})');
+      
+      // ⭐ طباعة تفصيلية للمواعيد المحملة للتأكد من وجودها
+      if (appointmentsList.isNotEmpty) {
+        print('📋 [AppointmentController] Sample appointments:');
+        for (var apt in appointmentsList.take(3)) {
+          print('  - ${apt.patientName} on ${apt.date} at ${apt.time} (status: ${apt.status})');
+        }
+      } else {
+        print('⚠️ [AppointmentController] No appointments returned from API!');
+      }
       
       // 3) حفظ في Cache - بنفس طريقة eversheen
       // تشغيل في الخلفية بدون انتظار لتجنب blocking UI thread
@@ -272,6 +336,9 @@ class AppointmentController extends GetxController {
     String? dateFrom,
     String? dateTo,
     String? status,
+    String? filter,
+    DateTime? customFilterStart,
+    DateTime? customFilterEnd,
   }) async {
     if (!hasMoreAppointments.value || isLoadingMoreAppointments.value) return;
     await loadDoctorAppointments(
@@ -281,6 +348,9 @@ class AppointmentController extends GetxController {
       status: status,
       isInitial: false,
       isRefresh: false,
+      filter: filter ?? _currentFilter,
+      customFilterStart: customFilterStart ?? _customFilterStart,
+      customFilterEnd: customFilterEnd ?? _customFilterEnd,
     );
   }
 
@@ -573,11 +643,11 @@ class AppointmentController extends GetxController {
     final now = DateTime.now();
     final todayStart = DateTime(now.year, now.month, now.day);
     final todayEnd = todayStart.add(const Duration(days: 1));
-
+    
     return appointments.where((appointment) {
       final appointmentDate = appointment.date;
-      return appointmentDate.isAfter(todayStart) &&
-          appointmentDate.isBefore(todayEnd) &&
+      return appointmentDate.isAfter(todayStart) && 
+             appointmentDate.isBefore(todayEnd) &&
           (appointment.status == 'pending' ||
               appointment.status == 'scheduled');
     }).toList()..sort((a, b) => a.date.compareTo(b.date));
@@ -587,7 +657,7 @@ class AppointmentController extends GetxController {
   List<AppointmentModel> getLateAppointments() {
     final now = DateTime.now();
     return appointments.where((appointment) {
-      return appointment.date.isBefore(now) &&
+      return appointment.date.isBefore(now) && 
           (appointment.status == 'pending' ||
               appointment.status == 'scheduled');
     }).toList()..sort((a, b) => a.date.compareTo(b.date));
@@ -598,11 +668,11 @@ class AppointmentController extends GetxController {
     final now = DateTime.now();
     final monthStart = DateTime(now.year, now.month, 1);
     final monthEnd = DateTime(now.year, now.month + 1, 1);
-
+    
     return appointments.where((appointment) {
       final appointmentDate = appointment.date;
-      return appointmentDate.isAfter(monthStart) &&
-          appointmentDate.isBefore(monthEnd) &&
+      return appointmentDate.isAfter(monthStart) && 
+             appointmentDate.isBefore(monthEnd) &&
           (appointment.status == 'pending' ||
               appointment.status == 'scheduled');
     }).toList()..sort((a, b) => a.date.compareTo(b.date));

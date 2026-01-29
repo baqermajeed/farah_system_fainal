@@ -13,4 +13,6 @@ class AppRoutes {
   static const String workingHours = '/working-hours';
   static const String editDoctorProfile = '/edit-doctor-profile';
   static const String appointments = '/appointments';
+  static const String appointmentsByDate = '/appointments-by-date';
+  static const String patientDetails = '/patient-details';
 }

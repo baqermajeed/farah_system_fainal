@@ -574,7 +574,8 @@ async def list_appointments_for_doctor(
         query = query.find((Appointment.scheduled_at < now) & (Appointment.status == "scheduled"))
     elif status:
         query = query.find(Appointment.status == status)
-    query = query.sort(-Appointment.scheduled_at).skip(skip)
+    # ترتيب تصاعدي: من الأقدم للأحدث (من أول موعد في اليوم/الشهر إلى آخر موعد)
+    query = query.sort(+Appointment.scheduled_at).skip(skip)
     if limit is not None:
         query = query.limit(limit)
     return await query.to_list()
@@ -600,7 +601,8 @@ async def list_appointments_for_all(
         query = query.find((Appointment.scheduled_at < now) & (Appointment.status == "scheduled"))
     elif status:
         query = query.find(Appointment.status == status)
-    query = query.sort(-Appointment.scheduled_at).skip(skip)
+    # ترتيب تصاعدي: من الأقدم للأحدث (من أول موعد في اليوم/الشهر إلى آخر موعد)
+    query = query.sort(+Appointment.scheduled_at).skip(skip)
     if limit is not None:
         query = query.limit(limit)
     return await query.to_list()
@@ -652,7 +654,8 @@ async def list_patient_appointments_grouped(*, patient_id: str) -> tuple[List[Ap
     p = await Patient.get(OID(patient_id))
     if not p:
         return [], []
-    apps = await Appointment.find(Appointment.patient_id == p.id).sort(-Appointment.scheduled_at).to_list()
+    # ترتيب تصاعدي: من الأقدم للأحدث (من أول موعد إلى آخر موعد)
+    apps = await Appointment.find(Appointment.patient_id == p.id).sort(+Appointment.scheduled_at).to_list()
     if not p.doctor_ids:
         return [], apps  # No doctors assigned, return all as "other"
     
@@ -683,10 +686,11 @@ async def list_patient_appointments_for_doctor(
     if OID(doctor_id) not in patient.doctor_ids:
         return []
 
+    # ترتيب تصاعدي: من الأقدم للأحدث (من أول موعد إلى آخر موعد)
     query = Appointment.find(
         Appointment.patient_id == patient.id,
         Appointment.doctor_id == OID(doctor_id),
-    ).sort(-Appointment.scheduled_at).skip(skip)
+    ).sort(+Appointment.scheduled_at).skip(skip)
 
     if limit is not None:
         query = query.limit(limit)

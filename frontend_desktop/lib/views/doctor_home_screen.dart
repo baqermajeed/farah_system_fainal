@@ -150,6 +150,13 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
       }
     });
     
+    // ⭐ إضافة listener لتغيير تبويبات المواعيد لإعادة تحميل المواعيد بالفلتر المناسب
+    _appointmentsTabController.addListener(() {
+      if (!_appointmentsTabController.indexIsChanging) {
+        _onAppointmentsTabChanged(_appointmentsTabController.index);
+      }
+    });
+    
     // ⭐ إضافة listener للتمرير لتحميل المزيد من المرضى
     _patientsScrollController.addListener(_onPatientsScroll);
     
@@ -217,6 +224,40 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
         }
       }
     }
+  }
+
+  // ⭐ دالة لإعادة تحميل المواعيد عند تغيير التبويب
+  void _onAppointmentsTabChanged(int index) {
+    String? day;
+    String? dateFrom;
+    String? dateTo;
+    String? status;
+
+    switch (index) {
+      case 0: // اليوم
+        day = 'today';
+        break;
+      case 1: // هذا الشهر
+        // ⭐ استخدام day='month' بدلاً من dateFrom/dateTo لأن الـ backend يدعمها
+        day = 'month';
+        break;
+      case 2: // المتأخرون
+        status = 'late';
+        break;
+      case 3: // تصفية مخصصة
+        // لا نحمل أي شيء هنا، سيتم التحميل عند اختيار التاريخ
+        return;
+    }
+
+    // إعادة تحميل المواعيد مع الفلتر المناسب
+    _appointmentController.loadDoctorAppointments(
+      day: day,
+      dateFrom: dateFrom,
+      dateTo: dateTo,
+      status: status,
+      isInitial: false,
+      isRefresh: true,
+    );
   }
   
   // ⭐ دالة للبحث - بنفس طريقة eversheen
@@ -1294,8 +1335,30 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
   }
 
   Widget _buildAppointmentsTableContent(String filter) {
+    // تحميل المواعيد عند تغيير التبويب
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (filter == 'تصفية مخصصة') {
+        if (_appointmentsRangeStart != null && _appointmentsRangeEnd != null) {
+          _appointmentController.loadDoctorAppointments(
+            isInitial: true,
+            isRefresh: true,
+            filter: filter,
+            customFilterStart: _appointmentsRangeStart,
+            customFilterEnd: _appointmentsRangeEnd,
+          );
+        }
+      } else {
+        _appointmentController.loadDoctorAppointments(
+          isInitial: true,
+          isRefresh: true,
+          filter: filter,
+        );
+      }
+    });
+    
     return Obx(() {
-      if (_appointmentController.isLoading.value) {
+      if (_appointmentController.isLoading.value && 
+          _appointmentController.appointments.isEmpty) {
         return const Center(child: CircularProgressIndicator());
       }
 
@@ -1337,8 +1400,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
           break;
       }
 
-      // ترتيب المواعيد حسب التاريخ
-      filteredAppointments.sort((a, b) => a.date.compareTo(b.date));
+      // ترتيب المواعيد حسب التاريخ (موجود بالفعل في controller)
+      // filteredAppointments.sort((a, b) => a.date.compareTo(b.date));
 
       final bool showCustomFilterControls = filter == 'تصفية مخصصة';
 
@@ -1403,7 +1466,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                   SizedBox(
                     width: 140.w,
                     child: Text(
-                      'رقم الهاتف',
+                      'رقم الهاتف / رقم المريض',
                       style: TextStyle(
                         fontSize: 16.sp,
                         fontWeight: FontWeight.bold,
@@ -1442,9 +1505,27 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
             ),
             // Table Rows
             Expanded(
-              child: ListView.builder(
-                itemCount: filteredAppointments.length,
-                itemBuilder: (context, index) {
+              child: NotificationListener<ScrollNotification>(
+                onNotification: (ScrollNotification scrollInfo) {
+                  // عند الوصول لنهاية القائمة، جلب المزيد من المواعيد
+                  if (scrollInfo.metrics.pixels >= scrollInfo.metrics.maxScrollExtent - 200 &&
+                      !_appointmentController.isLoadingMoreAppointments.value &&
+                      _appointmentController.hasMoreAppointments.value) {
+                    _appointmentController.loadMoreAppointments(filter: filter);
+                  }
+                  return false;
+                },
+                child: ListView.builder(
+                  itemCount: filteredAppointments.length + 
+                      (_appointmentController.isLoadingMoreAppointments.value ? 1 : 0),
+                  itemBuilder: (context, index) {
+                    // عرض loading indicator في النهاية
+                    if (index == filteredAppointments.length) {
+                      return Padding(
+                        padding: EdgeInsets.all(16.h),
+                        child: const Center(child: CircularProgressIndicator()),
+                      );
+                    }
                   final appointment = filteredAppointments[index];
                   final patient = _patientController.getPatientById(
                     appointment.patientId,
@@ -1513,18 +1594,37 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                           ),
                         ),
                         SizedBox(width: 60.w),
-                        // رقم الهاتف
+                        // رقم الهاتف / رقم المريض
                         SizedBox(
                           width: 140.w,
-                          child: Text(
-                            patientPhone,
-                            style: TextStyle(
-                              fontSize: 14.sp,
-                              color: const Color(0x99212F34),
-                            ),
-                            textAlign: TextAlign.center,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (patientPhone.isNotEmpty)
+                                Text(
+                                  patientPhone,
+                                  style: TextStyle(
+                                    fontSize: 14.sp,
+                                    color: const Color(0x99212F34),
+                                  ),
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              if (patientPhone.isNotEmpty && appointment.patientId.isNotEmpty)
+                                SizedBox(height: 4.h),
+                              Text(
+                                appointment.patientId,
+                                style: TextStyle(
+                                  fontSize: 12.sp,
+                                  color: const Color(0x99212F34).withOpacity(0.7),
+                                ),
+                                textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
                           ),
                         ),
                         SizedBox(width: 60.w),
@@ -1562,7 +1662,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                       ],
                     ),
                   );
-                },
+                  },
+                ),
               ),
             ),
           ],
