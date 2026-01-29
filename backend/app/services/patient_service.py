@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Tuple
 from fastapi import HTTPException
 from beanie import PydanticObjectId as OID
-from beanie.operators import In, NotIn
+from beanie.operators import In, NotIn, And
 
 from app.models import Patient, DoctorPatientProfile, User, Doctor, Appointment, TreatmentNote, GalleryImage
 from app.constants import Role
@@ -598,8 +598,10 @@ async def list_appointments_for_doctor(
     if status == "late":
         # المواعيد المتأخرة: الموعد عبر وحالة الموعد لا تزال pending
         query = query.find(
-            (Appointment.scheduled_at < now) & 
-            (Appointment.status == "pending")
+            And(
+                Appointment.scheduled_at < now,
+                Appointment.status == "pending"
+            )
         )
     elif status:
         # تصفية حسب الحالة المحددة
@@ -608,8 +610,10 @@ async def list_appointments_for_doctor(
         # الافتراضي: استبعاد المواعيد المكتملة والملغية
         # نعرض فقط: pending, late
         query = query.find(
-            (Appointment.status != "completed") & 
-            (Appointment.status != "cancelled")
+            And(
+                Appointment.status != "completed",
+                Appointment.status != "cancelled"
+            )
         )
     
     # ترتيب تصاعدي: من الأقدم للأحدث
@@ -649,8 +653,10 @@ async def list_appointments_for_all(
     if status == "late":
         # المواعيد المتأخرة: الموعد عبر وحالة الموعد لا تزال pending
         query = query.find(
-            (Appointment.scheduled_at < now) & 
-            (Appointment.status == "pending")
+            And(
+                Appointment.scheduled_at < now,
+                Appointment.status == "pending"
+            )
         )
     elif status:
         # تصفية حسب الحالة المحددة
@@ -659,8 +665,10 @@ async def list_appointments_for_all(
         # الافتراضي: استبعاد المواعيد المكتملة والملغية
         # نعرض فقط: pending, late
         query = query.find(
-            (Appointment.status != "completed") & 
-            (Appointment.status != "cancelled")
+            And(
+                Appointment.status != "completed",
+                Appointment.status != "cancelled"
+            )
         )
     
     # ترتيب تصاعدي: من الأقدم للأحدث
@@ -781,8 +789,10 @@ async def update_late_appointments() -> int:
         now = datetime.now(timezone.utc)
         # جلب جميع المواعيد التي عبرت وحالتها pending
         late_appointments = await Appointment.find(
-            (Appointment.scheduled_at < now) & 
-            (Appointment.status == "pending")
+            And(
+                Appointment.scheduled_at < now,
+                Appointment.status == "pending"
+            )
         ).to_list()
         
         updated_count = 0
