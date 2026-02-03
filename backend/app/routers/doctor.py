@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, UploadFile, File, Query, Form, HTTPExcep
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional, Dict
 from datetime import datetime, timezone
+from pydantic import BaseModel
 import re
 
 from app.schemas import (

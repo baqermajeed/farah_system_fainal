@@ -342,10 +342,40 @@ async def assign_patient_doctors(
         ).insert()
         _reset_doctor_profile_assignment(patient, str(doctor_id), assigned_at=assignment_time)
     
-    # للأطباء المزالين (لم نعد نستخدم هذا حالياً، لكن يمكن إضافته لاحقاً)
+    # للأطباء المزالين: إنشاء InactivePatientLog للإحصائيات
     removed_doctors = prev_doctor_ids - new_doctor_ids
     for doctor_id in removed_doctors:
-        print(f"📝 [assign_patient_doctors] Doctor {doctor_id} was removed (not logging removal)")
+        print(f"📝 [assign_patient_doctors] Doctor {doctor_id} was removed, creating InactivePatientLog")
+        try:
+            from app.models import InactivePatientLog, AssignmentLog
+            
+            # البحث عن آخر AssignmentLog لهذا الطبيب مع هذا المريض للحصول على original_assigned_at
+            last_assignment = await AssignmentLog.find(
+                AssignmentLog.patient_id == patient.id,
+                AssignmentLog.doctor_id == doctor_id,
+            ).sort(-AssignmentLog.assigned_at).first()
+            
+            # استخدام assigned_at من AssignmentLog إذا كان موجوداً، وإلا من doctor_profiles
+            original_assigned_at = assignment_time
+            if last_assignment and last_assignment.assigned_at:
+                original_assigned_at = last_assignment.assigned_at
+            else:
+                # محاولة الحصول من doctor_profiles
+                doctor_key = str(doctor_id)
+                profile = patient.doctor_profiles.get(doctor_key) if patient.doctor_profiles else None
+                if profile and hasattr(profile, 'assigned_at') and profile.assigned_at:
+                    original_assigned_at = profile.assigned_at
+            
+            # إنشاء InactivePatientLog
+            await InactivePatientLog(
+                patient_id=patient.id,
+                doctor_id=doctor_id,
+                removed_at=assignment_time,
+                original_assigned_at=original_assigned_at,
+            ).insert()
+            print(f"✅ [assign_patient_doctors] Created InactivePatientLog for doctor {doctor_id}, patient {patient.id}")
+        except Exception as log_error:
+            print(f"⚠️ Warning: Failed to create InactivePatientLog for patient {patient.id}, doctor {doctor_id}: {log_error}")
 
     print(f"💾 [assign_patient_doctors] Saving patient...")
     await patient.save()
