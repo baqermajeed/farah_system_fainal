@@ -470,25 +470,24 @@ async def get_doctor_patient_transfer_stats(
         transfers_range_query = transfers_range_query.find(AssignmentLog.assigned_at < dt)
     transfers_in_range = await transfers_range_query.count()
     
-    # حساب عدد غير النشطين من InactivePatientLog (حسب removed_at - تاريخ الإزالة الفعلي)
-    # نستخدم removed_at لأننا نريد حساب المرضى الذين تم إزالتهم في هذا الشهر، وليس الذين تم تحويلهم في هذا الشهر
+    # حساب عدد غير النشطين من InactivePatientLog (حسب original_assigned_at)
     inactive_today = await InactivePatientLog.find(
         InactivePatientLog.doctor_id == did,
-        InactivePatientLog.removed_at >= today_start,
-        InactivePatientLog.removed_at < tomorrow_start,
+        InactivePatientLog.original_assigned_at >= today_start,
+        InactivePatientLog.original_assigned_at < tomorrow_start,
     ).count()
     
     inactive_month = await InactivePatientLog.find(
         InactivePatientLog.doctor_id == did,
-        InactivePatientLog.removed_at >= month_start,
-        InactivePatientLog.removed_at < next_month_start,
+        InactivePatientLog.original_assigned_at >= month_start,
+        InactivePatientLog.original_assigned_at < next_month_start,
     ).count()
     
     inactive_range_query = InactivePatientLog.find(InactivePatientLog.doctor_id == did)
     if df:
-        inactive_range_query = inactive_range_query.find(InactivePatientLog.removed_at >= df)
+        inactive_range_query = inactive_range_query.find(InactivePatientLog.original_assigned_at >= df)
     if dt:
-        inactive_range_query = inactive_range_query.find(InactivePatientLog.removed_at < dt)
+        inactive_range_query = inactive_range_query.find(InactivePatientLog.original_assigned_at < dt)
     inactive_in_range = await inactive_range_query.count()
     
     # حساب النشطين: التحويلات - غير النشطين
@@ -591,25 +590,24 @@ async def get_all_doctors_patient_transfer_stats(
             transfers_range_query = transfers_range_query.find(AssignmentLog.assigned_at < dt)
         transfers_in_range = await transfers_range_query.count()
         
-        # حساب عدد غير النشطين من InactivePatientLog (حسب removed_at - تاريخ الإزالة الفعلي)
-        # نستخدم removed_at لأننا نريد حساب المرضى الذين تم إزالتهم في هذا الشهر، وليس الذين تم تحويلهم في هذا الشهر
+        # حساب عدد غير النشطين من InactivePatientLog (حسب original_assigned_at)
         inactive_today = await InactivePatientLog.find(
             InactivePatientLog.doctor_id == did,
-            InactivePatientLog.removed_at >= today_start,
-            InactivePatientLog.removed_at < tomorrow_start,
+            InactivePatientLog.original_assigned_at >= today_start,
+            InactivePatientLog.original_assigned_at < tomorrow_start,
         ).count()
         
         inactive_month = await InactivePatientLog.find(
             InactivePatientLog.doctor_id == did,
-            InactivePatientLog.removed_at >= month_start,
-            InactivePatientLog.removed_at < next_month_start,
+            InactivePatientLog.original_assigned_at >= month_start,
+            InactivePatientLog.original_assigned_at < next_month_start,
         ).count()
         
         inactive_range_query = InactivePatientLog.find(InactivePatientLog.doctor_id == did)
         if df:
-            inactive_range_query = inactive_range_query.find(InactivePatientLog.removed_at >= df)
+            inactive_range_query = inactive_range_query.find(InactivePatientLog.original_assigned_at >= df)
         if dt:
-            inactive_range_query = inactive_range_query.find(InactivePatientLog.removed_at < dt)
+            inactive_range_query = inactive_range_query.find(InactivePatientLog.original_assigned_at < dt)
         inactive_in_range = await inactive_range_query.count()
         
         # حساب النشطين: التحويلات - غير النشطين
