@@ -130,6 +130,7 @@ async def route_create_patient_account(request: Request, payload: PatientCreate)
             age=payload.age,
             city=payload.city,
             visit_type=payload.visit_type,
+            consultation_type=payload.consultation_type,
         )
         
         # جلب User المرتبط

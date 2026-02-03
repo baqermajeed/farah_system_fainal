@@ -23,8 +23,6 @@ def build_doctor_profile_map(
             treatment_type=profile.treatment_type,
             assigned_at=profile.assigned_at,
             last_action_at=profile.last_action_at,
-            status=profile.status,
-            inactive_since=profile.inactive_since,
         )
     return result
 

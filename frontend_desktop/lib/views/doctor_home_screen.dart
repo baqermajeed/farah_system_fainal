@@ -561,6 +561,18 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
       final patient = result['patient'] as PatientModel;
       final doctors = (result['doctors'] as List<DoctorModel>? ?? []);
 
+      // ⭐ إضافة المريض إلى قائمة المرضى إذا لم يكن موجوداً
+      final existingIndex = _patientController.patients.indexWhere((p) => p.id == patient.id);
+      if (existingIndex == -1) {
+        // المريض غير موجود في القائمة، نضيفه
+        _patientController.patients.add(patient);
+        print('✅ [QR Scan] Patient added to list: ${patient.name}');
+      } else {
+        // المريض موجود، نحدث بياناته
+        _patientController.patients[existingIndex] = patient;
+        print('✅ [QR Scan] Patient updated in list: ${patient.name}');
+      }
+
       // الطبيب في نسخة الديسكتوب دائماً "DoctorHomeScreen"
       final userId = _authController.currentUser.value?.id;
 
@@ -8330,29 +8342,9 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
     List<DoctorModel> doctors = [];
     String? selectedDoctorId;
     String mode = 'shared'; // shared | move
-
-    String _buildLastTransferText(DoctorModel doctor) {
-      final last = doctor.lastTransferAt;
-      if (last == null) {
-        return 'لا يوجد تحويلات سابقة';
-      }
-
-      // نحسب الفرق بناءً على اليوم (بدون اعتبار الساعات لتفادي مشاكل اختلاف المناطق الزمنية)
-      final DateTime lastLocal = last.toLocal();
-      final DateTime today = DateTime.now();
-      final DateTime lastDateOnly =
-          DateTime(lastLocal.year, lastLocal.month, lastLocal.day);
-      final DateTime todayDateOnly =
-          DateTime(today.year, today.month, today.day);
-
-      final int days = todayDateOnly.difference(lastDateOnly).inDays;
-
-      if (days <= 0) {
-        return 'آخر تحويل اليوم';
-      }
-
-      return 'منذ $days يوم';
-    }
+    // Map لحفظ إحصائيات التحويلات لكل طبيب: doctorId -> stats
+    Map<String, Map<String, dynamic>> doctorStatsMap = {};
+    Map<String, bool> isLoadingStatsMap = {}; // لتتبع حالة التحميل لكل طبيب
 
     showDialog(
       context: context,
@@ -8369,7 +8361,85 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                     doctors = list;
                     isLoadingDoctors = false;
                     loadError = null;
+                    // تهيئة حالة التحميل لكل طبيب
+                    for (var doctor in list) {
+                      isLoadingStatsMap[doctor.id] = true;
+                    }
                   });
+                  
+                  // جلب إحصائيات التحويلات لجميع الأطباء دفعة واحدة (أكثر كفاءة)
+                  try {
+                    print('📊 [DoctorHomeScreen] Fetching all doctors transfer stats...');
+                    final allStatsResponse = await doctorService.getAllDoctorsTransferStats();
+                    print('📊 [DoctorHomeScreen] Response received: ${allStatsResponse.keys}');
+                    
+                    final allStats = allStatsResponse['doctors'] as List<dynamic>?;
+                    print('📊 [DoctorHomeScreen] Doctors stats count: ${allStats?.length ?? 0}');
+                    
+                    if (allStats != null && allStats.isNotEmpty) {
+                      // تحويل القائمة إلى Map باستخدام doctor_id كمفتاح
+                      final statsMap = <String, Map<String, dynamic>>{};
+                      for (var stats in allStats) {
+                        if (stats is Map<String, dynamic>) {
+                          final doctorId = stats['doctor_id'] as String?;
+                          if (doctorId != null) {
+                            statsMap[doctorId] = stats;
+                            print('📊 [DoctorHomeScreen] Added stats for doctor_id: $doctorId, transfers_month: ${stats['transfers']?['this_month']}');
+                          }
+                        }
+                      }
+                      
+                      print('📊 [DoctorHomeScreen] Stats map size: ${statsMap.length}');
+                      print('📊 [DoctorHomeScreen] Available doctor IDs in stats: ${statsMap.keys.toList()}');
+                      print('📊 [DoctorHomeScreen] Available doctor IDs in list: ${list.map((d) => d.id).toList()}');
+                      
+                      setDialogState(() {
+                        // تعيين الإحصائيات لكل طبيب
+                        for (var doctor in list) {
+                          final matchedStats = statsMap[doctor.id];
+                          if (matchedStats != null) {
+                            print('✅ [DoctorHomeScreen] Matched stats for doctor ${doctor.id}: transfers_month=${matchedStats['transfers']?['this_month']}');
+                            doctorStatsMap[doctor.id] = matchedStats;
+                          } else {
+                            print('⚠️ [DoctorHomeScreen] No stats found for doctor ${doctor.id}, using defaults');
+                            doctorStatsMap[doctor.id] = {
+                              'transfers': {'today': 0, 'this_month': 0},
+                              'active_patients': {'today': 0, 'this_month': 0},
+                              'inactive_patients': {'today': 0, 'this_month': 0},
+                            };
+                          }
+                          isLoadingStatsMap[doctor.id] = false;
+                        }
+                      });
+                    } else {
+                      print('⚠️ [DoctorHomeScreen] No stats data received or empty list');
+                      // في حالة عدم وجود بيانات، نضع قيماً افتراضية
+                      setDialogState(() {
+                        for (var doctor in list) {
+                          doctorStatsMap[doctor.id] = {
+                            'transfers': {'today': 0, 'this_month': 0},
+                            'active_patients': {'today': 0, 'this_month': 0},
+                            'inactive_patients': {'today': 0, 'this_month': 0},
+                          };
+                          isLoadingStatsMap[doctor.id] = false;
+                        }
+                      });
+                    }
+                  } catch (e, stackTrace) {
+                    print('❌ [DoctorHomeScreen] Error loading all doctors stats: $e');
+                    print('❌ [DoctorHomeScreen] Stack trace: $stackTrace');
+                    // في حالة الخطأ، نضع قيماً افتراضية لجميع الأطباء
+                    setDialogState(() {
+                      for (var doctor in list) {
+                        doctorStatsMap[doctor.id] = {
+                          'transfers': {'today': 0, 'this_month': 0},
+                          'active_patients': {'today': 0, 'this_month': 0},
+                          'inactive_patients': {'today': 0, 'this_month': 0},
+                        };
+                        isLoadingStatsMap[doctor.id] = false;
+                      }
+                    });
+                  }
                 } catch (e) {
                   setDialogState(() {
                     isLoadingDoctors = false;
@@ -8501,11 +8571,133 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                   horizontal: 4.w,
                                   vertical: 4.h,
                                 ),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    // صورة الطبيب
+                                    // إحصائيات التحويلات لهذا الشهر (في نفس عمود الصورة)
+                                    Expanded(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                        children: [
+                                          // اسم الطبيب
+                                          Text(
+                                            doctor.name ?? doctor.phone,
+                                            style: TextStyle(
+                                              fontSize: 12.sp,
+                                              fontWeight: FontWeight.w700,
+                                              color: AppColors.textPrimary,
+                                            ),
+                                            textAlign: TextAlign.right,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          SizedBox(height: 4.h),
+                                          // إحصائيات التحويلات لهذا الشهر
+                                          Builder(
+                                            builder: (context) {
+                                              final isLoadingStats = isLoadingStatsMap[doctor.id] ?? true;
+                                              final stats = doctorStatsMap[doctor.id];
+                                              
+                                              if (isLoadingStats) {
+                                                return SizedBox(
+                                                  width: 12.w,
+                                                  height: 12.w,
+                                                  child: const CircularProgressIndicator(
+                                                    strokeWidth: 1.5,
+                                                  ),
+                                                );
+                                              }
+                                              
+                                              // استدعاء الإحصائيات الشهرية من doctorStatsMap
+                                              final transfersThisMonth = stats?['transfers']?['this_month'] ?? 0;
+                                              final activePatientsThisMonth = stats?['active_patients']?['this_month'] ?? 0;
+                                              final inactivePatientsThisMonth = stats?['inactive_patients']?['this_month'] ?? 0;
+                                              
+                                              // طباعة للتشخيص
+                                              if (stats != null) {
+                                                print('📊 [DoctorHomeScreen] Displaying stats for doctor ${doctor.id}: transfers_month=$transfersThisMonth, active=$activePatientsThisMonth, inactive=$inactivePatientsThisMonth');
+                                                print('📊 [DoctorHomeScreen] Full stats object: $stats');
+                                              } else {
+                                                print('⚠️ [DoctorHomeScreen] No stats found for doctor ${doctor.id}');
+                                              }
+                                              
+                                              return Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                crossAxisAlignment: CrossAxisAlignment.end,
+                                                children: [
+                                                  // عدد التحويلات الكلي هذا الشهر
+                                                  Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      Text(
+                                                        '$transfersThisMonth',
+                                                        style: TextStyle(
+                                                          fontSize: 9.sp,
+                                                          fontWeight: FontWeight.w700,
+                                                          color: AppColors.primary,
+                                                        ),
+                                                      ),
+                                                      SizedBox(width: 2.w),
+                                                      Icon(
+                                                        Icons.swap_horiz,
+                                                        size: 10.sp,
+                                                        color: AppColors.primary,
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  SizedBox(height: 2.h),
+                                                  // المرضى النشطين هذا الشهر
+                                                  Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      Text(
+                                                        '$activePatientsThisMonth',
+                                                        style: TextStyle(
+                                                          fontSize: 9.sp,
+                                                          fontWeight: FontWeight.w600,
+                                                          color: AppColors.success,
+                                                        ),
+                                                      ),
+                                                      SizedBox(width: 2.w),
+                                                      Icon(
+                                                        Icons.check_circle,
+                                                        size: 10.sp,
+                                                        color: AppColors.success,
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  SizedBox(height: 2.h),
+                                                  // المرضى غير النشطين هذا الشهر
+                                                  Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      Text(
+                                                        '$inactivePatientsThisMonth',
+                                                        style: TextStyle(
+                                                          fontSize: 9.sp,
+                                                          fontWeight: FontWeight.w600,
+                                                          color: AppColors.error,
+                                                        ),
+                                                      ),
+                                                      SizedBox(width: 2.w),
+                                                      Icon(
+                                                        Icons.cancel,
+                                                        size: 10.sp,
+                                                        color: AppColors.error,
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ],
+                                              );
+                                            },
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    SizedBox(width: 4.w),
+                                    // صورة الطبيب (من اليمين)
                                     CircleAvatar(
                                       radius: 20.r,
                                       backgroundColor: AppColors.primaryLight,
@@ -8531,80 +8723,6 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                               ),
                                             )
                                           : null,
-                                    ),
-                                    SizedBox(height: 6.h),
-                                    // اسم الطبيب
-                                    Text(
-                                      doctor.name ?? doctor.phone,
-                                      style: TextStyle(
-                                        fontSize: 12.sp,
-                                        fontWeight: FontWeight.w700,
-                                        color: AppColors.textPrimary,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    SizedBox(height: 4.h),
-                                    // عدد التحويلات اليوم على شكل دوائر
-                                    Builder(
-                                      builder: (context) {
-                                        final int transfers =
-                                            doctor.todayTransfers;
-                                        // إذا لا توجد تحويلات نعرض دائرة رمادية واحدة
-                                        final int dots = transfers == 0
-                                            ? 1
-                                            : (transfers > 10 ? 10 : transfers);
-                                        final Color dotColor = transfers > 0
-                                            ? Colors.green
-                                            : AppColors.divider;
-
-                                        return Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            Wrap(
-                                              spacing: 3.w,
-                                              runSpacing: 2.h,
-                                              children: List.generate(
-                                                dots,
-                                                (index) => Container(
-                                                  width: 6.w,
-                                                  height: 6.w,
-                                                  decoration: BoxDecoration(
-                                                    color: dotColor,
-                                                    shape: BoxShape.circle,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                            if (transfers > 10) ...[
-                                              SizedBox(width: 6.w),
-                                              Text(
-                                                '+$transfers',
-                                                style: TextStyle(
-                                                  fontSize: 10.sp,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: AppColors.textSecondary,
-                                                ),
-                                              ),
-                                            ],
-                                          ],
-                                        );
-                                      },
-                                    ),
-                                    SizedBox(height: 4.h),
-                                    // آخر تحويل بالأيام
-                                    Text(
-                                      _buildLastTransferText(doctor),
-                                      style: TextStyle(
-                                        fontSize: 10.sp,
-                                        color: AppColors.primary,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ],
                                 ),

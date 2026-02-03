@@ -41,6 +41,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
 import 'package:frontend_desktop/main.dart' show availableCamerasList;
+import 'package:path_provider/path_provider.dart';
 // دالة مساعدة لقراءة الصورة في isolate منفصل
 Future<Uint8List> _readImageBytes(String imagePath) async {
   final file = File(imagePath);
@@ -75,6 +76,52 @@ class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
   }
 }
 
+// Custom Painter للشكل الأزرق في بطاقة الهوية (شكل A مقلوب)
+class _IdCardShapePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFF649FCC)
+      ..style = PaintingStyle.fill;
+
+    final path = Path();
+    // بداية من أعلى اليسار
+    path.moveTo(0, 0);
+    // إلى أعلى اليمين
+    path.lineTo(size.width, 0);
+    // نزول على اليمين
+    path.lineTo(size.width, size.height);
+    // قاعدة الشكل (أسفل اليمين)
+    path.lineTo(size.width * 0.75, size.height);
+    // صعود قليلاً
+    path.lineTo(size.width * 0.75, size.height * 0.75);
+    // منحنى للداخل (الجزء الأوسط السفلي)
+    path.quadraticBezierTo(
+      size.width * 0.65,
+      size.height * 0.7,
+      size.width * 0.55,
+      size.height * 0.75,
+    );
+    path.lineTo(size.width * 0.45, size.height * 0.75);
+    path.quadraticBezierTo(
+      size.width * 0.35,
+      size.height * 0.7,
+      size.width * 0.25,
+      size.height * 0.75,
+    );
+    // صعود على اليسار
+    path.lineTo(size.width * 0.25, size.height);
+    path.lineTo(0, size.height);
+    // إغلاق المسار
+    path.close();
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
 class ReceptionHomeScreen extends StatefulWidget {
   const ReceptionHomeScreen({super.key});
 
@@ -99,6 +146,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
   final ImagePicker _imagePicker = ImagePicker();
   final TextEditingController _qrScanController = TextEditingController();
   final GlobalKey _qrPrintKey = GlobalKey();
+  final GlobalKey _idCardKey = GlobalKey();
   late TabController _tabController; // For patient file tabs
   late TabController _appointmentsTabController; // For appointments tabs
   final RxInt _currentTabIndex = 0.obs;
@@ -278,15 +326,14 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
         break;
       case 3: // تصفية مخصصة
         filter = 'تصفية مخصصة';
-        // إذا لم يتم تحديد التاريخ بعد، نفتح حوار التصفية
-        if (_appointmentsRangeStart == null || _appointmentsRangeEnd == null) {
-          _showAppointmentsDateRangeDialog();
-          return;
-        }
+        // ⭐ تم حذف فتح الدايلوج تلقائياً - المستخدم يمكنه فتحه يدوياً
         break;
     }
 
-    // إعادة تحميل المواعيد مع الفلتر المناسب
+    // ⭐ مسح القائمة فوراً قبل التحميل لضمان عدم عرض بيانات قديمة
+    _appointmentController.appointments.clear();
+    
+    // إعادة تحميل المواعيد مع الفلتر المناسب من API مباشرة
     _appointmentController.loadDoctorAppointments(
       isInitial: false,
       isRefresh: true,
@@ -792,6 +839,43 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                         _handleDesktopQrScan(value.trim());
                       }
                     },
+                  ),
+                ),
+                SizedBox(width: 15.w),
+                // ID Card Button
+                GestureDetector(
+                  onTap: () {
+                    // إذا كان هناك مريض محدد، عرض بطاقته
+                    final selectedPatient = _patientController.selectedPatient.value;
+                    if (selectedPatient != null) {
+                      _showIdCardDialog(context, selectedPatient);
+                    } else {
+                      Get.snackbar(
+                        'تنبيه',
+                        'يرجى اختيار مريض أولاً',
+                        snackPosition: SnackPosition.TOP,
+                        backgroundColor: AppColors.error,
+                        colorText: AppColors.white,
+                      );
+                    }
+                  },
+                  child: Container(
+                    width: 80.w,
+                    height: 30.h,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF649FCC),
+                      borderRadius: BorderRadius.circular(3.r),
+                    ),
+                    child: Center(
+                      child: Text(
+                        'بطاقتي',
+                        style: GoogleFonts.cairo(
+                          fontSize: 16.sp,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
                 SizedBox(width: 15.w),
@@ -1378,13 +1462,16 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
     // لا نحمل هنا لتجنب التحميل المتكرر
     
     return Obx(() {
-      if (_appointmentController.isLoading.value && 
-          _appointmentController.appointments.isEmpty) {
+      // ⭐ عرض loading indicator فقط إذا كان التحميل جارياً والقائمة فارغة
+      // إذا كانت القائمة تحتوي على بيانات، نعرضها حتى لو كان التحميل جارياً
+      final isLoading = _appointmentController.isLoading.value;
+      final filteredAppointments = _appointmentController.appointments;
+      
+      if (isLoading && filteredAppointments.isEmpty) {
         return const Center(child: CircularProgressIndicator());
       }
 
       // استخدام المواعيد مباشرة - الفلترة تتم في الـ backend
-      final filteredAppointments = _appointmentController.appointments;
       String emptyMessage = 'لا توجد مواعيد';
 
       final bool showCustomFilterControls = filter == 'تصفية مخصصة';
@@ -1430,7 +1517,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
           children: [
             // Table Header
             Container(
-              padding: EdgeInsets.symmetric(horizontal: 32.w, vertical: 12.h),
+              padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h), // ⭐ تقليل المسافة الجانبية من 32.w إلى 16.w
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.only(
@@ -1439,75 +1526,61 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                 ),
               ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   // ترتيب الأعمدة من اليسار لليمين مع نفس المسافات مثل الصفوف
                   SizedBox(
-                    width: 100.w,
+                    width: 90.w, // ⭐ تقليل من 100.w إلى 90.w
                     child: const SizedBox.shrink(), // عمود الزر بدون عنوان
                   ),
-                  SizedBox(width: 60.w),
+                  SizedBox(width: 16.w), // ⭐ تقليل المسافة من 40.w إلى 16.w
                   SizedBox(
-                    width: 140.w,
+                    width: 120.w, // ⭐ تقليل من 140.w إلى 120.w
                     child: Text(
                       'رقم الهاتف',
                       style: TextStyle(
-                        fontSize: 16.sp,
+                        fontSize: 14.sp, // ⭐ تقليل حجم الخط من 16.sp إلى 14.sp
                         fontWeight: FontWeight.bold,
                         color: const Color(0xFF76C6D1),
                       ),
                       textAlign: TextAlign.center,
                     ),
                   ),
-                  SizedBox(width: 60.w),
+                  SizedBox(width: 16.w), // ⭐ تقليل المسافة
                   SizedBox(
-                    width: 140.w,
-                    child: Text(
-                      'اسم الطبيب',
-                      style: TextStyle(
-                        fontSize: 16.sp,
-                        fontWeight: FontWeight.bold,
-                        color: const Color(0xFF76C6D1),
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                  SizedBox(width: 60.w),
-                  SizedBox(
-                    width: 140.w,
+                    width: 120.w, // ⭐ تقليل من 140.w إلى 120.w
                     child: Text(
                       'الموعد',
                       style: TextStyle(
-                        fontSize: 16.sp,
+                        fontSize: 14.sp, // ⭐ تقليل حجم الخط
                         fontWeight: FontWeight.bold,
                         color: const Color(0xFF76C6D1),
                       ),
                       textAlign: TextAlign.center,
                     ),
                   ),
-                  SizedBox(width: 60.w),
+                  SizedBox(width: 16.w), // ⭐ تقليل المسافة
+                  SizedBox(
+                    width: 100.w, // ⭐ تقليل من 120.w إلى 100.w
+                    child: Text(
+                      'اسم الطبيب',
+                      style: TextStyle(
+                        fontSize: 14.sp, // ⭐ تقليل حجم الخط
+                        fontWeight: FontWeight.bold,
+                        color: const Color(0xFF76C6D1),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  SizedBox(width: 16.w), // ⭐ تقليل المسافة
                   Expanded(
                     child: Text(
                       'اسم المريض',
                       style: TextStyle(
-                        fontSize: 16.sp,
+                        fontSize: 14.sp, // ⭐ تقليل حجم الخط
                         fontWeight: FontWeight.bold,
                         color: const Color(0xFF76C6D1),
                       ),
                       textAlign: TextAlign.right,
-                    ),
-                  ),
-                  SizedBox(width: 60.w),
-                  SizedBox(
-                    width: 60.w,
-                    child: Text(
-                      'الصورة',
-                      style: TextStyle(
-                        fontSize: 16.sp,
-                        fontWeight: FontWeight.bold,
-                        color: const Color(0xFF76C6D1),
-                      ),
-                      textAlign: TextAlign.center,
                     ),
                   ),
                 ],
@@ -1541,25 +1614,13 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                     appointment.patientId,
                   );
                   final patientName = patient?.name ?? appointment.patientName;
-                  final patientPhone = patient?.phoneNumber ?? '';
-                  final patientImageUrl = patient?.imageUrl;
+                  // ⭐ استخدام رقم الهاتف من الموعد مباشرة (من API) أو من بيانات المريض
+                  final patientPhone = appointment.patientPhone ?? patient?.phoneNumber ?? '';
                   final doctorName = appointment.doctorName;
 
                   // تنسيق التاريخ
                   final dateFormat = DateFormat('yyyy/MM/dd', 'ar');
                   final formattedDate = dateFormat.format(appointment.date);
-
-                  // أسماء الأيام بالعربية
-                  final weekDays = [
-                    'الأحد',
-                    'الاثنين',
-                    'الثلاثاء',
-                    'الأربعاء',
-                    'الخميس',
-                    'الجمعة',
-                    'السبت',
-                  ];
-                  final dayName = weekDays[appointment.date.weekday % 7];
 
                   // تنسيق الوقت
                   final timeParts = appointment.time.split(':');
@@ -1571,7 +1632,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                       : (hour == 0 ? 12 : hour);
                   final timeText = '$displayHour:$minute ${isPM ? 'م' : 'ص'}';
 
-                  final appointmentText = 'يوم $dayName - $formattedDate - $timeText';
+                  final appointmentText = '$formattedDate $timeText';
 
                   final isLate =
                       filter == 'المتأخرون' ||
@@ -1580,16 +1641,15 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
 
                   return Container(
                     padding: EdgeInsets.symmetric(
-                      horizontal: 32.w,
+                      horizontal: 16.w, // ⭐ تقليل المسافة الجانبية من 32.w إلى 16.w
                       vertical: 10.h,
                     ),
                     margin: EdgeInsets.symmetric(vertical: 4.h), // مسافة 8 بين الصفوف (4 أعلى + 4 أسفل)
                     child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         // العمود الأول: زر عرض
                         SizedBox(
-                          width: 100.w,
+                          width: 90.w, // ⭐ تقليل من 100.w إلى 90.w
                           height: 30.h,
                           child: ElevatedButton(
                             onPressed: () {
@@ -1609,21 +1669,21 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                             child: Text(
                               'عرض',
                               style: TextStyle(
-                                fontSize: 14.sp,
+                                fontSize: 13.sp, // ⭐ تقليل حجم الخط قليلاً
                                 fontWeight: FontWeight.bold,
                                 color: Colors.white,
                               ),
                             ),
                           ),
                         ),
-                        SizedBox(width: 60.w),
+                        SizedBox(width: 16.w), // ⭐ تقليل المسافة من 40.w إلى 16.w
                         // رقم الهاتف
                         SizedBox(
-                          width: 140.w,
+                          width: 120.w, // ⭐ تقليل من 140.w إلى 120.w
                           child: Text(
-                            patientPhone,
+                            patientPhone.isNotEmpty ? patientPhone : '-',
                             style: TextStyle(
-                              fontSize: 14.sp,
+                              fontSize: 13.sp, // ⭐ تقليل حجم الخط من 14.sp إلى 13.sp
                               color: const Color(0x99212F34),
                             ),
                             textAlign: TextAlign.center,
@@ -1631,115 +1691,51 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        SizedBox(width: 60.w),
-                        // اسم الطبيب
+                        SizedBox(width: 16.w), // ⭐ تقليل المسافة
+                        // الموعد
                         SizedBox(
-                          width: 140.w,
-                          child: Text(
-                            doctorName,
-                            style: TextStyle(
-                              fontSize: 14.sp,
-                              color: const Color(0x99212F34),
-                            ),
-                            textAlign: TextAlign.center,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        SizedBox(width: 60.w),
-                        // الموعد (يوم - تاريخ - ساعة)
-                        SizedBox(
-                          width: 140.w,
+                          width: 120.w, // ⭐ تقليل من 140.w إلى 120.w
                           child: Text(
                             appointmentText,
                             style: TextStyle(
-                              fontSize: 14.sp,
+                              fontSize: 13.sp, // ⭐ تقليل حجم الخط
                               color: isLate
                                   ? Colors.red
                                   : const Color(0x99212F34),
                             ),
                             textAlign: TextAlign.center,
-                            maxLines: 2,
+                            maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        SizedBox(width: 60.w),
+                        SizedBox(width: 16.w), // ⭐ تقليل المسافة
+                        // اسم الطبيب
+                        SizedBox(
+                          width: 100.w, // ⭐ تقليل من 120.w إلى 100.w
+                          child: Text(
+                            doctorName.isNotEmpty ? doctorName : '-',
+                            style: TextStyle(
+                              fontSize: 13.sp, // ⭐ تقليل حجم الخط
+                              color: const Color(0x99212F34),
+                            ),
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        SizedBox(width: 16.w), // ⭐ تقليل المسافة
                         // اسم المريض (على اليمين)
                         Expanded(
                           child: Text(
                             patientName,
                             style: TextStyle(
-                              fontSize: 14.sp,
+                              fontSize: 13.sp, // ⭐ تقليل حجم الخط
                               color: const Color(0xFF649FCC),
                               fontWeight: FontWeight.w600,
                             ),
                             textAlign: TextAlign.right,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        SizedBox(width: 60.w),
-                        // صورة المريض
-                        SizedBox(
-                          width: 60.w,
-                          height: 60.w,
-                          child: Builder(
-                            builder: (context) {
-                              final validImageUrl = ImageUtils.convertToValidUrl(patientImageUrl);
-                              final hasImage = validImageUrl != null && ImageUtils.isValidImageUrl(validImageUrl);
-                              
-                              return Container(
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: isLate
-                                        ? Colors.red
-                                        : AppColors.primary.withOpacity(0.3),
-                                    width: 1,
-                                  ),
-                                ),
-                                child: ClipOval(
-                                  child: hasImage
-                                      ? CachedNetworkImage(
-                                          imageUrl: validImageUrl,
-                                          fit: BoxFit.cover,
-                                          width: 60.w,
-                                          height: 60.w,
-                                          fadeInDuration: Duration.zero,
-                                          fadeOutDuration: Duration.zero,
-                                          memCacheWidth: 60,
-                                          memCacheHeight: 60,
-                                          placeholder: (context, url) => Container(
-                                            color: const Color.fromARGB(255, 255, 255, 255),
-                                            child: Center(
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                valueColor: AlwaysStoppedAnimation<Color>(
-                                                  AppColors.primary,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                          errorWidget: (context, url, error) => Container(
-                                            color: AppColors.divider,
-                                            child: Icon(
-                                              Icons.person,
-                                              color: AppColors.textSecondary,
-                                              size: 30.sp,
-                                            ),
-                                          ),
-                                        )
-                                      : Container(
-                                          color: AppColors.divider,
-                                          child: Icon(
-                                            Icons.person,
-                                            color: AppColors.textSecondary,
-                                            size: 30.sp,
-                                          ),
-                                        ),
-                                ),
-                              );
-                            },
                           ),
                         ),
                       ],
@@ -1790,6 +1786,15 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                         _appointmentsRangeStart = start;
                         _appointmentsRangeEnd = end;
                       });
+                      
+                      // ⭐ إعادة تحميل المواعيد مع الفلتر المخصص الجديد
+                      _appointmentController.loadDoctorAppointments(
+                        isInitial: false,
+                        isRefresh: true,
+                        filter: 'تصفية مخصصة',
+                        customFilterStart: start,
+                        customFilterEnd: end,
+                      );
                     },
                     icon: Icon(
                       Icons.date_range,
@@ -1823,6 +1828,23 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
             ),
             SizedBox(height: 12.h),
             Expanded(child: tableContent),
+          ],
+        );
+      }
+
+      // ⭐ إضافة overlay للتحميل إذا كان التحميل جارياً
+      if (isLoading && filteredAppointments.isNotEmpty) {
+        return Stack(
+          children: [
+            tableContent,
+            Positioned.fill(
+              child: Container(
+                color: Colors.black.withOpacity(0.1),
+                child: const Center(
+                  child: CircularProgressIndicator(),
+                ),
+              ),
+            ),
           ],
         );
       }
@@ -5746,6 +5768,475 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
     );
   }
 
+  // Dialog لبطاقة الهوية
+  void _showIdCardDialog(BuildContext context, PatientModel initialPatient) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: EdgeInsets.all(20.w),
+          child: Container(
+            constraints: BoxConstraints(
+              maxWidth: 900.w,
+              maxHeight: MediaQuery.of(context).size.height * 0.9,
+            ),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20.r),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header with close button
+                Padding(
+                  padding: EdgeInsets.all(16.w),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // Save button
+                      ElevatedButton.icon(
+                        onPressed: () => _saveIdCardImage(initialPatient),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 16.w,
+                            vertical: 12.h,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8.r),
+                          ),
+                        ),
+                        icon: Icon(
+                          Icons.save,
+                          color: Colors.white,
+                          size: 20.sp,
+                        ),
+                        label: Text(
+                          'حفظ الصورة',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 14.sp,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      // Close button
+                      GestureDetector(
+                        onTap: () => Navigator.of(context).pop(),
+                        child: Container(
+                          padding: EdgeInsets.all(8.w),
+                          decoration: BoxDecoration(
+                            color: AppColors.divider,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.close,
+                            color: AppColors.textPrimary,
+                            size: 24.sp,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 16.h),
+                // ID Card Preview
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(20.w),
+                        child: _buildPatientIdCard(initialPatient),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Widget لبطاقة الهوية
+  Widget _buildPatientIdCard(PatientModel patient) {
+    // القياس المطلوب: w1010 h638
+    const double cardWidth = 1010;
+    const double cardHeight = 638;
+
+    return RepaintBoundary(
+      key: _idCardKey,
+      child: Container(
+        width: cardWidth,
+        height: cardHeight,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(0),
+        ),
+        child: Stack(
+          children: [
+            // المحتوى الرئيسي
+            Row(
+              children: [
+                // الجانب الأيسر: النصوص والحقول
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(right: 6, top: 0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        SizedBox(height: 24),
+                        // العنوان العربي
+                        Text(
+                          'عيادة فرح التخصصية لطب الاسنان',
+                          style: GoogleFonts.cairo(
+                            fontSize: 36,
+                            fontWeight: FontWeight.w900,
+                            color: const Color(0xFF649FCC),
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        // العنوان الإنجليزي
+                        Text(
+                          'Farah Dental Center',
+                          style: GoogleFonts.cairo(
+                            fontSize: 36,
+                            fontWeight: FontWeight.bold,
+                            color: const ui.Color.fromARGB(255, 247, 154, 6),
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        SizedBox(height: 35),
+                        // حقل الاسم
+                        _buildInfoFieldNew(' : اسم المراجع', _getThreePartName(patient.name), cardWidth: 500),
+                        SizedBox(height: 25),
+                        // حقل رقم الهاتف
+                        _buildInfoFieldNew(' : رقم الهاتف', patient.phoneNumber, cardWidth: 500),
+                        SizedBox(height: 25),
+                        // حقل الجنس
+                        _buildInfoFieldNew(
+                          ' : نوع الجنس',
+                          patient.gender == 'male'
+                              ? 'ذكر'
+                              : patient.gender == 'female'
+                                  ? 'أنثى'
+                                  : patient.gender,
+                          cardWidth: 500,
+                        ),
+                        SizedBox(height: 25),
+                        // حقل المحافظة
+                        _buildInfoFieldNew(' : المحافظة', patient.city, cardWidth: 500),
+                      ],
+                    ),
+                  ),
+                ),
+                // الجانب الأيمن: الكونتينر الأزرق
+                Container(
+                  width: 378,
+                  height: 592,
+                  margin: EdgeInsets.only(right: 34, top: cardHeight - 592),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF649FCC),
+                    borderRadius: BorderRadius.only(
+                      topLeft: Radius.circular(30),
+                      topRight: Radius.circular(30),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        blurRadius: 23,
+                        spreadRadius: 4,
+                        offset: Offset(0, 0),
+                      ),
+                    ],
+                  ),
+                  child: Stack(
+                    children: [
+                      // دائرة الصورة
+                      Positioned(
+                        top: 53,
+                        left: (378 - 236) / 2,
+                        child: Container(
+                          width: 236,
+                          height: 236,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: const Color(0xFF649FCC),
+                            border: Border.all(
+                              color: const ui.Color.fromARGB(255, 247, 154, 6),
+                              width: 3,
+                            ),
+                          ),
+                          child: Padding(
+                            padding: EdgeInsets.all(4),
+                            child: Container(
+                              width: 228,
+                              height: 228,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.white,
+                              ),
+                              child: ClipOval(
+                                child: patient.imageUrl != null
+                                    ? CachedNetworkImage(
+                                        imageUrl: ImageUtils.convertToValidUrl(patient.imageUrl) ?? '',
+                                        fit: BoxFit.cover,
+                                        errorWidget: (context, url, error) => Icon(
+                                          Icons.person,
+                                          size: 114,
+                                          color: Colors.grey.shade400,
+                                        ),
+                                      )
+                                    : Icon(
+                                        Icons.person,
+                                        size: 114,
+                                        color: Colors.grey.shade400,
+                                      ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      // كونتينر الباركود في الأسفل
+                      Positioned(
+                        bottom: 0,
+                        left: (378 - 228) / 2,
+                        child: Container(
+                          width: 228,
+                          height: 260,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.only(
+                              topLeft: Radius.circular(20),
+                              topRight: Radius.circular(20),
+                            ),
+                          ),
+                          padding: EdgeInsets.only(top: 30, left: 12, right: 12),
+                          child: QrImageView(
+                            data: patient.qrCodeData ?? patient.id,
+                            version: QrVersions.auto,
+                            size: 204,
+                            backgroundColor: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            // كونتينر "بطاقة ضمان المراجع" في الأسفل
+            Positioned(
+              bottom: 0,
+              left: 90,
+              child: Container(
+                width: 400,
+                height: 70,
+                decoration: BoxDecoration(
+                  color: const ui.Color.fromARGB(255, 247, 154, 6),
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
+                  ),
+                ),
+                child: Center(
+                  child: Padding(
+                    padding: EdgeInsets.only(bottom: 10),
+                    child: Text(
+                      'بطاقة ضمان المراجع',
+                      style: GoogleFonts.cairo(
+                        fontSize: 36,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Widget لحقل المعلومات (التصميم القديم - محفوظ للتوافق)
+  Widget _buildInfoField(String label, String value) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(
+          color: const Color(0xFF649FCC),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          Expanded(
+            child: Text(
+              value,
+              style: GoogleFonts.cairo(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
+              ),
+              textAlign: TextAlign.right,
+            ),
+          ),
+          SizedBox(width: 8),
+          Text(
+            '$label:',
+            style: GoogleFonts.cairo(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: const Color(0xFF649FCC),
+            ),
+            textAlign: TextAlign.right,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // دالة لاستخراج الاسم الثلاثي فقط
+  String _getThreePartName(String fullName) {
+    final parts = fullName.trim().split(' ').where((part) => part.isNotEmpty).toList();
+    if (parts.length <= 3) {
+      return fullName;
+    }
+    return parts.take(3).join(' ');
+  }
+
+  // Widget لحقل المعلومات الجديد
+  Widget _buildInfoFieldNew(String label, String value, {required double cardWidth}) {
+    return Container(
+      width: cardWidth,
+      height: 75,
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFF649FCC),
+          width: 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.16),
+            blurRadius: 10,
+            spreadRadius: 0,
+            offset: Offset(0, 0),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Flexible(
+            child: Text(
+              value,
+              style: GoogleFonts.cairo(
+                fontSize: 30,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF649FCC),
+              ),
+              textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+            ),
+          ),
+          SizedBox(width: 8),
+          Text(
+            label,
+            style: GoogleFonts.cairo(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: const Color(0xFF649FCC),
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+
+  // دالة لحفظ بطاقة الهوية كصورة PNG
+  Future<void> _saveIdCardImage(PatientModel patient) async {
+    try {
+      // انتظار قليل لضمان رندر البطاقة
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      final boundary = _idCardKey.currentContext?.findRenderObject()
+          as RenderRepaintBoundary?;
+
+      if (boundary == null) {
+        Get.snackbar(
+          'خطأ',
+          'تعذر الوصول إلى بطاقة الهوية',
+          snackPosition: SnackPosition.TOP,
+          backgroundColor: AppColors.error,
+          colorText: AppColors.white,
+        );
+        return;
+      }
+
+      // القياس المطلوب: 85.6mm × 54mm
+      // عند 300 DPI: 1011 × 637 pixels
+      // pixelRatio = 3.0 يعطي دقة 300 DPI
+      final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+
+      if (byteData == null) {
+        Get.snackbar(
+          'خطأ',
+          'تعذر تجهيز صورة بطاقة الهوية',
+          snackPosition: SnackPosition.TOP,
+          backgroundColor: AppColors.error,
+          colorText: AppColors.white,
+        );
+        return;
+      }
+
+      final pngBytes = byteData.buffer.asUint8List();
+
+      // حفظ الملف
+      final directory = await getApplicationDocumentsDirectory();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final fileName = 'patient_id_card_${patient.name.replaceAll(' ', '_')}_$timestamp.png';
+      final filePath = '${directory.path}/$fileName';
+
+      final file = File(filePath);
+      await file.writeAsBytes(pngBytes);
+
+      Get.snackbar(
+        'نجح',
+        'تم حفظ بطاقة الهوية بنجاح\nالمسار: $filePath',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.green,
+        colorText: AppColors.white,
+        duration: const Duration(seconds: 4),
+      );
+    } catch (e) {
+      print('❌ [ID Card] Error saving: $e');
+      Get.snackbar(
+        'خطأ',
+        'حدث خطأ أثناء حفظ بطاقة الهوية: $e',
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: AppColors.error,
+        colorText: AppColors.white,
+      );
+    }
+  }
+
   void _showTreatmentTypeDialog(BuildContext context, PatientModel patient) {
     // Treatment types (ordered). Shown in a 2-column grid to avoid empty gaps.
     final List<String> treatmentTypes = [
@@ -6574,15 +7065,20 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                 await controller.initialize();
 
                 // عرض شاشة الكاميرا
-                if (!context.mounted) return;
+                if (!context.mounted) {
+                  await controller.dispose();
+                  return;
+                }
                 final XFile? image = await Navigator.of(context).push<XFile>(
                   MaterialPageRoute(
                     builder: (context) => _CameraCaptureScreen(
                       controller: controller,
+                      cameras: cameras,
                     ),
                   ),
                 );
 
+                // ⭐ التخلص من الـ controller الأصلي بعد إغلاق الشاشة
                 await controller.dispose();
 
                 if (image != null) {
@@ -8224,17 +8720,87 @@ class _ImageCropDialogState extends State<_ImageCropDialog> {
 // شاشة التقاط الصورة من الكاميرا
 class _CameraCaptureScreen extends StatefulWidget {
   final CameraController controller;
+  final List<CameraDescription> cameras;
 
-  const _CameraCaptureScreen({required this.controller});
+  const _CameraCaptureScreen({
+    required this.controller,
+    required this.cameras,
+  });
 
   @override
   State<_CameraCaptureScreen> createState() => _CameraCaptureScreenState();
 }
 
 class _CameraCaptureScreenState extends State<_CameraCaptureScreen> {
+  late CameraController _controller;
+  int _currentCameraIndex = 0;
+  bool _isSwitchingCamera = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = widget.controller;
+    // تحديد الفهرس الحالي للكاميرا
+    _currentCameraIndex = widget.cameras.indexWhere(
+      (camera) => camera == _controller.description,
+    );
+    if (_currentCameraIndex == -1) _currentCameraIndex = 0;
+  }
+
   @override
   void dispose() {
+    // ⭐ التخلص من الـ controller الحالي فقط إذا كان مختلفاً عن الأصلي
+    // لأن الأصلي سيتم التخلص منه في _captureImageFromCamera
+    if (_controller != widget.controller) {
+      _controller.dispose();
+    }
     super.dispose();
+  }
+
+  Future<void> _switchCamera() async {
+    if (_isSwitchingCamera || widget.cameras.length <= 1) return;
+
+    setState(() {
+      _isSwitchingCamera = true;
+    });
+
+    try {
+      // إيقاف الكاميرا الحالية
+      await _controller.dispose();
+
+      // اختيار الكاميرا التالية
+      _currentCameraIndex = (_currentCameraIndex + 1) % widget.cameras.length;
+      final newCamera = widget.cameras[_currentCameraIndex];
+
+      // إنشاء controller جديد للكاميرا الجديدة
+      _controller = CameraController(
+        newCamera,
+        ResolutionPreset.medium,
+      );
+
+      await _controller.initialize();
+
+      if (mounted) {
+        setState(() {
+          _isSwitchingCamera = false;
+        });
+      }
+    } catch (e) {
+      print('❌ [Camera] Error switching camera: $e');
+      if (mounted) {
+        setState(() {
+          _isSwitchingCamera = false;
+        });
+        Get.snackbar(
+          'خطأ',
+          'فشل التحويل بين الكاميرات',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+          duration: const Duration(seconds: 3),
+        );
+      }
+    }
   }
 
   @override
@@ -8245,7 +8811,11 @@ class _CameraCaptureScreenState extends State<_CameraCaptureScreen> {
         children: [
           // Preview الكاميرا
           Positioned.fill(
-            child: CameraPreview(widget.controller),
+            child: _isSwitchingCamera
+                ? const Center(
+                    child: CircularProgressIndicator(color: Colors.white),
+                  )
+                : CameraPreview(_controller),
           ),
           // أزرار التحكم
           Positioned(
@@ -8274,10 +8844,12 @@ class _CameraCaptureScreenState extends State<_CameraCaptureScreen> {
                 ),
                 // زر التقاط الصورة
                 GestureDetector(
-                  onTap: () async {
-                    try {
-                      print('📸 [Camera] Taking picture...');
-                      final XFile image = await widget.controller.takePicture();
+                  onTap: _isSwitchingCamera
+                      ? null
+                      : () async {
+                          try {
+                            print('📸 [Camera] Taking picture...');
+                            final XFile image = await _controller.takePicture();
                       print('✅ [Camera] Picture taken: ${image.path}');
                       
                       if (!context.mounted) {
@@ -8402,8 +8974,27 @@ class _CameraCaptureScreenState extends State<_CameraCaptureScreen> {
                     ),
                   ),
                 ),
-                // مساحة فارغة للتوازن
-                SizedBox(width: 60.w),
+                // زر التحويل بين الكاميرات (فقط إذا كان هناك أكثر من كاميرا)
+                if (widget.cameras.length > 1)
+                  GestureDetector(
+                    onTap: _isSwitchingCamera ? null : _switchCamera,
+                    child: Container(
+                      width: 60.w,
+                      height: 60.w,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.3),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.flip_camera_ios,
+                        color: Colors.white,
+                        size: 30.sp,
+                      ),
+                    ),
+                  )
+                else
+                  // مساحة فارغة للتوازن إذا لم تكن هناك كاميرات متعددة
+                  SizedBox(width: 60.w),
               ],
             ),
           ),

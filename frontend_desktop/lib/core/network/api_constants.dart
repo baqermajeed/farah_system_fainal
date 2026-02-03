@@ -131,6 +131,11 @@ class ApiConstants {
   // QR Code Endpoints
   static String qrScan(String code) => '/qr/scan?code=$code';
 
+  // Stats Endpoints
+  static String doctorPatientTransferStats(String doctorId) =>
+      '/stats/doctors/$doctorId/patient-transfers';
+  static const String doctorAllDoctorsTransferStats = '/doctor/doctors/transfer-stats';
+
   // Socket.IO
   static String get socketUrl =>
       baseUrl.replaceFirst('http://', '').replaceFirst('https://', '');

@@ -780,6 +780,75 @@ class DoctorService {
     }
   }
 
+  // جلب إحصائيات التحويلات للطبيب
+  Future<Map<String, dynamic>> getDoctorTransferStats({
+    required String doctorId,
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    try {
+      final queryParams = <String, dynamic>{};
+      if (dateFrom != null) queryParams['date_from'] = dateFrom;
+      if (dateTo != null) queryParams['date_to'] = dateTo;
+
+      final response = await _api.get(
+        ApiConstants.doctorPatientTransferStats(doctorId),
+        queryParameters: queryParams.isNotEmpty ? queryParams : null,
+      );
+
+      if (response.statusCode == 200) {
+        return response.data as Map<String, dynamic>;
+      } else {
+        throw ApiException('فشل جلب إحصائيات التحويلات');
+      }
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('فشل جلب إحصائيات التحويلات: ${e.toString()}');
+    }
+  }
+
+  // جلب إحصائيات التحويلات لجميع الأطباء (للطبيب المدير فقط)
+  Future<Map<String, dynamic>> getAllDoctorsTransferStats({
+    String? dateFrom,
+    String? dateTo,
+  }) async {
+    try {
+      final queryParams = <String, dynamic>{};
+      if (dateFrom != null) queryParams['date_from'] = dateFrom;
+      if (dateTo != null) queryParams['date_to'] = dateTo;
+
+      print('📊 [DoctorService] Fetching all doctors transfer stats from: ${ApiConstants.doctorAllDoctorsTransferStats}');
+      print('📊 [DoctorService] Query params: $queryParams');
+
+      final response = await _api.get(
+        ApiConstants.doctorAllDoctorsTransferStats,
+        queryParameters: queryParams.isNotEmpty ? queryParams : null,
+      );
+
+      print('📊 [DoctorService] Response status: ${response.statusCode}');
+      print('📊 [DoctorService] Response data type: ${response.data.runtimeType}');
+
+      if (response.statusCode == 200) {
+        final data = response.data as Map<String, dynamic>;
+        print('📊 [DoctorService] Response keys: ${data.keys.toList()}');
+        if (data.containsKey('doctors')) {
+          final doctors = data['doctors'] as List?;
+          print('📊 [DoctorService] Doctors count: ${doctors?.length ?? 0}');
+          if (doctors != null && doctors.isNotEmpty) {
+            print('📊 [DoctorService] First doctor sample: ${doctors[0]}');
+          }
+        }
+        return data;
+      } else {
+        throw ApiException('فشل جلب إحصائيات التحويلات لجميع الأطباء');
+      }
+    } catch (e) {
+      print('❌ [DoctorService] Error fetching all doctors transfer stats: $e');
+      if (e is ApiException) rethrow;
+      throw ApiException('فشل جلب إحصائيات التحويلات لجميع الأطباء: ${e.toString()}');
+    }
+  }
+
   // تحويل PatientOut من Backend إلى PatientModel
   PatientModel _mapPatientOutToModel(Map<String, dynamic> json) {
     List<String> doctorIds = [];

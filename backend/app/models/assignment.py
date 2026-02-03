@@ -14,3 +14,15 @@ class AssignmentLog(Document):
 
     class Settings:
         name = "assignment_logs"
+
+
+class InactivePatientLog(Document):
+    """سجل أن هذا المريض حُذف من حساب الطبيب لكونه غير نشط (مريض جديد بدون إجراءات في يوم التحويل)."""
+    patient_id: Indexed(OID)
+    doctor_id: Indexed(OID)
+    removed_at: Indexed(datetime) = Field(default_factory=lambda: datetime.now(timezone.utc))
+    # نضيف assigned_at الأصلي لنتمكن من حساب الإحصائيات حسب تاريخ التحويل الأصلي
+    original_assigned_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    class Settings:
+        name = "inactive_patient_logs"

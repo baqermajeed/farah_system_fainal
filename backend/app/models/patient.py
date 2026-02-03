@@ -10,8 +10,6 @@ class DoctorPatientProfile(BaseModel):
     treatment_type: str | None = None
     assigned_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     last_action_at: datetime | None = None
-    status: Literal["pending", "active", "inactive"] = "pending"
-    inactive_since: datetime | None = None
 
     class Config:
         arbitrary_types_allowed = True
@@ -30,8 +28,17 @@ class Patient(Document):
     # هل المريض جديد أم مراجع قديم (يُحدد عند الإنشاء من الاستقبال/الطبيب)
     visit_type: str | None = None
 
+    # هل معاينة المريض مدفوعة أم مجانية (يُحدد عند الإنشاء من الاستقبال/الطبيب)
+    consultation_type: str | None = None
+
+    # طرق الدفع المتفق عليها مع المريض (مثلاً: نقد، ماستر كارد، كمبيالة، تعهد)
+    payment_methods: list[str] = Field(default_factory=list)
+
     qr_code_data: Indexed(str, unique=True) = ""
     qr_image_path: str | None = None
+
+    # تاريخ تسجيل المريض (يُملأ تلقائيًا عند إنشاء السجل)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     class Settings:
         name = "patients"

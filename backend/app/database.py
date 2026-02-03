@@ -28,6 +28,7 @@ async def init_db() -> None:
         Notification,
         OTPRequest,
         AssignmentLog,
+        InactivePatientLog,
         DoctorWorkingHours,
         ImplantStage,
     )
@@ -46,6 +47,7 @@ async def init_db() -> None:
             Notification,
             OTPRequest,
             AssignmentLog,
+            InactivePatientLog,
             DoctorWorkingHours,
             ImplantStage,
         ],

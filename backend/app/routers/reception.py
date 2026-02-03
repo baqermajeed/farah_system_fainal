@@ -128,11 +128,14 @@ async def list_patients(
             city=user_data.get("city") if user_data else None,
             treatment_type=treatment_type,
             visit_type=getattr(p, "visit_type", None),
+            consultation_type=getattr(p, "consultation_type", None),
+            payment_methods=getattr(p, "payment_methods", None),
             doctor_ids=[str(did) for did in p.doctor_ids],
             doctor_profiles=build_doctor_profile_map(p),
             qr_code_data=p.qr_code_data,
             qr_image_path=p.qr_image_path,
             imageUrl=user_data.get("imageUrl") if user_data else None,
+            created_at=p.created_at.isoformat() if getattr(p, "created_at", None) else None,
         ))
     return out
 
@@ -241,6 +244,7 @@ async def create_patient_reception(payload: PatientCreate):
         age=payload.age,
         city=payload.city,
         visit_type=payload.visit_type,
+        consultation_type=payload.consultation_type,
     )
     from app.models import User
     u = await User.get(p.user_id)
@@ -254,11 +258,14 @@ async def create_patient_reception(payload: PatientCreate):
         city=u.city if u else None,
         treatment_type=p.treatment_type,
         visit_type=getattr(p, "visit_type", None),
+        consultation_type=getattr(p, "consultation_type", None),
+        payment_methods=getattr(p, "payment_methods", None),
         doctor_ids=[str(did) for did in p.doctor_ids],
         doctor_profiles=build_doctor_profile_map(p),
         qr_code_data=p.qr_code_data,
         qr_image_path=p.qr_image_path,
         imageUrl=u.imageUrl if u else None,
+        created_at=p.created_at.isoformat() if getattr(p, "created_at", None) else None,
     )
 
 
@@ -307,11 +314,13 @@ async def upload_patient_profile_image(
         city=u.city,
         treatment_type=p.treatment_type,
         visit_type=getattr(p, "visit_type", None),
+        consultation_type=getattr(p, "consultation_type", None),
         doctor_ids=[str(did) for did in p.doctor_ids],
         doctor_profiles=build_doctor_profile_map(p),
         qr_code_data=p.qr_code_data,
         qr_image_path=p.qr_image_path,
         imageUrl=u.imageUrl,
+        created_at=p.created_at.isoformat() if getattr(p, "created_at", None) else None,
     )
 
 

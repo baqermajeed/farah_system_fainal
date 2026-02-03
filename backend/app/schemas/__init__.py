@@ -56,14 +56,15 @@ class PatientCreate(BaseModel):
     age: Optional[int] = None
     city: Optional[str] = None
     visit_type: Optional[str] = None  # "مريض جديد" | "مراجع قديم" (اختياري)
+    consultation_type: Optional[str] = None  # "معاينة مدفوعة" | "معاينة مجانية" (اختياري)
+    # يمكن ملؤها لاحقاً من الطبيب، لكنها متاحة هنا للتوسّع مستقبلاً
+    payment_methods: Optional[List[str]] = None
 
 
 class DoctorPatientProfileOut(BaseModel):
     treatment_type: Optional[str] = None
     assigned_at: Optional[datetime] = None
     last_action_at: Optional[datetime] = None
-    status: Optional[str] = None
-    inactive_since: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -78,12 +79,15 @@ class PatientOut(BaseModel):
     city: Optional[str] = None
     treatment_type: Optional[str] = None
     visit_type: Optional[str] = None
+    consultation_type: Optional[str] = None
+    payment_methods: Optional[List[str]] = None
     # Mongo ObjectId تُرجع كنصوص في الـ API
     doctor_ids: List[str] = []  # قائمة معرفات الأطباء المرتبطين
     doctor_profiles: Dict[str, DoctorPatientProfileOut] = Field(default_factory=dict)
     qr_code_data: str
     qr_image_path: Optional[str] = None
     imageUrl: Optional[str] = None
+    created_at: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -96,6 +100,8 @@ class PatientUpdate(BaseModel):
     treatment_type: Optional[str] = None
     phone: Optional[str] = None  # Admin only
     visit_type: Optional[str] = None
+    consultation_type: Optional[str] = None
+    payment_methods: Optional[List[str]] = None
 
 
 class PatientTransferIn(BaseModel):

@@ -13,7 +13,7 @@ from app.services.stats_service import (
     get_transfers_stats,
     get_dashboard_stats,
     get_doctor_profile_stats,
-    get_patient_activity_stats,
+    get_doctor_patient_transfer_stats,
 )
 
 router = APIRouter(prefix="/stats", tags=["statistics"])
@@ -101,13 +101,25 @@ async def transfers_stats(
     return await get_transfers_stats(group=group, date_from=date_from, date_to=date_to, doctor_id=doctor_id)
 
 
-@router.get("/patient-activity")
-async def patient_activity_stats(
+@router.get("/doctors/{doctor_id}/patient-transfers")
+async def doctor_patient_transfer_stats(
+    doctor_id: str,
     date_from: Optional[str] = Query(None, description="تاريخ البداية (ISO format)"),
     date_to: Optional[str] = Query(None, description="تاريخ النهاية (ISO format)"),
-    doctor_id: Optional[str] = Query(None, description="فلترة لطبيب محدد (Doctor ID)"),
     current=Depends(require_roles([Role.ADMIN, Role.DOCTOR])),
 ):
-    """إحصائيات المرضى النشطين/غير النشطين مع خيارات التصفية."""
-    return await get_patient_activity_stats(date_from=date_from, date_to=date_to, doctor_id=doctor_id)
+    """
+    إحصائيات المرضى المحولين لهذا الطبيب:
+    - عدد المرضى المحولين خلال اليوم/الشهر/فترة محددة
+    - عدد المرضى النشطين خلال اليوم/الشهر/فترة محددة
+    - عدد المرضى غير النشطين (حتى لو تم حذفهم من حسابه) خلال اليوم/الشهر/فترة محددة
+    
+    ملاحظة: هذه الإحصائيات تشمل حتى المرضى الذين تم حذفهم من حساب الطبيب لاحقاً
+    (غير النشطين)، لأننا نبحث في جميع المرضى الذين لديهم سجل في doctor_profiles.
+    """
+    return await get_doctor_patient_transfer_stats(
+        doctor_id=doctor_id,
+        date_from=date_from,
+        date_to=date_to,
+    )
 

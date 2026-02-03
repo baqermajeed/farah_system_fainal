@@ -94,11 +94,14 @@ def _build_doctor_patient_out(patient: Patient, user: User, doctor_id: str) -> P
         city=user.city,
         treatment_type=treatment_type,
         visit_type=getattr(patient, "visit_type", None),
+        consultation_type=getattr(patient, "consultation_type", None),
+        payment_methods=getattr(patient, "payment_methods", None),
         doctor_ids=[str(did) for did in patient.doctor_ids],
         doctor_profiles=doctor_profiles,
         qr_code_data=patient.qr_code_data,
         qr_image_path=patient.qr_image_path,
         imageUrl=user.imageUrl,
+        created_at=patient.created_at.isoformat() if getattr(patient, "created_at", None) else None,
     )
 
 
@@ -126,8 +129,6 @@ def _build_doctor_patient_out_from_agg(patient_doc: dict, user_doc: dict, doctor
             treatment_type=profile.get("treatment_type"),
             assigned_at=parse_dt(profile.get("assigned_at")),
             last_action_at=parse_dt(profile.get("last_action_at")),
-            status=profile.get("status"),
-            inactive_since=parse_dt(profile.get("inactive_since")),
         )
 
     treatment_type = None
@@ -144,11 +145,18 @@ def _build_doctor_patient_out_from_agg(patient_doc: dict, user_doc: dict, doctor
         city=user_doc.get("city"),
         treatment_type=treatment_type,
         visit_type=patient_doc.get("visit_type"),
+        consultation_type=patient_doc.get("consultation_type"),
+        payment_methods=patient_doc.get("payment_methods"),
         doctor_ids=[str(d) for d in patient_doc.get("doctor_ids", [])],
         doctor_profiles=doctor_profiles_out,
         qr_code_data=patient_doc.get("qr_code_data", ""),
         qr_image_path=patient_doc.get("qr_image_path"),
         imageUrl=user_doc.get("imageUrl"),
+        created_at=(
+            patient_doc.get("created_at").isoformat()
+            if isinstance(patient_doc.get("created_at"), datetime)
+            else str(patient_doc.get("created_at")) if patient_doc.get("created_at") else None
+        ),
     )
 
 
@@ -196,6 +204,7 @@ async def add_patient(
         age=payload.age,
         city=payload.city,
         visit_type=payload.visit_type,
+        consultation_type=payload.consultation_type,
     )
     logger.info(f"Patient created: {patient.id}, user_id: {patient.user_id}")
     
@@ -281,6 +290,32 @@ async def transfer_patient(
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
     return _build_doctor_patient_out(updated, u, manager_doctor_id)
+
+
+@router.get("/doctors/transfer-stats")
+async def get_all_doctors_transfer_stats(
+    date_from: Optional[str] = Query(None, description="تاريخ البداية (ISO format)"),
+    date_to: Optional[str] = Query(None, description="تاريخ النهاية (ISO format)"),
+    current=Depends(get_current_user),
+):
+    """
+    إحصائيات التحويلات لجميع الأطباء (للطبيب المدير فقط).
+    
+    يعرض لكل طبيب:
+    - عدد المرضى المحولين يومياً وشهرياً
+    - عدد المرضى النشطين يومياً وشهرياً
+    - عدد المرضى غير النشطين يومياً وشهرياً
+    
+    يمكن تصفية النتائج حسب فترة محددة باستخدام date_from و date_to.
+    """
+    _ = await _require_doctor_manager(current)
+    
+    from app.services.stats_service import get_all_doctors_patient_transfer_stats
+    
+    return await get_all_doctors_patient_transfer_stats(
+        date_from=date_from,
+        date_to=date_to,
+    )
 
 
 @router.get("/doctors")
@@ -416,6 +451,13 @@ async def my_patients(
 ):
     doctor_id = await _get_current_doctor_id(current)
 
+    # قبل إرجاع المرضى، ننظّف المرضى الجدد غير النشطين من حساب هذا الطبيب
+    try:
+        from app.services import patient_service
+        await patient_service.cleanup_inactive_new_patients_for_doctor(doctor_id=doctor_id)
+    except Exception as e:
+        logger.error(f"Error during cleanup_inactive_new_patients_for_doctor for doctor {doctor_id}: {e}")
+
     try:
         did = OID(doctor_id)
     except Exception as e:
@@ -521,6 +563,57 @@ async def set_treatment(patient_id: str, treatment_type: str = Query(...), curre
         treatment_type=treatment_type,
     )
     # جلب User مباشرة بدلاً من الاعتماد على p.user
+    u = await User.get(p.user_id)
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    return _build_doctor_patient_out(p, u, doctor_id)
+
+
+class PaymentMethodsIn(BaseModel):
+    methods: List[str]
+
+
+@router.post("/patients/{patient_id}/payment-methods", response_model=PatientOut)
+async def set_payment_methods_for_patient(
+    patient_id: str,
+    payload: PaymentMethodsIn,
+    current=Depends(get_current_user),
+):
+    """
+    تحديد طرق الدفع المستخدمة لهذا المريض (من حساب الطبيب).
+
+    - أمثلة الطرق: \"نقد\", \"ماستر كارد\", \"كمبيالة\", \"تعهد\".
+    - يمكن اختيار طريقة أو طريقتين (أو أكثر عند الحاجة).
+    """
+    from pydantic import ValidationError
+
+    ALLOWED_METHODS = {"نقد", "ماستر كارد", "كمبيالة", "تعهد"}
+
+    methods = payload.methods or []
+
+    if not methods:
+        raise HTTPException(status_code=400, detail="يجب اختيار طريقة دفع واحدة على الأقل")
+
+    # يمكن توسيع الحد لاحقاً، حالياً نسمح حتى طريقتين كما طلبت
+    if len(methods) > 2:
+        raise HTTPException(status_code=400, detail="يمكن اختيار طريقتين كحد أقصى لطرق الدفع")
+
+    invalid = [m for m in methods if m not in ALLOWED_METHODS]
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"طرق الدفع غير مدعومة: {', '.join(invalid)}",
+        )
+
+    doctor_id = await _get_current_doctor_id(current)
+
+    from app.services import patient_service
+
+    p = await patient_service.set_payment_methods(
+        patient_id=patient_id,
+        doctor_id=doctor_id,
+        methods=methods,
+    )
     u = await User.get(p.user_id)
     if not u:
         raise HTTPException(status_code=404, detail="User not found")

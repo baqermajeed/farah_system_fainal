@@ -39,11 +39,14 @@ async def list_patients(
             city=u.city if u else None,
             treatment_type=p.treatment_type,
             visit_type=getattr(p, "visit_type", None),
+            consultation_type=getattr(p, "consultation_type", None),
+            payment_methods=getattr(p, "payment_methods", None),
             doctor_ids=[str(did) for did in p.doctor_ids],
             doctor_profiles=build_doctor_profile_map(p),
             qr_code_data=p.qr_code_data,
             qr_image_path=p.qr_image_path,
             imageUrl=u.imageUrl if u else None,
+            created_at=p.created_at.isoformat() if getattr(p, "created_at", None) else None,
         ))
     return out
 

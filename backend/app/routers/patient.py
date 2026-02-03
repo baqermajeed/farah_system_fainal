@@ -42,11 +42,14 @@ async def my_profile(current=Depends(get_current_user)):
         city=u.city,
         treatment_type=treatment_type,
         visit_type=getattr(p, "visit_type", None),
+        consultation_type=getattr(p, "consultation_type", None),
+        payment_methods=getattr(p, "payment_methods", None),
         doctor_ids=[str(did) for did in p.doctor_ids],
         doctor_profiles=build_doctor_profile_map(p),
         qr_code_data=p.qr_code_data,
         qr_image_path=p.qr_image_path,
         imageUrl=u.imageUrl,
+        created_at=p.created_at.isoformat() if getattr(p, "created_at", None) else None,
     )
 
 @router.put("/me", response_model=PatientOut)
@@ -94,10 +97,13 @@ async def update_my_profile(data: PatientUpdate, current=Depends(get_current_use
         city=u.city,
         treatment_type=treatment_type,
         visit_type=getattr(patient, "visit_type", None),
+        consultation_type=getattr(patient, "consultation_type", None),
+        payment_methods=getattr(patient, "payment_methods", None),
         doctor_ids=[str(did) for did in patient.doctor_ids],
         doctor_profiles=build_doctor_profile_map(patient),
         qr_code_data=patient.qr_code_data,
         qr_image_path=patient.qr_image_path,
+        created_at=patient.created_at.isoformat() if getattr(patient, "created_at", None) else None,
     )
 
 @router.get("/doctor", response_model=DoctorOut)

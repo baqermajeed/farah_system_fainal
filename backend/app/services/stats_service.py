@@ -4,10 +4,10 @@ from collections import defaultdict
 
 from app.models import (
     User, Patient, Doctor, Appointment, TreatmentNote, GalleryImage,
-    ChatRoom, ChatMessage, Notification, DeviceToken, AssignmentLog, OTPRequest
+    ChatRoom, ChatMessage, Notification, DeviceToken, AssignmentLog, OTPRequest,
+    InactivePatientLog
 )
 from app.constants import Role
-from app.services.patient_service import get_patient_activity_summary
 from app.utils.logger import get_logger
 
 logger = get_logger("stats_service")
@@ -185,7 +185,6 @@ async def get_doctors_stats() -> Dict:
     """إحصائيات الأطباء ومرضاهم."""
     doctors = await Doctor.find().to_list()
     stats = []
-    activity_counts, per_doctor_activity = await get_patient_activity_summary()
     
     for doctor in doctors:
         user = await User.get(doctor.user_id)
@@ -201,7 +200,6 @@ async def get_doctors_stats() -> Dict:
         ).count()
         
         notes = await TreatmentNote.find(TreatmentNote.doctor_id == doctor.id).count()
-        doctor_activity = per_doctor_activity.get(str(doctor.id), {"active": 0, "inactive": 0})
         
         stats.append({
             "doctor_id": str(doctor.id),
@@ -215,8 +213,6 @@ async def get_doctors_stats() -> Dict:
             "total_appointments": appointments,
             "completed_appointments": completed,
             "treatment_notes": notes,
-            "active_patients": doctor_activity.get("active", 0),
-            "inactive_patients": doctor_activity.get("inactive", 0),
         })
     
     return {"doctors": stats, "total_doctors": len(stats)}
@@ -242,8 +238,6 @@ async def get_doctor_profile_stats(
         return {"detail": "Doctor not found"}
 
     user = await User.get(doctor.user_id)
-    _, per_doctor_activity = await get_patient_activity_summary()
-    doctor_activity = per_doctor_activity.get(str(doctor.id), {"active": 0, "inactive": 0})
 
     # Patients assigned to this doctor
     total_patients = await Patient.find(In(Patient.doctor_ids, [did])).count()
@@ -358,8 +352,6 @@ async def get_doctor_profile_stats(
             "total_patients": total_patients,
             "total_appointments": total_appointments,
             "today_messages": today_messages,
-            "active_patients": doctor_activity.get("active", 0),
-            "inactive_patients": doctor_activity.get("inactive", 0),
         },
         "messages": {
             "total": total_messages,
@@ -398,56 +390,274 @@ async def get_patient_activity_stats(
     date_to: Optional[str] = None,
     doctor_id: Optional[str] = None,
 ) -> Dict:
-    """Return counts of active/inactive patients optionally filtered by doctor and date range."""
-    df, dt = parse_dates(date_from, date_to)
-    counts = await _count_patient_activity(
-        date_from=df,
-        date_to=dt,
-        doctor_id=doctor_id,
-    )
+    """Deprecated: patient active/inactive concept تمت إزالتها. نرجع أصفار فقط للتوافق."""
     return {
-        "active": counts["active"],
-        "inactive": counts["inactive"],
+        "active": 0,
+        "inactive": 0,
         "range": {"from": date_from, "to": date_to},
     }
 
 
-async def _count_patient_activity(
-    *,
-    date_from: Optional[datetime] = None,
-    date_to: Optional[datetime] = None,
-    doctor_id: Optional[str] = None,
-) -> Dict[str, int]:
-    """Helper to count active/inactive patients over a date range."""
-    counts = {"active": 0, "inactive": 0}
-    doctor_key = None
-    if doctor_id:
-        try:
-            from beanie import PydanticObjectId as OID
+def _to_utc(dt: datetime) -> datetime:
+    """Normalize a datetime to UTC, adding tzinfo if needed."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
-            doctor_key = str(OID(doctor_id))
-        except Exception:
-            doctor_key = doctor_id
-    patients = await Patient.find().to_list()
-    for patient in patients:
-        for key, profile in (patient.doctor_profiles or {}).items():
-            if not profile:
-                continue
-            if doctor_key and key != doctor_key:
-                continue
-            assigned_at = profile.assigned_at
-            if not assigned_at:
-                continue
-            if date_from and assigned_at < date_from:
-                continue
-            if date_to and assigned_at >= date_to:
-                continue
-            status = profile.status
-            if status == "active":
-                counts["active"] += 1
-            elif status in ("inactive", "pending"):
-                counts["inactive"] += 1
-    return counts
+
+def _same_utc_day(a: datetime, b: datetime) -> bool:
+    """مقارنة تاريخين بعد تحويلهما إلى UTC على مستوى اليوم فقط (بدون وقت)."""
+    au = _to_utc(a)
+    bu = _to_utc(b)
+    return au.date() == bu.date()
+
+
+async def get_doctor_patient_transfer_stats(
+    *,
+    doctor_id: str,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+) -> Dict:
+    """
+    إحصائيات المرضى المحولين لهذا الطبيب:
+    - عدد المرضى المحولين خلال اليوم/الشهر/فترة محددة (من AssignmentLog)
+    - عدد المرضى النشطين خلال اليوم/الشهر/فترة محددة (transfers - inactive)
+    - عدد المرضى غير النشطين (حتى لو تم حذفهم من حسابه) خلال اليوم/الشهر/فترة محددة (من InactivePatientLog)
+    
+    ملاحظة: نستخدم AssignmentLog لحساب التحويلات و InactivePatientLog لحساب غير النشطين.
+    """
+    from beanie import PydanticObjectId as OID
+    from beanie.operators import And
+    
+    try:
+        did = OID(doctor_id)
+    except Exception:
+        return {"detail": "Invalid doctor_id"}
+    
+    doctor = await Doctor.get(did)
+    if not doctor:
+        return {"detail": "Doctor not found"}
+    
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow_start = today_start + timedelta(days=1)
+    
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if month_start.month == 12:
+        next_month_start = month_start.replace(year=month_start.year + 1, month=1)
+    else:
+        next_month_start = month_start.replace(month=month_start.month + 1)
+    
+    df, dt = parse_dates(date_from, date_to)
+    
+    # حساب عدد التحويلات من AssignmentLog
+    transfers_today = await AssignmentLog.find(
+        AssignmentLog.doctor_id == did,
+        AssignmentLog.assigned_at >= today_start,
+        AssignmentLog.assigned_at < tomorrow_start,
+    ).count()
+    
+    transfers_month = await AssignmentLog.find(
+        AssignmentLog.doctor_id == did,
+        AssignmentLog.assigned_at >= month_start,
+        AssignmentLog.assigned_at < next_month_start,
+    ).count()
+    
+    transfers_range_query = AssignmentLog.find(AssignmentLog.doctor_id == did)
+    if df:
+        transfers_range_query = transfers_range_query.find(AssignmentLog.assigned_at >= df)
+    if dt:
+        transfers_range_query = transfers_range_query.find(AssignmentLog.assigned_at < dt)
+    transfers_in_range = await transfers_range_query.count()
+    
+    # حساب عدد غير النشطين من InactivePatientLog (حسب original_assigned_at)
+    inactive_today = await InactivePatientLog.find(
+        InactivePatientLog.doctor_id == did,
+        InactivePatientLog.original_assigned_at >= today_start,
+        InactivePatientLog.original_assigned_at < tomorrow_start,
+    ).count()
+    
+    inactive_month = await InactivePatientLog.find(
+        InactivePatientLog.doctor_id == did,
+        InactivePatientLog.original_assigned_at >= month_start,
+        InactivePatientLog.original_assigned_at < next_month_start,
+    ).count()
+    
+    inactive_range_query = InactivePatientLog.find(InactivePatientLog.doctor_id == did)
+    if df:
+        inactive_range_query = inactive_range_query.find(InactivePatientLog.original_assigned_at >= df)
+    if dt:
+        inactive_range_query = inactive_range_query.find(InactivePatientLog.original_assigned_at < dt)
+    inactive_in_range = await inactive_range_query.count()
+    
+    # حساب النشطين: التحويلات - غير النشطين
+    active_today = max(0, transfers_today - inactive_today)
+    active_month = max(0, transfers_month - inactive_month)
+    active_in_range = max(0, transfers_in_range - inactive_in_range)
+    
+    return {
+        "doctor_id": doctor_id,
+        "transfers": {
+            "today": transfers_today,
+            "this_month": transfers_month,
+            "range": {
+                "from": date_from,
+                "to": date_to,
+                "count": transfers_in_range,
+            },
+        },
+        "active_patients": {
+            "today": active_today,
+            "this_month": active_month,
+            "range": {
+                "from": date_from,
+                "to": date_to,
+                "count": active_in_range,
+            },
+        },
+        "inactive_patients": {
+            "today": inactive_today,
+            "this_month": inactive_month,
+            "range": {
+                "from": date_from,
+                "to": date_to,
+                "count": inactive_in_range,
+            },
+        },
+    }
+
+
+async def get_all_doctors_patient_transfer_stats(
+    *,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+) -> Dict:
+    """
+    إحصائيات المرضى المحولين لجميع الأطباء (للطبيب المدير):
+    - عدد المرضى المحولين يومياً وشهرياً لكل طبيب
+    - عدد المرضى النشطين يومياً وشهرياً لكل طبيب
+    - عدد المرضى غير النشطين يومياً وشهرياً لكل طبيب
+    
+    ملاحظة: نستخدم AssignmentLog لحساب التحويلات و InactivePatientLog لحساب غير النشطين.
+    """
+    from beanie import PydanticObjectId as OID
+    from beanie.operators import In
+    
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow_start = today_start + timedelta(days=1)
+    
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if month_start.month == 12:
+        next_month_start = month_start.replace(year=month_start.year + 1, month=1)
+    else:
+        next_month_start = month_start.replace(month=month_start.month + 1)
+    
+    df, dt = parse_dates(date_from, date_to)
+    
+    # جلب جميع الأطباء
+    doctors = await Doctor.find({}).to_list()
+    user_ids = list({d.user_id for d in doctors if d.user_id})
+    users = await User.find(In(User.id, user_ids)).to_list() if user_ids else []
+    user_map = {u.id: u for u in users}
+    
+    doctors_stats = []
+    
+    for doctor in doctors:
+        user = user_map.get(doctor.user_id)
+        if not user:
+            continue
+        
+        did = doctor.id
+        
+        # حساب عدد التحويلات من AssignmentLog
+        transfers_today = await AssignmentLog.find(
+            AssignmentLog.doctor_id == did,
+            AssignmentLog.assigned_at >= today_start,
+            AssignmentLog.assigned_at < tomorrow_start,
+        ).count()
+        
+        transfers_month = await AssignmentLog.find(
+            AssignmentLog.doctor_id == did,
+            AssignmentLog.assigned_at >= month_start,
+            AssignmentLog.assigned_at < next_month_start,
+        ).count()
+        
+        transfers_range_query = AssignmentLog.find(AssignmentLog.doctor_id == did)
+        if df:
+            transfers_range_query = transfers_range_query.find(AssignmentLog.assigned_at >= df)
+        if dt:
+            transfers_range_query = transfers_range_query.find(AssignmentLog.assigned_at < dt)
+        transfers_in_range = await transfers_range_query.count()
+        
+        # حساب عدد غير النشطين من InactivePatientLog (حسب original_assigned_at)
+        inactive_today = await InactivePatientLog.find(
+            InactivePatientLog.doctor_id == did,
+            InactivePatientLog.original_assigned_at >= today_start,
+            InactivePatientLog.original_assigned_at < tomorrow_start,
+        ).count()
+        
+        inactive_month = await InactivePatientLog.find(
+            InactivePatientLog.doctor_id == did,
+            InactivePatientLog.original_assigned_at >= month_start,
+            InactivePatientLog.original_assigned_at < next_month_start,
+        ).count()
+        
+        inactive_range_query = InactivePatientLog.find(InactivePatientLog.doctor_id == did)
+        if df:
+            inactive_range_query = inactive_range_query.find(InactivePatientLog.original_assigned_at >= df)
+        if dt:
+            inactive_range_query = inactive_range_query.find(InactivePatientLog.original_assigned_at < dt)
+        inactive_in_range = await inactive_range_query.count()
+        
+        # حساب النشطين: التحويلات - غير النشطين
+        active_today = max(0, transfers_today - inactive_today)
+        active_month = max(0, transfers_month - inactive_month)
+        active_in_range = max(0, transfers_in_range - inactive_in_range)
+        
+        doctors_stats.append({
+            "doctor_id": str(doctor.id),
+            "user_id": str(doctor.user_id),
+            "name": user.name,
+            "phone": user.phone,
+            "imageUrl": user.imageUrl,
+            "transfers": {
+                "today": transfers_today,
+                "this_month": transfers_month,
+                "range": {
+                    "from": date_from,
+                    "to": date_to,
+                    "count": transfers_in_range,
+                },
+            },
+            "active_patients": {
+                "today": active_today,
+                "this_month": active_month,
+                "range": {
+                    "from": date_from,
+                    "to": date_to,
+                    "count": active_in_range,
+                },
+            },
+            "inactive_patients": {
+                "today": inactive_today,
+                "this_month": inactive_month,
+                "range": {
+                    "from": date_from,
+                    "to": date_to,
+                    "count": inactive_in_range,
+                },
+            },
+        })
+    
+    return {
+        "doctors": doctors_stats,
+        "total_doctors": len(doctors_stats),
+        "range": {
+            "from": date_from,
+            "to": date_to,
+        },
+    }
 
 
 async def get_chat_stats(
@@ -583,13 +793,12 @@ async def get_dashboard_stats() -> Dict:
         Appointment.scheduled_at > now,
         Appointment.status == "scheduled"
     ).count()
-    activity_counts, _ = await get_patient_activity_summary()
-    
     # إحصائيات اليوم
-    today_patients = await User.find(
+    today_patient_users = await User.find(
         User.role == Role.PATIENT,
         User.created_at >= today_start
-    ).count()
+    ).to_list()
+    today_patients = len(today_patient_users)
     today_appointments = await Appointment.find(
         Appointment.scheduled_at >= today_start,
         Appointment.scheduled_at < today_start + timedelta(days=1)
@@ -599,10 +808,11 @@ async def get_dashboard_stats() -> Dict:
     ).count()
     
     # إحصائيات هذا الشهر
-    month_patients = await User.find(
+    month_patient_users = await User.find(
         User.role == Role.PATIENT,
         User.created_at >= this_month_start
-    ).count()
+    ).to_list()
+    month_patients = len(month_patient_users)
     month_appointments = await Appointment.find(
         Appointment.scheduled_at >= this_month_start
     ).count()
@@ -619,6 +829,70 @@ async def get_dashboard_stats() -> Dict:
     # إحصائيات الإشعارات
     total_notifications = await Notification.count()
     active_devices = await DeviceToken.find(DeviceToken.active == True).count()
+
+    # إحصائيات أنواع المرضى (جديد/قديم) ونوع المعاينة (مدفوعة/مجانية)
+    # نعتمد على حقلي visit_type و consultation_type في وثيقة Patient.
+    from beanie.operators import In as BeanieIn
+
+    def _build_patient_type_summary(patients: list[Patient]) -> dict:
+        visit_new = 0
+        visit_old = 0
+        visit_unknown = 0
+
+        consult_paid = 0
+        consult_free = 0
+        consult_unknown = 0
+
+        for p in patients:
+            vt = getattr(p, "visit_type", None)
+            if vt == "مريض جديد":
+                visit_new += 1
+            elif vt == "مراجع قديم":
+                visit_old += 1
+            else:
+                visit_unknown += 1
+
+            ct = getattr(p, "consultation_type", None)
+            if ct == "معاينة مدفوعة":
+                consult_paid += 1
+            elif ct == "معاينة مجانية":
+                consult_free += 1
+            else:
+                consult_unknown += 1
+
+        return {
+            "visit_type": {
+                "new": visit_new,
+                "old": visit_old,
+                "unknown": visit_unknown,
+            },
+            "consultation_type": {
+                "paid": consult_paid,
+                "free": consult_free,
+                "unknown": consult_unknown,
+            },
+        }
+
+    # جميع المرضى
+    all_patients = await Patient.find({}).to_list()
+
+    # مرضى اليوم (حسب تاريخ إنشاء User)
+    today_user_ids = [u.id for u in today_patient_users]
+    patients_today: list[Patient] = []
+    if today_user_ids:
+        patients_today = await Patient.find(BeanieIn(Patient.user_id, today_user_ids)).to_list()
+
+    # مرضى هذا الشهر (حسب تاريخ إنشاء User)
+    month_user_ids = [u.id for u in month_patient_users]
+    patients_month: list[Patient] = []
+    if month_user_ids:
+        patients_month = await Patient.find(BeanieIn(Patient.user_id, month_user_ids)).to_list()
+
+    patient_type_summary = {
+        "all": _build_patient_type_summary(all_patients),
+        "today": _build_patient_type_summary(patients_today),
+        "this_month": _build_patient_type_summary(patients_month),
+    }
     
     return {
         "overview": {
@@ -626,10 +900,6 @@ async def get_dashboard_stats() -> Dict:
             "total_doctors": total_doctors,
             "total_appointments": total_appointments,
             "upcoming_appointments": upcoming_appointments,
-        },
-        "patient_activity": {
-            "active": activity_counts.get("active", 0),
-            "inactive": activity_counts.get("inactive", 0),
         },
         "today": {
             "new_patients": today_patients,
@@ -653,4 +923,5 @@ async def get_dashboard_stats() -> Dict:
             "total_sent": total_notifications,
             "active_devices": active_devices,
         },
+        "patient_types": patient_type_summary,
     }

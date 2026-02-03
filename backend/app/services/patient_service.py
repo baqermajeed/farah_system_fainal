@@ -42,11 +42,11 @@ def _to_utc(dt: datetime) -> datetime:
     return dt.astimezone(timezone.utc)
 
 
-def _assignment_deadline(assigned_at: datetime) -> datetime:
-    """Midnight following the assignment day in UTC."""
-    assigned = _to_utc(assigned_at)
-    start_of_day = assigned.replace(hour=0, minute=0, second=0, microsecond=0)
-    return start_of_day + timedelta(days=1)
+def _same_utc_day(a: datetime, b: datetime) -> bool:
+    """مقارنة تاريخين بعد تحويلهما إلى UTC على مستوى اليوم فقط (بدون وقت)."""
+    au = _to_utc(a)
+    bu = _to_utc(b)
+    return au.date() == bu.date()
 
 
 def _reset_doctor_profile_assignment(patient: Patient, doctor_id: str, assigned_at: datetime | None = None) -> DoctorPatientProfile:
@@ -57,35 +57,32 @@ def _reset_doctor_profile_assignment(patient: Patient, doctor_id: str, assigned_
     if profile is None:
         profile = DoctorPatientProfile(
             assigned_at=now,
-            status="inactive",
-            inactive_since=now,
         )
     else:
         profile.assigned_at = now
-        profile.status = "inactive"
+    # عند كل تحويل جديد، نعيد تعيين آخر نشاط لهذا الطبيب على هذا المريض
     profile.last_action_at = None
-    profile.inactive_since = now
     patient.doctor_profiles[key] = profile
     return profile
 
 
-def _record_doctor_activity(patient: Patient, doctor_id: str, action_time: datetime | None = None) -> None:
-    """Mark that the doctor performed a qualifying action for the patient."""
-    key = str(doctor_id)
-    now = action_time or datetime.now(timezone.utc)
-    profile = patient.doctor_profiles.get(key)
-    if profile is None:
-        profile = DoctorPatientProfile(assigned_at=now)
-    profile.last_action_at = now
-    deadline = _assignment_deadline(profile.assigned_at)
-    if now < deadline:
-        profile.status = "active"
-        profile.inactive_since = None
-    else:
-        if profile.status != "active":
-            profile.status = "inactive"
-            profile.inactive_since = now
-    patient.doctor_profiles[key] = profile
+def _touch_doctor_last_action(patient: Patient, doctor_id: str) -> None:
+    """
+    تحديث حقل last_action_at للطبيب على هذا المريض عند تنفيذ أي إجراء علاجي.
+
+    نستخدمه فقط/أساساً مع المرضى الجدد (visit_type == \"مريض جديد\")،
+    لكنه لا يضر لو تم استدعاؤه مع مرضى آخرين.
+    """
+    try:
+        key = str(doctor_id)
+        profile = patient.doctor_profiles.get(key)
+        if profile is None:
+            profile = DoctorPatientProfile()
+        profile.last_action_at = datetime.now(timezone.utc)
+        patient.doctor_profiles[key] = profile
+    except Exception:
+        # لا نسمح لهذا الفشل أن يعطل منطق العملية الأساسية (ملاحظة، موعد، ...)
+        pass
 
 async def get_patient_by_id(patient_id: str) -> Tuple[Patient, User]:
     """Fetch patient and its user info or 404."""
@@ -104,14 +101,11 @@ async def list_doctor_patients(doctor_id: str, skip: int = 0, limit: Optional[in
         print(f"❌ Error converting doctor_id to OID: {doctor_id}, error: {e}")
         raise HTTPException(status_code=400, detail=f"Invalid doctor_id format: {doctor_id}")
 
-    await prune_inactive_patients_for_doctor(doctor_id)
-
     doctor_key = str(did)
     try:
-        # Use filter to only return active doctor profiles
+        # Return all patients that have this doctor in doctor_ids
         filter_query = {
             "doctor_ids": {"$in": [did]},
-            f"doctor_profiles.{doctor_key}.status": {"$in": ["active", "inactive", "pending"]},
         }
         query = Patient.find(filter_query).skip(skip)
         if limit is not None:
@@ -127,62 +121,108 @@ async def list_doctor_patients(doctor_id: str, skip: int = 0, limit: Optional[in
         raise HTTPException(status_code=500, detail=f"Error fetching patients: {str(e)}")
 
 
-async def prune_inactive_patients_for_doctor(doctor_id: str, now: datetime | None = None) -> None:
-    """Ensure patients without activity by midnight are removed and flagged inactive."""
-    now = now or datetime.now(timezone.utc)
+async def cleanup_inactive_new_patients_for_doctor(doctor_id: str) -> int:
+    """
+    إزالة المرضى الجدد غير النشطين من قائمة طبيب معيّن.
+
+    المنطق:
+    - نركّز فقط على المرضى الذين نوع زيارتهم \"مريض جديد\".
+    - لكل مريض/طبيب نستخدم:
+        * assigned_at: تاريخ تحويل/إضافة المريض لهذا الطبيب.
+        * last_action_at: آخر إجراء قام به الطبيب على هذا المريض.
+    - إذا انتهى يوم التحويل (منتصف الليل) ولم يحدث أي إجراء في نفس ذلك اليوم
+      (أو last_action_at ليس في نفس يوم assigned_at)، نزيل الطبيب من doctor_ids
+      ونحذف profil هذا الطبيب من doctor_profiles لهذا المريض.
+    - يبقى المريض في حساب الاستقبال دائماً.
+    """
     try:
         did = OID(doctor_id)
-    except Exception:
-        return
-    doctor_key = str(did)
-    patients = await Patient.find(In(Patient.doctor_ids, [did])).to_list()
-    for patient in patients:
-        profile = patient.doctor_profiles.get(doctor_key)
-        if not profile or profile.status == "active":
-            continue
-        assigned_at = profile.assigned_at
-        if not assigned_at:
-            continue
-        if assigned_at.astimezone(timezone.utc).date() != now.date():
-            continue
-        deadline = _assignment_deadline(assigned_at)
-        action_before = bool(profile.last_action_at and profile.last_action_at < deadline)
-        needs_save = False
-        if action_before:
-            if profile.status != "active":
-                profile.status = "active"
-                profile.inactive_since = None
-                patient.doctor_profiles[doctor_key] = profile
-                needs_save = True
-            continue
-        if now >= deadline:
-            if profile.status != "inactive":
-                profile.status = "inactive"
-                profile.inactive_since = profile.inactive_since or now
-                patient.doctor_profiles[doctor_key] = profile
-                needs_save = True
-            if did in patient.doctor_ids:
-                patient.doctor_ids = [pid for pid in patient.doctor_ids if pid != did]
-                needs_save = True
-        if needs_save:
-            await patient.save()
-
-
-async def list_inactive_patients_for_doctor(doctor_id: str, skip: int = 0, limit: Optional[int] = None) -> List[Patient]:
-    """List patients flagged inactive for this doctor."""
-    skip, limit = _normalize_pagination(skip, limit)
-    await prune_inactive_patients_for_doctor(doctor_id)
-    try:
-        doctor_key = str(OID(doctor_id))
     except Exception as e:
-        print(f"❌ Error converting doctor_id to OID for inactive list: {doctor_id}, {e}")
-        raise HTTPException(status_code=400, detail=f"Invalid doctor_id format: {doctor_id}")
+        print(f"❌ Error converting doctor_id to OID in cleanup_inactive_new_patients_for_doctor: {doctor_id}, error: {e}")
+        return 0
 
-    query = Patient.find({f"doctor_profiles.{doctor_key}.status": "inactive"})
-    query = query.skip(skip)
-    if limit is not None:
-        query = query.limit(limit)
-    return await query.to_list()
+    now = datetime.now(timezone.utc)
+    removed_count = 0
+    doctor_key = str(did)
+
+    try:
+        # نستهدف فقط المرضى الجدد المرتبطين بهذا الطبيب
+        patients = await Patient.find(
+            {
+                "doctor_ids": {"$in": [did]},
+                "visit_type": "مريض جديد",
+            }
+        ).to_list()
+
+        for patient in patients:
+            profiles = patient.doctor_profiles or {}
+            profile = profiles.get(doctor_key)
+            if not profile or not getattr(profile, "assigned_at", None):
+                # لا توجد معلومة تحويل، نتركه كما هو
+                continue
+
+            assigned_at = profile.assigned_at
+            if not assigned_at:
+                continue
+
+            assigned_utc = _to_utc(assigned_at)
+            day_start = assigned_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+            day_end = day_start + timedelta(days=1)
+
+            # لم ينتهِ يوم التحويل بعد -> لا نتخذ قرار الآن
+            if now < day_end:
+                continue
+
+            last_action = profile.last_action_at
+            is_active_same_day = False
+            if last_action:
+                # نتحقق فقط من أن آخر إجراء في نفس يوم التحويل
+                if _same_utc_day(assigned_utc, last_action):
+                    is_active_same_day = True
+
+            if is_active_same_day:
+                # هذا المريض اعتُبر نشطاً في يومه الأول، يبقى في قائمة الطبيب
+                continue
+
+            # مريض جديد، انتهى يوم التحويل بدون أي إجراء من الطبيب -> غير نشط
+            # نحذفه من doctor_ids ونزيل ملف الطبيب من doctor_profiles
+            # ونضيف سجل في InactivePatientLog للإحصائيات
+            new_doctor_ids = [d for d in patient.doctor_ids if d != did]
+            if len(new_doctor_ids) == len(patient.doctor_ids):
+                # لم يكن الطبيب في القائمة فعلياً (حالة متسقة)
+                continue
+
+            # إضافة سجل أن هذا المريض حُذف لكونه غير نشط
+            try:
+                from app.models import InactivePatientLog
+                await InactivePatientLog(
+                    patient_id=patient.id,
+                    doctor_id=did,
+                    removed_at=now,
+                    original_assigned_at=assigned_at,
+                ).insert()
+            except Exception as log_error:
+                # لا نوقف العملية إذا فشل حفظ السجل
+                print(f"⚠️ Warning: Failed to create InactivePatientLog for patient {patient.id}, doctor {doctor_id}: {log_error}")
+
+            patient.doctor_ids = new_doctor_ids
+            if doctor_key in profiles:
+                profiles.pop(doctor_key, None)
+                patient.doctor_profiles = profiles
+
+            await patient.save()
+            removed_count += 1
+
+        if removed_count:
+            print(f"✅ [cleanup_inactive_new_patients_for_doctor] Removed {removed_count} inactive new patients for doctor {doctor_id}")
+        return removed_count
+    except Exception as e:
+        print(f"❌ Error in cleanup_inactive_new_patients_for_doctor: {e}")
+        import traceback
+        traceback.print_exc()
+        return 0
+
+
 
 async def update_patient_by_doctor(*, doctor_id: str, patient_id: str, data: PatientUpdate) -> Patient:
     """يسمح للطبيب بتعديل بيانات المريض إن كان من مرضاه (في doctor_ids)."""
@@ -202,6 +242,10 @@ async def update_patient_by_doctor(*, doctor_id: str, patient_id: str, data: Pat
         u.city = data.city
     if data.treatment_type is not None:
         patient.treatment_type = data.treatment_type
+    if data.consultation_type is not None:
+        patient.consultation_type = data.consultation_type
+    if data.payment_methods is not None:
+        patient.payment_methods = data.payment_methods
     await u.save()
     await patient.save()
     return patient
@@ -226,6 +270,10 @@ async def update_patient_by_admin(*, patient_id: str, data: PatientUpdate) -> Pa
         u.city = data.city
     if data.treatment_type is not None:
         patient.treatment_type = data.treatment_type
+    if data.consultation_type is not None:
+        patient.consultation_type = data.consultation_type
+    if data.payment_methods is not None:
+        patient.payment_methods = data.payment_methods
     await u.save()
     await patient.save()
     return patient
@@ -325,7 +373,10 @@ async def set_treatment_type(*, patient_id: str, doctor_id: str, treatment_type:
     else:
         profile = DoctorPatientProfile(treatment_type=treatment_type)
     patient.doctor_profiles[doctor_key] = profile
-    _record_doctor_activity(patient, doctor_id)
+
+    # تسجيل نشاط للطبيب على هذا المريض (نوع علاج جديد لمريض جديد في نفس اليوم)
+    _touch_doctor_last_action(patient, doctor_id)
+    patient.doctor_profiles[doctor_key] = profile
     await patient.save()
     
     # إذا كان نوع العلاج "زراعة"، نقوم بتهيئة المراحل تلقائياً
@@ -344,6 +395,26 @@ async def set_treatment_type(*, patient_id: str, doctor_id: str, treatment_type:
             # لا نرفض العملية إذا فشلت تهيئة المراحل
             print(f"⚠️ Warning: Failed to initialize implant stages: {e}")
     
+    return patient
+
+
+async def set_payment_methods(*, patient_id: str, doctor_id: str, methods: List[str]) -> Patient:
+    """
+    تحديد طرق الدفع للمريض من قبل الطبيب.
+    - يمكن اختيار طريقة أو أكثر (مثلاً: نقد، ماستر كارد، كمبيالة، تعهد).
+    - يعتبر هذا الإجراء نشاطاً على المريض (يحدّث last_action_at).
+    """
+    patient = await Patient.get(OID(patient_id))
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    if OID(doctor_id) not in patient.doctor_ids:
+        raise HTTPException(status_code=403, detail="Not your patient")
+
+    patient.payment_methods = methods
+
+    # تسجيل نشاط للطبيب على هذا المريض
+    _touch_doctor_last_action(patient, doctor_id)
+    await patient.save()
     return patient
 
 async def create_note(
@@ -370,7 +441,9 @@ async def create_note(
         image_paths=final_image_paths
     )
     await tn.insert()
-    _record_doctor_activity(patient, doctor_id)
+
+    # أي إضافة سجل تعتبر إجراءً على المريض
+    _touch_doctor_last_action(patient, doctor_id)
     await patient.save()
     return tn
 
@@ -400,7 +473,11 @@ async def update_note(
             tn.image_paths = image_paths
             # للتوافق مع البيانات القديمة
             tn.image_path = image_paths[0] if image_paths else None
-    
+
+    # تحديث يعتبر إجراءً أيضاً
+    _touch_doctor_last_action(patient, doctor_id)
+    await patient.save()
+
     await tn.save()
     return tn
 
@@ -423,6 +500,11 @@ async def delete_note(
         raise HTTPException(status_code=403, detail="Not your note")
     
     await tn.delete()
+
+    # حذف السجل يعتبر إجراءً على المريض
+    _touch_doctor_last_action(patient, doctor_id)
+    await patient.save()
+
     return True
 
 async def create_gallery_image(
@@ -448,12 +530,18 @@ async def create_gallery_image(
         doctor_id=doctor_oid,
     )
     await gi.insert()
-    # نحدّث نشاط الطبيب فقط إذا كانت الصورة مرفوعة من قبل طبيب مرتبط بالمريض
+
+    # إذا كانت الصورة مرفوعة من طبيب، نعتبرها إجراءً على المريض
     if doctor_id:
-        patient = await Patient.get(OID(patient_id))
-        if patient and OID(doctor_id) in patient.doctor_ids:
-            _record_doctor_activity(patient, doctor_id)
-            await patient.save()
+        try:
+            patient = await Patient.get(OID(patient_id))
+            if patient:
+                _touch_doctor_last_action(patient, doctor_id)
+                await patient.save()
+        except Exception:
+            # لا نوقف حفظ الصورة في حال فشل تحديث النشاط
+            pass
+
     return gi
 
 async def delete_gallery_image(*, gallery_image_id: str, patient_id: str, doctor_id: str | None = None) -> bool:
@@ -469,8 +557,19 @@ async def delete_gallery_image(*, gallery_image_id: str, patient_id: str, doctor
         if doctor_id:
             if not gi.doctor_id or str(gi.doctor_id) != doctor_id:
                 raise HTTPException(status_code=403, detail="Not your gallery image")
-        
+
         await gi.delete()
+
+        # حذف صورة من الطبيب يعتبر إجراءً كذلك
+        if doctor_id:
+            try:
+                patient = await Patient.get(OID(patient_id))
+                if patient:
+                    _touch_doctor_last_action(patient, doctor_id)
+                    await patient.save()
+            except Exception:
+                pass
+
         return True
     except Exception as e:
         if isinstance(e, HTTPException):
@@ -515,7 +614,9 @@ async def create_appointment(
         updated_at=now,
     )
     await ap.insert()
-    _record_doctor_activity(patient, doctor_id)
+
+    # إنشاء موعد جديد يعتبر إجراءً على المريض
+    _touch_doctor_last_action(patient, doctor_id)
     await patient.save()
 
     # Notify patient about new appointment (push notification)
@@ -734,7 +835,18 @@ async def delete_appointment(*, appointment_id: str, patient_id: str, doctor_id:
             return False
         if str(appointment.doctor_id) != doctor_id:
             return False
+
         await appointment.delete()
+
+        # حذف الموعد يعتبر إجراءً أيضاً
+        try:
+            patient = await Patient.get(OID(patient_id))
+            if patient:
+                _touch_doctor_last_action(patient, doctor_id)
+                await patient.save()
+        except Exception:
+            pass
+
         return True
     except Exception as e:
         print(f"Error deleting appointment {appointment_id}: {e}")
@@ -775,6 +887,12 @@ async def update_appointment_status(
         appointment.status = status_lower
         appointment.updated_at = datetime.now(timezone.utc)
         await appointment.save()
+
+        # تغيير حالة الموعد يعتبر إجراءً كذلك
+        if patient:
+            _touch_doctor_last_action(patient, doctor_id)
+            await patient.save()
+
         return appointment
     except Exception as e:
         print(f"Error updating appointment status {appointment_id}: {e}")
@@ -818,8 +936,14 @@ async def update_appointment_datetime(
         now = datetime.now(timezone.utc)
         if appointment.status == "late" and scheduled_at >= now:
             appointment.status = "pending"
-        
+
         await appointment.save()
+
+        # تعديل موعد يعتبر أيضاً إجراءً
+        if patient:
+            _touch_doctor_last_action(patient, doctor_id)
+            await patient.save()
+
         return appointment
     except Exception as e:
         print(f"Error updating appointment datetime {appointment_id}: {e}")
@@ -1069,17 +1193,7 @@ async def list_gallery_for_patient_by_uploader(
 
 
 async def get_patient_activity_summary() -> tuple[dict[str, int], dict[str, dict[str, int]]]:
-    """Count active vs inactive patients globally and per doctor."""
+    """Deprecated: patient active/inactive concept removed. Kept for backward compatibility with zero counts."""
     global_counts: dict[str, int] = {"active": 0, "inactive": 0}
     per_doctor: defaultdict[str, dict[str, int]] = defaultdict(lambda: {"active": 0, "inactive": 0})
-    patients = await Patient.find({}).to_list()
-    for patient in patients:
-        for doctor_key, profile in (patient.doctor_profiles or {}).items():
-            status = profile.status
-            if status == "active":
-                global_counts["active"] += 1
-                per_doctor[doctor_key]["active"] += 1
-            elif status in ("inactive", "pending"):
-                global_counts["inactive"] += 1
-                per_doctor[doctor_key]["inactive"] += 1
     return global_counts, per_doctor
