@@ -32,6 +32,8 @@ from app.utils.patient_profile import build_doctor_profile_map, get_doctor_profi
 from beanie.operators import In
 from beanie import PydanticObjectId as OID
 
+from app.models import InactivePatientLog  # لاسترجاع المرضى غير النشطين
+
 logger = get_logger("doctor_router")
 
 PHONE_PATTERN = re.compile(r"^07\d{9}$")
@@ -550,6 +552,77 @@ async def my_patients(
     logger.info(
         f"✅ [my_patients] Returning {len(out)} patients (skipped: {skipped_no_user_data} no user_data)"
     )
+
+    return out
+
+
+@router.get("/patients/inactive", response_model=List[PatientOut])
+async def my_inactive_patients(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1),
+    current=Depends(get_current_user),
+):
+    """
+    قائمة المرضى غير النشطين لهذا الطبيب.
+
+    التعريف الحالي لغير النشطين:
+    - مرضى جدد (visit_type == "مريض جديد") تم تحويلهم للطبيب لكن لم يقم
+      الطبيب بأي إجراء عليهم في يوم التحويل الأول، وتمت إزالتهم تلقائياً
+      من قائمته بواسطة منطق `cleanup_inactive_new_patients_for_doctor`.
+    - يتم الاعتماد على سجلات `InactivePatientLog` لحساب هؤلاء المرضى.
+    """
+    doctor_id = await _get_current_doctor_id(current)
+
+    try:
+        did = OID(doctor_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid doctor_id format: {doctor_id}") from e
+
+    # نجلب سجلات المرضى غير النشطين لهذا الطبيب مرتبة من الأحدث إلى الأقدم
+    logs_query = (
+        InactivePatientLog.find(InactivePatientLog.doctor_id == did)
+        .sort("-removed_at")
+        .skip(skip)
+    )
+    if limit is not None:
+        logs_query = logs_query.limit(limit)
+
+    logs: List[InactivePatientLog] = await logs_query.to_list()
+
+    if not logs:
+        return []
+
+    # جمع معرّفات المرضى
+    patient_ids = [log.patient_id for log in logs]
+    patients = await Patient.find(In(Patient.id, patient_ids)).to_list()
+    patient_map = {p.id: p for p in patients}
+
+    # جلب المستخدمين المرتبطين بالمرضى
+    user_ids = [p.user_id for p in patients if p.user_id]
+    users = await User.find(In(User.id, user_ids)).to_list() if user_ids else []
+    user_map = {u.id: u for u in users}
+
+    out: List[PatientOut] = []
+    for log in logs:
+        patient = patient_map.get(log.patient_id)
+        if not patient:
+            continue
+        user = user_map.get(patient.user_id)
+        if not user:
+            continue
+        try:
+            out.append(
+                _build_doctor_patient_out(
+                    patient=patient,
+                    user=user,
+                    doctor_id=doctor_id,
+                )
+            )
+        except Exception as e:
+            logger.error(
+                f"❌ [my_inactive_patients] Error building PatientOut for patient {patient.id}: {e}"
+            )
+            continue
 
     return out
 
