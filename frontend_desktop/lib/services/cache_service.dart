@@ -1,4 +1,8 @@
+import 'dart:io';
+
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:frontend_desktop/models/patient_model.dart';
 import 'package:frontend_desktop/models/appointment_model.dart';
 import 'package:frontend_desktop/models/doctor_model.dart';
@@ -30,7 +34,13 @@ class CacheService {
 
   /// تهيئة Hive وفتح الصناديق
   Future<void> init() async {
-    await Hive.initFlutter();
+    final appSupportDir = await getApplicationSupportDirectory();
+    final hiveDir = Directory(p.join(appSupportDir.path, 'hive'));
+    if (!await hiveDir.exists()) {
+      await hiveDir.create(recursive: true);
+    }
+
+    await Hive.initFlutter(hiveDir.path);
 
     // تسجيل المحولات (Adapters)
     if (!Hive.isAdapterRegistered(0)) {

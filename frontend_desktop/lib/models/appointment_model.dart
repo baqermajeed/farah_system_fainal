@@ -55,6 +55,17 @@ class AppointmentModel {
     this.imagePaths = const [],
   });
 
+  static DateTime _parseScheduledAt(String value) {
+    try {
+      final hasTimezone = value.endsWith('Z') ||
+          RegExp(r'[\+\-]\d{2}:?\d{2}$').hasMatch(value);
+      final parsed = DateTime.parse(value);
+      return hasTimezone ? parsed.toLocal() : parsed;
+    } catch (_) {
+      return DateTime.now();
+    }
+  }
+
   factory AppointmentModel.fromJson(Map<String, dynamic> json) {
     // Backend/Hive support logic adapted
     final scheduledAt = json['scheduled_at'] ?? json['date'];
@@ -65,8 +76,8 @@ class AppointmentModel {
     if (scheduledAt is String) {
       isoString = scheduledAt;
       try {
-        // تحويل إلى Local time للحفاظ على الوقت الصحيح
-        appointmentDateTime = DateTime.parse(scheduledAt).toLocal();
+        // احترم المنطقة الزمنية إذا وُجدت، وإلا اعتبرها محلية
+        appointmentDateTime = _parseScheduledAt(scheduledAt);
       } catch (_) {
         appointmentDateTime = DateTime.now();
       }
@@ -83,8 +94,8 @@ class AppointmentModel {
         return _formatTime(DateTime.now());
       }
       try {
-        // نحترم المنطقة الزمنية إن وُجدت ونحوّل دائماً إلى التوقيت المحلي
-        final dt = DateTime.parse(value).toLocal();
+        // نحترم المنطقة الزمنية إن وُجدت، وإلا نستخدمها كوقت محلي
+        final dt = _parseScheduledAt(value);
         return _formatTime(dt);
       } catch (_) {
         // fallback: محاولة قراءة النمط "THH:MM" يدوياً

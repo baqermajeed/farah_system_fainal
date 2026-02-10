@@ -86,7 +86,7 @@ class DoctorWorkingHoursService:
             Appointment.doctor_id == OID(doctor_id),
             Appointment.scheduled_at >= start_of_day,
             Appointment.scheduled_at <= end_of_day,
-            In(Appointment.status, ["scheduled", "completed"])
+            In(Appointment.status, ["pending", "late", "scheduled", "completed"])
         ).to_list()
 
         booked_times = set()
@@ -177,7 +177,7 @@ class DoctorWorkingHoursService:
         existing_appointment = await Appointment.find_one(
             Appointment.doctor_id == OID(doctor_id),
             Appointment.scheduled_at == appointment_datetime,
-            In(Appointment.status, ["scheduled", "completed"])
+            In(Appointment.status, ["pending", "late", "scheduled", "completed"])
         )
 
         if existing_appointment:

@@ -2782,16 +2782,25 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
       final cached = _appointmentController.getCachedPatientAppointments(
         patient.id,
       );
-      final allAppointments = cached.isNotEmpty
+
+      // نبني قائمة المواعيد الأساسية للمريض
+      var appointments = cached.isNotEmpty
           ? List<AppointmentModel>.from(cached)
           : _appointmentController.appointments
               .where((apt) => apt.patientId == patient.id)
               .toList();
 
-      // نعرض فقط المواعيد النشطة (scheduled أو pending)
-      final appointments = allAppointments.where((apt) {
-        final status = apt.status.toLowerCase();
-        return status == 'pending';
+      // ✅ حماية إضافية من التكرار:
+      // في بعض الحالات قد يرجع الـ backend نفس الموعد مرتين أو يتم دمجه مرتين
+      // في الكاش، لذلك نضمن هنا أن كل موعد يظهر مرة واحدة فقط في الواجهة.
+      final seenAppointmentIds = <String>{};
+      appointments = appointments.where((apt) {
+        if (apt.id.isEmpty) return true; // نسمح بالمواعيد بدون Id (حالات مؤقتة)
+        if (seenAppointmentIds.contains(apt.id)) {
+          return false;
+        }
+        seenAppointmentIds.add(apt.id);
+        return true;
       }).toList();
 
       if (appointments.isEmpty) {
@@ -9075,7 +9084,6 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
       {'value': 'pending', 'label': 'قيد الانتظار', 'icon': Icons.schedule},
       {'value': 'completed', 'label': 'مكتمل', 'icon': Icons.check_circle},
       {'value': 'cancelled', 'label': 'ملغي', 'icon': Icons.cancel},
-      {'value': 'no_show', 'label': 'لم يحضر', 'icon': Icons.person_off},
     ];
 
     showDialog(

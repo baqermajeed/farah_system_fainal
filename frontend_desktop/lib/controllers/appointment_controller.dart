@@ -41,6 +41,47 @@ class AppointmentController extends GetxController {
   final Set<String> _inFlightPatientAppointments = <String>{};
   final Set<String> _loadedOncePatientAppointments = <String>{};
 
+  AppointmentModel _withScheduledAt(
+    AppointmentModel appointment,
+    DateTime scheduledAt,
+  ) {
+    return AppointmentModel(
+      id: appointment.id,
+      patientId: appointment.patientId,
+      patientName: appointment.patientName,
+      patientPhone: appointment.patientPhone,
+      doctorId: appointment.doctorId,
+      doctorName: appointment.doctorName,
+      date: scheduledAt,
+      time:
+          '${scheduledAt.hour.toString().padLeft(2, '0')}:${scheduledAt.minute.toString().padLeft(2, '0')}',
+      status: appointment.status,
+      notes: appointment.notes,
+      imagePath: appointment.imagePath,
+      imagePaths: appointment.imagePaths,
+    );
+  }
+
+  AppointmentModel _normalizeServerAppointmentTime(
+    AppointmentModel appointment,
+    DateTime scheduledAt,
+  ) {
+    final adjusted =
+        appointment.date.subtract(DateTime.now().timeZoneOffset);
+    if (_isSameSlot(adjusted, scheduledAt)) {
+      return _withScheduledAt(appointment, scheduledAt);
+    }
+    return appointment;
+  }
+
+  bool _isSameSlot(DateTime a, DateTime b) {
+    return a.year == b.year &&
+        a.month == b.month &&
+        a.day == b.day &&
+        a.hour == b.hour &&
+        a.minute == b.minute;
+  }
+
   List<AppointmentModel> getCachedPatientAppointments(String patientId) {
     return patientAppointmentsCache[patientId] ?? const <AppointmentModel>[];
   }
@@ -454,13 +495,20 @@ class AppointmentController extends GetxController {
       }
 
       // 2) استدعاء السيرفر
-      final appointment = await _doctorService.addAppointment(
+      var appointment = await _doctorService.addAppointment(
         patientId: patientId,
         scheduledAt: scheduledAt,
         note: note,
         imageFile: imageFile,
         imageFiles: imageFiles,
       );
+      appointment = _normalizeServerAppointmentTime(appointment, scheduledAt);
+
+      // Remove any temp appointment for the same patient/time slot
+      appointments.removeWhere((apt) =>
+          apt.id.startsWith('temp-') &&
+          apt.patientId == patientId &&
+          _isSameSlot(apt.date, scheduledAt));
 
       // 3) استبدال الموعد المؤقت بالموعد الحقيقي في قائمة المواعيد العامة
       final index =
@@ -476,6 +524,10 @@ class AppointmentController extends GetxController {
       if (cachedAfterAdd != null &&
           cachedAfterAdd.isNotEmpty) {
         final list = List<AppointmentModel>.from(cachedAfterAdd);
+        list.removeWhere((apt) =>
+            apt.id.startsWith('temp-') &&
+            apt.patientId == patientId &&
+            _isSameSlot(apt.date, scheduledAt));
         final cachedIndex =
             list.indexWhere((apt) => apt.id == tempAppointment!.id);
         if (cachedIndex != -1) {

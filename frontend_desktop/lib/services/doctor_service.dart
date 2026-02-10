@@ -424,6 +424,7 @@ class DoctorService {
       final filesToSend = imageFiles ?? (imageFile != null ? [imageFile] : []);
 
       final formData = dio.FormData.fromMap({
+        // Backend expects local time (no timezone offset)
         'scheduled_at': scheduledAt.toIso8601String(),
         if (note != null && note.isNotEmpty) 'note': note,
       });

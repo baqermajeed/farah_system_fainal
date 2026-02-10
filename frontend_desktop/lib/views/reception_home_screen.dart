@@ -4461,6 +4461,15 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                                     ? selectedImages
                                     : null,
                               );
+                              // مسح الكاش للأوقات المتاحة لهذا التاريخ بعد حجز الموعد
+                              if (doctorId != null && selectedDate != null) {
+                                final dateStr =
+                                    '${selectedDate!.year}-${selectedDate!.month.toString().padLeft(2, '0')}-${selectedDate!.day.toString().padLeft(2, '0')}';
+                                _workingHoursService.clearAvailableSlotsCache(
+                                  doctorId,
+                                  dateStr,
+                                );
+                              }
                               // لا نعيد تحميل المواعيد هنا حتى لا يحدث فلاش، الكونترولر يضيف الموعد متفائلاً
                             } catch (e) {
                               print(
