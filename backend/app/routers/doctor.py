@@ -86,6 +86,7 @@ def _build_doctor_patient_out(patient: Patient, user: User, doctor_id: str) -> P
     # نوع العلاج للطبيب الحالي فقط:
     # إذا لم يُحدد الطبيب نوع العلاج لمريضه بعد، نظهر None بدلاً من أخذ نوع علاج طبيب آخر.
     treatment_type = doctor_profile.treatment_type if doctor_profile else None
+    payment_methods = doctor_profile.payment_methods if doctor_profile else None
     
     return PatientOut(
         id=str(patient.id),
@@ -98,7 +99,7 @@ def _build_doctor_patient_out(patient: Patient, user: User, doctor_id: str) -> P
         treatment_type=treatment_type,
         visit_type=getattr(patient, "visit_type", None),
         consultation_type=getattr(patient, "consultation_type", None),
-        payment_methods=getattr(patient, "payment_methods", None),
+        payment_methods=payment_methods,
         doctor_ids=[str(did) for did in patient.doctor_ids],
         doctor_profiles=doctor_profiles,
         qr_code_data=patient.qr_code_data,
@@ -132,11 +133,14 @@ def _build_doctor_patient_out_from_agg(patient_doc: dict, user_doc: dict, doctor
             treatment_type=profile.get("treatment_type"),
             assigned_at=parse_dt(profile.get("assigned_at")),
             last_action_at=parse_dt(profile.get("last_action_at")),
+            payment_methods=profile.get("payment_methods"),
         )
 
     treatment_type = None
+    payment_methods = None
     if profile:
         treatment_type = profile.get("treatment_type")
+        payment_methods = profile.get("payment_methods")
 
     return PatientOut(
         id=str(patient_doc["_id"]),
@@ -149,7 +153,7 @@ def _build_doctor_patient_out_from_agg(patient_doc: dict, user_doc: dict, doctor
         treatment_type=treatment_type,
         visit_type=patient_doc.get("visit_type"),
         consultation_type=patient_doc.get("consultation_type"),
-        payment_methods=patient_doc.get("payment_methods"),
+        payment_methods=payment_methods,
         doctor_ids=[str(d) for d in patient_doc.get("doctor_ids", [])],
         doctor_profiles=doctor_profiles_out,
         qr_code_data=patient_doc.get("qr_code_data", ""),

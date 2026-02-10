@@ -65,6 +65,7 @@ class DoctorPatientProfileOut(BaseModel):
     treatment_type: Optional[str] = None
     assigned_at: Optional[datetime] = None
     last_action_at: Optional[datetime] = None
+    payment_methods: Optional[List[str]] = None
 
     class Config:
         from_attributes = True

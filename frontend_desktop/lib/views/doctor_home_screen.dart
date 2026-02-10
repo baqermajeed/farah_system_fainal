@@ -2246,6 +2246,31 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                   ),
                                 ),
                               ),
+                              SizedBox(width: 8.w),
+                              Tooltip(
+                                message: 'نوع الدفع',
+                                child: GestureDetector(
+                                  onTap: () {
+                                    _showPaymentMethodsDialog(
+                                      context,
+                                      patient,
+                                    );
+                                  },
+                                  child: Container(
+                                    width: 40.w,
+                                    height: 40.w,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primaryLight,
+                                      borderRadius: BorderRadius.circular(8.r),
+                                    ),
+                                    child: Icon(
+                                      Icons.payments_outlined,
+                                      color: AppColors.primary,
+                                      size: 20.sp,
+                                    ),
+                                  ),
+                                ),
+                              ),
                               if ((_authController.currentUser.value?.isDoctorManager ?? false)) ...[
                                 SizedBox(width: 8.w),
                                 // Transfer patient (doctor manager only)
@@ -2278,16 +2303,101 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 // Name at the top
-                                Text(
-                                  'الاسم : ${patient.name}',
-                                  style: GoogleFonts.cairo(
-                                    fontSize: 14.sp,
-                                    fontWeight: FontWeight.w700,
-                                    color: const Color(0xFF649FCC),
-                                  ),
-                                  textAlign: TextAlign.right,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
+                                Builder(
+                                  builder: (context) {
+                                    final paymentText =
+                                        (patient.paymentMethods != null &&
+                                                patient.paymentMethods!
+                                                    .isNotEmpty)
+                                            ? patient.paymentMethods!.join('، ')
+                                            : 'لا يوجد';
+                                    final List<String> paymentMethods =
+                                        patient.paymentMethods ?? const [];
+                                    Color _paymentColor(String method) {
+                                      switch (method) {
+                                        case 'نقد':
+                                          return const Color(0xFF2E7D32);
+                                        case 'ماستر كارد':
+                                          return const Color(0xFFE91E63);
+                                        case 'كمبيالة':
+                                          return const Color(0xFFF9A825);
+                                        case 'تعهد':
+                                          return const Color(0xFF6A1B9A);
+                                        default:
+                                          return AppColors.textSecondary;
+                                      }
+                                    }
+
+                                    final Color baseColor = paymentMethods.isNotEmpty
+                                        ? _paymentColor(paymentMethods.first)
+                                        : AppColors.textSecondary;
+                                    return Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      textDirection: ui.TextDirection.rtl,
+                                      children: [
+                                        ConstrainedBox(
+                                          constraints: BoxConstraints(
+                                            maxWidth: paymentMethods.isNotEmpty
+                                                ? 240.w
+                                                : 360.w,
+                                          ),
+                                          child: Text(
+                                            'الاسم : ${patient.name}',
+                                            style: GoogleFonts.cairo(
+                                              fontSize: 14.sp,
+                                              fontWeight: FontWeight.w700,
+                                              color: const Color(0xFF649FCC),
+                                            ),
+                                            textAlign: TextAlign.right,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        if (paymentMethods.isNotEmpty) ...[
+                                          SizedBox(width: 8.w),
+                                          Container(
+                                            width: 119.w,
+                                            height: 28.h,
+                                            decoration: BoxDecoration(
+                                              color: baseColor.withOpacity(0.1),
+                                              borderRadius:
+                                                  BorderRadius.circular(10.r),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: Colors.black
+                                                      .withOpacity(0.08),
+                                                  blurRadius: 8,
+                                                  offset: const Offset(0, 3),
+                                                ),
+                                              ],
+                                              border: Border.all(
+                                                color:
+                                                    baseColor.withOpacity(0.35),
+                                                width: 1,
+                                              ),
+                                            ),
+                                            alignment: Alignment.center,
+                                            child: Padding(
+                                              padding: EdgeInsets.symmetric(
+                                                horizontal: 6.w,
+                                              ),
+                                              child: Text(
+                                                paymentText,
+                                                style: TextStyle(
+                                                  fontSize: 11.sp,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: baseColor,
+                                                ),
+                                                textAlign: TextAlign.center,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    );
+                                  },
                                 ),
                                 Text(
                                   'العمر : ${patient.age} سنة',
@@ -8058,6 +8168,170 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
               ],
             ),
           ),
+        );
+      },
+    );
+  }
+
+  void _showPaymentMethodsDialog(BuildContext context, PatientModel patient) {
+    final List<String> paymentMethods = [
+      'نقد',
+      'ماستر كارد',
+      'كمبيالة',
+      'تعهد',
+    ];
+
+    Set<String> selectedMethods = <String>{};
+    if (patient.paymentMethods != null && patient.paymentMethods!.isNotEmpty) {
+      selectedMethods = Set<String>.from(patient.paymentMethods!);
+    }
+
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              child: Container(
+                width: 360.w,
+                padding: EdgeInsets.all(16.w),
+                decoration: BoxDecoration(
+                  color: AppColors.white,
+                  borderRadius: BorderRadius.circular(20.r),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'قم بتحديد نوع الدفع للمريض',
+                      style: TextStyle(
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    SizedBox(height: 12.h),
+                    Wrap(
+                      spacing: 8.w,
+                      runSpacing: 8.h,
+                      alignment: WrapAlignment.center,
+                      children: paymentMethods.map((method) {
+                        final isSelected = selectedMethods.contains(method);
+                        return FilterChip(
+                          label: Text(
+                            method,
+                            style: TextStyle(
+                              fontSize: 12.sp,
+                              fontWeight: FontWeight.w600,
+                              color: isSelected
+                                  ? AppColors.white
+                                  : AppColors.textPrimary,
+                            ),
+                          ),
+                          selected: isSelected,
+                          backgroundColor: AppColors.divider,
+                          selectedColor: AppColors.primary,
+                          onSelected: (selected) {
+                            setDialogState(() {
+                              if (selected) {
+                                if (selectedMethods.length >= 2) {
+                                  Get.snackbar(
+                                    'تنبيه',
+                                    'يمكن اختيار طريقتين كحد أقصى',
+                                  );
+                                  return;
+                                }
+                                selectedMethods.add(method);
+                              } else {
+                                selectedMethods.remove(method);
+                              }
+                            });
+                          },
+                        );
+                      }).toList(),
+                    ),
+                    SizedBox(height: 12.h),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () => Navigator.of(dialogContext).pop(),
+                            child: Container(
+                              height: 40.h,
+                              decoration: BoxDecoration(
+                                color: AppColors.divider,
+                                borderRadius: BorderRadius.circular(10.r),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  'عودة',
+                                  style: TextStyle(
+                                    fontSize: 13.sp,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 10.w),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () async {
+                              if (selectedMethods.isEmpty) {
+                                Get.snackbar(
+                                  'تنبيه',
+                                  'يرجى اختيار طريقة دفع واحدة على الأقل',
+                                );
+                                return;
+                              }
+
+                              try {
+                                await _patientController.setPaymentMethods(
+                                  patientId: patient.id,
+                                  methods: selectedMethods.toList(),
+                                );
+                                Navigator.of(context).pop();
+                                Get.snackbar(
+                                  'نجح',
+                                  'تم تحديث نوع الدفع بنجاح',
+                                );
+                              } catch (e) {
+                                Get.snackbar(
+                                  'خطأ',
+                                  'حدث خطأ أثناء تحديث نوع الدفع',
+                                );
+                              }
+                            },
+                            child: Container(
+                              height: 40.h,
+                              decoration: BoxDecoration(
+                                color: AppColors.primary,
+                                borderRadius: BorderRadius.circular(10.r),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  'اضافة',
+                                  style: TextStyle(
+                                    fontSize: 13.sp,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         );
       },
     );

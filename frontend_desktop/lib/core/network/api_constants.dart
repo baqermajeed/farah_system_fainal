@@ -74,6 +74,8 @@ class ApiConstants {
   static const String doctorAddPatient = '/doctor/patients';
   static String doctorPatientTreatment(String patientId) =>
       '/doctor/patients/$patientId/treatment';
+  static String doctorPatientPaymentMethods(String patientId) =>
+      '/doctor/patients/$patientId/payment-methods';
   static String doctorPatientNotes(String patientId) =>
       '/doctor/patients/$patientId/notes';
   static String doctorUpdateNote(String patientId, String noteId) =>

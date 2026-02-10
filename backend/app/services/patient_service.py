@@ -448,7 +448,12 @@ async def set_payment_methods(*, patient_id: str, doctor_id: str, methods: List[
     if OID(doctor_id) not in patient.doctor_ids:
         raise HTTPException(status_code=403, detail="Not your patient")
 
-    patient.payment_methods = methods
+    doctor_key = str(doctor_id)
+    profile = patient.doctor_profiles.get(doctor_key)
+    if profile is None:
+        profile = DoctorPatientProfile()
+    profile.payment_methods = methods
+    patient.doctor_profiles[doctor_key] = profile
 
     # تسجيل نشاط للطبيب على هذا المريض
     _touch_doctor_last_action(patient, doctor_id)

@@ -11,6 +11,7 @@ class DoctorPatientProfile(BaseModel):
     assigned_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     last_action_at: datetime | None = None
     active_on_assigned_day: bool = False
+    payment_methods: list[str] = Field(default_factory=list)
 
     class Config:
         arbitrary_types_allowed = True

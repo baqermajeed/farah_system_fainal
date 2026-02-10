@@ -40,6 +40,9 @@ class PatientModel {
   @HiveField(11)
   final String? qrImagePath;
 
+  @HiveField(12)
+  final List<String>? paymentMethods;
+
   PatientModel({
     required this.id,
     required this.name,
@@ -53,6 +56,7 @@ class PatientModel {
     this.treatmentHistory,
     this.qrCodeData,
     this.qrImagePath,
+    this.paymentMethods,
   });
 
   factory PatientModel.fromJson(Map<String, dynamic> json) {
@@ -75,6 +79,11 @@ class PatientModel {
           : null,
       qrCodeData: json['qr_code_data'] ?? json['qrCodeData'],
       qrImagePath: json['qr_image_path'] ?? json['qrImagePath'],
+      paymentMethods: json['payment_methods'] != null
+          ? List<String>.from(json['payment_methods'])
+          : (json['paymentMethods'] != null
+              ? List<String>.from(json['paymentMethods'])
+              : null),
     );
   }
 
@@ -92,6 +101,7 @@ class PatientModel {
       'treatmentHistory': treatmentHistory,
       'qrCodeData': qrCodeData,
       'qrImagePath': qrImagePath,
+      'paymentMethods': paymentMethods,
     };
   }
 }

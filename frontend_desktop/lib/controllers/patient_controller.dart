@@ -132,7 +132,20 @@ class PatientController extends GetxController {
            cached.visitType != recent.visitType ||
            cached.treatmentHistory?.length != recent.treatmentHistory?.length ||
            cached.doctorIds.length != recent.doctorIds.length ||
-           cached.imageUrl != recent.imageUrl;
+           cached.imageUrl != recent.imageUrl ||
+           !_areStringListsEqual(cached.paymentMethods, recent.paymentMethods);
+  }
+
+  bool _areStringListsEqual(List<String>? a, List<String>? b) {
+    final aEmpty = a == null || a.isEmpty;
+    final bEmpty = b == null || b.isEmpty;
+    if (aEmpty && bEmpty) return true;
+    if (aEmpty != bEmpty) return false;
+    if (a!.length != b!.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
   }
 
   // ⭐ دالة مساعدة: جلب باقي الوجبات في الخلفية
@@ -553,6 +566,7 @@ class PatientController extends GetxController {
           ],
           qrCodeData: oldPatient.qrCodeData,
           qrImagePath: oldPatient.qrImagePath,
+          paymentMethods: oldPatient.paymentMethods,
         );
 
         patients[index] = optimisticPatient;
@@ -635,6 +649,107 @@ class PatientController extends GetxController {
     }
   }
 
+  Future<void> setPaymentMethods({
+    required String patientId,
+    required List<String> methods,
+  }) async {
+    PatientModel? oldPatient;
+
+    try {
+      isLoading.value = true;
+
+      final index = patients.indexWhere((p) => p.id == patientId);
+      if (index != -1) {
+        oldPatient = patients[index];
+
+        final optimisticPatient = PatientModel(
+          id: oldPatient.id,
+          name: oldPatient.name,
+          phoneNumber: oldPatient.phoneNumber,
+          gender: oldPatient.gender,
+          age: oldPatient.age,
+          city: oldPatient.city,
+          visitType: oldPatient.visitType,
+          imageUrl: oldPatient.imageUrl,
+          doctorIds: oldPatient.doctorIds,
+          treatmentHistory: oldPatient.treatmentHistory,
+          qrCodeData: oldPatient.qrCodeData,
+          qrImagePath: oldPatient.qrImagePath,
+          paymentMethods: methods,
+        );
+
+        patients[index] = optimisticPatient;
+        if (selectedPatient.value?.id == patientId) {
+          selectedPatient.value = optimisticPatient;
+        }
+
+        try {
+          await _cacheService.savePatient(optimisticPatient);
+        } catch (_) {}
+      }
+
+      final updatedPatient = await _doctorService.setPaymentMethods(
+        patientId: patientId,
+        methods: methods,
+      );
+
+      final newIndex = patients.indexWhere((p) => p.id == patientId);
+      if (newIndex != -1) {
+        patients[newIndex] = updatedPatient;
+      }
+
+      if (selectedPatient.value?.id == patientId) {
+        selectedPatient.value = updatedPatient;
+      }
+
+      try {
+        await _cacheService.savePatient(updatedPatient);
+      } catch (_) {}
+
+      Get.snackbar('نجح', 'تم تحديث طرق الدفع');
+    } on ApiException catch (e) {
+      if (oldPatient != null) {
+        final index = patients.indexWhere((p) => p.id == patientId);
+        if (index != -1) {
+          patients[index] = oldPatient;
+        }
+        if (selectedPatient.value?.id == patientId) {
+          selectedPatient.value = oldPatient;
+        }
+        try {
+          await _cacheService.savePatient(oldPatient);
+        } catch (_) {}
+      }
+
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', e.message);
+      }
+    } catch (e) {
+      if (oldPatient != null) {
+        final index = patients.indexWhere((p) => p.id == patientId);
+        if (index != -1) {
+          patients[index] = oldPatient;
+        }
+        if (selectedPatient.value?.id == patientId) {
+          selectedPatient.value = oldPatient;
+        }
+        try {
+          await _cacheService.savePatient(oldPatient);
+        } catch (_) {}
+      }
+
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', 'حدث خطأ أثناء تحديث طرق الدفع');
+      }
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
   // تحديث الأطباء المرتبطين بمريض معين في الواجهة بدون إعادة تحميل كاملة
   Future<void> updatePatientDoctorIds(String patientId, List<String> doctorIds) async {
     final index = patients.indexWhere((p) => p.id == patientId);
@@ -654,6 +769,7 @@ class PatientController extends GetxController {
       treatmentHistory: patient.treatmentHistory,
       qrCodeData: patient.qrCodeData,
       qrImagePath: patient.qrImagePath,
+      paymentMethods: patient.paymentMethods,
     );
 
     patients[index] = updatedPatient;

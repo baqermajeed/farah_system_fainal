@@ -307,6 +307,30 @@ class DoctorService {
     }
   }
 
+  // تحديد طرق الدفع للمريض
+  Future<PatientModel> setPaymentMethods({
+    required String patientId,
+    required List<String> methods,
+  }) async {
+    try {
+      final response = await _api.post(
+        ApiConstants.doctorPatientPaymentMethods(patientId),
+        data: {'methods': methods},
+      );
+
+      if (response.statusCode == 200) {
+        return _mapPatientOutToModel(response.data);
+      } else {
+        throw ApiException('فشل تحديث طرق الدفع');
+      }
+    } catch (e) {
+      if (e is ApiException) {
+        rethrow;
+      }
+      throw ApiException('فشل تحديث طرق الدفع: ${e.toString()}');
+    }
+  }
+
   // إضافة سجل (ملاحظة) للمريض
   Future<MedicalRecordModel> addNote({
     required String patientId,
@@ -881,6 +905,11 @@ class DoctorService {
           : null,
       qrCodeData: json['qr_code_data'] ?? json['qrCodeData'],
       qrImagePath: json['qr_image_path'] ?? json['qrImagePath'],
+      paymentMethods: json['payment_methods'] != null
+          ? List<String>.from(json['payment_methods'])
+          : (json['paymentMethods'] != null
+              ? List<String>.from(json['paymentMethods'])
+              : null),
     );
   }
 }

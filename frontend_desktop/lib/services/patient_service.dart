@@ -575,6 +575,11 @@ class PatientService {
           : null,
       qrCodeData: json['qr_code_data'] ?? json['qrCodeData'],
       qrImagePath: json['qr_image_path'] ?? json['qrImagePath'],
+      paymentMethods: json['payment_methods'] != null
+          ? List<String>.from(json['payment_methods'])
+          : (json['paymentMethods'] != null
+              ? List<String>.from(json['paymentMethods'])
+              : null),
     );
   }
 }
