@@ -10,6 +10,7 @@ class DoctorPatientProfile(BaseModel):
     treatment_type: str | None = None
     assigned_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     last_action_at: datetime | None = None
+    active_on_assigned_day: bool = False
 
     class Config:
         arbitrary_types_allowed = True

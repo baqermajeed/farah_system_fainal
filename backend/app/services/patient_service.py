@@ -62,6 +62,7 @@ def _reset_doctor_profile_assignment(patient: Patient, doctor_id: str, assigned_
         profile.assigned_at = now
     # عند كل تحويل جديد، نعيد تعيين آخر نشاط لهذا الطبيب على هذا المريض
     profile.last_action_at = None
+    profile.active_on_assigned_day = False
     patient.doctor_profiles[key] = profile
     return profile
 
@@ -78,7 +79,12 @@ def _touch_doctor_last_action(patient: Patient, doctor_id: str) -> None:
         profile = patient.doctor_profiles.get(key)
         if profile is None:
             profile = DoctorPatientProfile()
-        profile.last_action_at = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc)
+        profile.last_action_at = now
+
+        assigned_at = getattr(profile, "assigned_at", None)
+        if assigned_at and _same_utc_day(assigned_at, now):
+            profile.active_on_assigned_day = True
         patient.doctor_profiles[key] = profile
     except Exception:
         # لا نسمح لهذا الفشل أن يعطل منطق العملية الأساسية (ملاحظة، موعد، ...)
@@ -175,7 +181,9 @@ async def cleanup_inactive_new_patients_for_doctor(doctor_id: str) -> int:
 
             last_action = profile.last_action_at
             is_active_same_day = False
-            if last_action:
+            if getattr(profile, "active_on_assigned_day", False):
+                is_active_same_day = True
+            elif last_action:
                 # نتحقق فقط من أن آخر إجراء في نفس يوم التحويل
                 if _same_utc_day(assigned_utc, last_action):
                     is_active_same_day = True
