@@ -149,6 +149,40 @@ class WorkingHoursOut(BaseModel):
         from_attributes = True
 
 
+# -------------------- Call Center Appointments --------------------
+
+class CallCenterAppointmentCreate(BaseModel):
+    patient_name: str
+    patient_phone: str
+    scheduled_at: str  # ISO datetime
+
+    @field_validator("scheduled_at")
+    @classmethod
+    def must_include_time(cls, v: str) -> str:
+        """يجب أن يحتوي التاريخ على وقت (ساعة:دقيقة). أمثلة مقبولة: 2025-11-01T14:30 أو 2025-11-01 14:30"""
+        if not isinstance(v, str):
+            raise ValueError("scheduled_at must be ISO string with time")
+        sep = "T" if "T" in v else (" " if " " in v else None)
+        if sep:
+            time_part = v.split(sep, 1)[1]
+            if ":" in time_part:
+                return v
+        raise ValueError("scheduled_at يجب أن يتضمن التاريخ والوقت مثل 2025-11-01T14:30")
+
+
+class CallCenterAppointmentOut(BaseModel):
+    id: str
+    patient_name: str
+    patient_phone: str
+    scheduled_at: str
+    created_by_user_id: str
+    created_by_username: str
+    created_at: str
+
+    class Config:
+        from_attributes = True
+
+
 # -------------------- Appointments --------------------
 
 class AppointmentCreate(BaseModel):

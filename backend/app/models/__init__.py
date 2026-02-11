@@ -3,6 +3,7 @@ from .user import User
 from .doctor import Doctor
 from .patient import Patient, DoctorPatientProfile
 from .appointment import Appointment
+from .call_center_appointment import CallCenterAppointment
 from .note import TreatmentNote
 from .media import GalleryImage
 from .chat import ChatRoom, ChatMessage

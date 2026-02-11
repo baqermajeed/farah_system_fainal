@@ -15,9 +15,10 @@ async def create_staff_user(
     password: str,
     name: Optional[str],
     role: Role,
+    imageUrl: Optional[str] = None,
 ) -> User:
-    """Admin: create a staff user (Doctor/Receptionist/Photographer/Admin) بحساب username/password."""
-    if role not in {Role.DOCTOR, Role.RECEPTIONIST, Role.PHOTOGRAPHER, Role.ADMIN}:
+    """Admin: create a staff user (Doctor/Receptionist/Photographer/CallCenter/Admin) بحساب username/password."""
+    if role not in {Role.DOCTOR, Role.RECEPTIONIST, Role.PHOTOGRAPHER, Role.CALL_CENTER, Role.ADMIN}:
         raise HTTPException(status_code=400, detail="Invalid role for staff creation")
 
     if await User.find_one(User.phone == phone):
@@ -31,6 +32,7 @@ async def create_staff_user(
         role=role,
         username=username,
         password_hash=hash_password(password),
+        imageUrl=imageUrl,
     )
     await user.insert()
 

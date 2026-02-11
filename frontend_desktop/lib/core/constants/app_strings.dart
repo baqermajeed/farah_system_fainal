@@ -13,6 +13,7 @@ class AppStrings {
   static const String patientName = 'اسم المريض';
   static const String doctorName = 'اسم المستخدم';
   static const String receptionLogin = 'تسجيل دخول الاستقبال';
+  static const String callCenterLogin = 'تسجيل دخول مركز الاتصالات';
   static const String receptionUsername = 'اسم المستخدم';
   static const String password = 'كلمة المرور';
   static const String phoneNumber = 'رقم الهاتف';

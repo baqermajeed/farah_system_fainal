@@ -83,6 +83,7 @@ async def staff_login_with_password(*, username: str, password: str) -> tuple[tu
         Role.DOCTOR,
         Role.RECEPTIONIST,
         Role.PHOTOGRAPHER,
+        Role.CALL_CENTER,
     }:
         print(f"   ❌ Invalid role for staff login: {user.role.value}")
         # لا يسمح للمرضى باستخدام هذا النوع من تسجيل الدخول

@@ -30,6 +30,7 @@ from app.routers import chat as chat_router
 from app.routers import stats as stats_router
 from app.routers import doctor_working_hours as doctor_working_hours_router
 from app.routers import implant_stage as implant_stage_router
+from app.routers import call_center as call_center_router
 from app.services.socket_service import sio, get_socket_app
 
 # FastAPI مع Swagger UI الافتراضي
@@ -119,6 +120,8 @@ app.include_router(doctor_working_hours_router.router)
 print("   ✅ Doctor Working Hours router registered")
 app.include_router(implant_stage_router.router)
 print("   ✅ Implant Stages router registered")
+app.include_router(call_center_router.router)
+print("   ✅ Call Center router registered")
 print("✅ [STARTUP] All routers registered successfully!")
 print(f"   📍 Auth endpoints available at: /auth/*")
 print(f"   🔗 Test endpoint: http://localhost:8000/auth/test")

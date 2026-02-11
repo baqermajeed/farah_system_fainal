@@ -9,7 +9,7 @@ from app.services.admin_service import (
     create_patient,
 )
 from app.services.patient_service import update_patient_by_admin, delete_patient
-from app.models import Patient, Doctor, AssignmentLog
+from app.models import Patient, Doctor, AssignmentLog, User
 from app.services import patient_service
 from app.schemas import AppointmentOut, NoteOut, GalleryOut
 from app.utils.patient_profile import build_doctor_profile_map
@@ -29,14 +29,16 @@ async def create_staff(
     password: str,
     role: Role,
     name: str | None = None,
+    imageUrl: str | None = None,
 ):
-    """المدير ينشئ حساب موظف (طبيب/موظف استقبال/مصور/مدير) باستخدام username/password."""
+    """المدير ينشئ حساب موظف (طبيب/موظف استقبال/مصور/مركز اتصالات/مدير) باستخدام username/password."""
     user = await create_staff_user(
         phone=phone,
         username=username,
         password=password,
         name=name,
         role=role,
+        imageUrl=imageUrl,
     )
     # نحوّل الـ ObjectId إلى str يدويًا ليتوافق مع UserOut
     return UserOut(
@@ -46,9 +48,40 @@ async def create_staff(
         gender=user.gender,
         age=user.age,
         city=user.city,
+        imageUrl=user.imageUrl,
         role=user.role,
         doctor_manager=False if role == Role.DOCTOR else None,
     )
+
+
+@router.get("/staff", response_model=list[UserOut])
+async def list_staff(
+    role: Role | None = None,
+    skip: int = 0,
+    limit: int = 100,
+):
+    """عرض قائمة الموظفين، ويمكن الفلترة حسب الدور."""
+    query = User.find()
+    if role is not None:
+        query = query.find(User.role == role)
+
+    users = await query.skip(skip).limit(limit).to_list()
+    out: list[UserOut] = []
+    for user in users:
+        out.append(
+            UserOut(
+                id=str(user.id),
+                name=user.name,
+                phone=user.phone,
+                gender=user.gender,
+                age=user.age,
+                city=user.city,
+                imageUrl=user.imageUrl,
+                role=user.role,
+                doctor_manager=False if user.role == Role.DOCTOR else None,
+            )
+        )
+    return out
 
 
 @router.patch("/doctors/{doctor_id}/manager")

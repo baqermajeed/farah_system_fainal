@@ -110,6 +110,19 @@ class _UserSelectionScreenState extends State<UserSelectionScreen> {
                         },
                       ),
                     ),
+                    SizedBox(height: 16.h),
+                    // Call center button
+                    Center(
+                      child: _buildUserTypeButton(
+                        label: 'call center',
+                        isSelected: selectedUserType == 'call_center',
+                        onTap: () {
+                          setState(() {
+                            selectedUserType = 'call_center';
+                          });
+                        },
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -125,6 +138,8 @@ class _UserSelectionScreenState extends State<UserSelectionScreen> {
                               Get.toNamed(AppRoutes.doctorLogin);
                             } else if (selectedUserType == 'receptionist') {
                               Get.toNamed(AppRoutes.receptionLogin);
+                            } else if (selectedUserType == 'call_center') {
+                              Get.toNamed(AppRoutes.callCenterLogin);
                             }
                           },
                     child: Opacity(

@@ -9,6 +9,7 @@ import 'package:frontend_desktop/views/splash_screen.dart';
 import 'package:frontend_desktop/views/user_selection_screen.dart';
 import 'package:frontend_desktop/views/doctor_login_screen.dart';
 import 'package:frontend_desktop/views/reception_login_screen.dart';
+import 'package:frontend_desktop/views/call_center_login_screen.dart';
 import 'package:frontend_desktop/views/doctor_home_screen.dart';
 import 'package:frontend_desktop/views/add_patient_screen.dart';
 import 'package:frontend_desktop/views/doctor_profile_screen.dart';
@@ -129,6 +130,10 @@ class MyApp extends StatelessWidget {
             GetPage(
               name: AppRoutes.receptionLogin,
               page: () => const ReceptionLoginScreen(),
+            ),
+            GetPage(
+              name: AppRoutes.callCenterLogin,
+              page: () => const CallCenterLoginScreen(),
             ),
             GetPage(
               name: AppRoutes.receptionHome,

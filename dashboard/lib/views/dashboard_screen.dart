@@ -9,6 +9,7 @@ import '../enums/patient_activity_filter_mode.dart';
 import '../widgets/avatar_network.dart';
 import '../widgets/patient_activity_filter_menu.dart';
 import 'doctors/doctors_screen.dart';
+import 'call_center/call_center_staff_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -404,6 +405,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                         child: const Icon(Icons.medical_services_rounded,
                             color: AppColors.primary, size: 20),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Call Center Staff Button
+                    IconButton(
+                      tooltip: 'موظفو مركز الاتصالات',
+                      onPressed: () =>
+                          Get.to(() => const CallCenterStaffScreen()),
+                      icon: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppColors.secondary.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.headset_mic_rounded,
+                            color: AppColors.secondary, size: 20),
                       ),
                     ),
                     const SizedBox(width: 8),

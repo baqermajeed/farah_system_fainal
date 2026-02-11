@@ -7,4 +7,5 @@ class Role(str, Enum):
     PATIENT = "patient"       # مريض
     RECEPTIONIST = "receptionist"  # موظف استقبال
     PHOTOGRAPHER = "photographer"  # مصور
+    CALL_CENTER = "call_center"    # مركز الاتصالات
     

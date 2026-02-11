@@ -72,6 +72,8 @@ class UserModel {
         return 'receptionist';
       case 'photographer':
         return 'photographer';
+      case 'call_center':
+        return 'call_center';
       case 'admin':
         return 'admin';
       default:

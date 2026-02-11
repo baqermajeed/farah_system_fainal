@@ -125,6 +125,7 @@ async def get_users_stats() -> Dict:
     doctors = await User.find(User.role == Role.DOCTOR).count()
     receptionists = await User.find(User.role == Role.RECEPTIONIST).count()
     photographers = await User.find(User.role == Role.PHOTOGRAPHER).count()
+    call_centers = await User.find(User.role == Role.CALL_CENTER).count()
     admins = await User.find(User.role == Role.ADMIN).count()
     
     return {
@@ -134,6 +135,7 @@ async def get_users_stats() -> Dict:
             "doctors": doctors,
             "receptionists": receptionists,
             "photographers": photographers,
+            "call_centers": call_centers,
             "admins": admins,
         }
     }
