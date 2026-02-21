@@ -108,7 +108,7 @@ class AuthController extends GetxController {
           } else if (user.userType == 'receptionist') {
             Get.offAllNamed(AppRoutes.receptionHome);
           } else if (user.userType == 'call_center') {
-            Get.offAllNamed(AppRoutes.receptionHome);
+            Get.offAllNamed(AppRoutes.callCenterHome);
           } else {
             Get.offAllNamed(AppRoutes.userSelection);
           }
@@ -166,7 +166,7 @@ class AuthController extends GetxController {
               targetRoute = AppRoutes.receptionHome;
               break;
             case 'call_center':
-              targetRoute = AppRoutes.receptionHome;
+              targetRoute = AppRoutes.callCenterHome;
               break;
             default:
               targetRoute = AppRoutes.userSelection;

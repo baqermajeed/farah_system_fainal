@@ -3979,6 +3979,45 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                       selectedTime = time;
                     });
                   },
+                  onRetry: () async {
+                    if (selectedDate == null) return;
+                    setDialogState(() {
+                      isLoadingSlots = true;
+                    });
+                    if (doctorId != null) {
+                      try {
+                        final date = selectedDate!;
+                        final dateStr =
+                            '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+                        final slots = await _workingHoursService.getAvailableSlots(
+                          doctorId,
+                          dateStr,
+                          forceRefresh: false,
+                        );
+                        setDialogState(() {
+                          availableSlots = slots;
+                          isLoadingSlots = false;
+                        });
+                      } catch (e) {
+                        setDialogState(() {
+                          availableSlots = [];
+                          isLoadingSlots = false;
+                        });
+                        Get.snackbar(
+                          'خطأ',
+                          'فشل جلب الأوقات المتاحة',
+                          snackPosition: SnackPosition.BOTTOM,
+                          backgroundColor: Colors.red,
+                          colorText: AppColors.white,
+                        );
+                      }
+                    } else {
+                      setDialogState(() {
+                        availableSlots = [];
+                        isLoadingSlots = false;
+                      });
+                    }
+                  },
                   () async {
                     if (selectedDate == null || selectedTime == null) {
                       Get.snackbar(
@@ -4963,6 +5002,47 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                             selectedTime = time;
                           });
                         },
+                        onRetry: () async {
+                          if (selectedDate == null) return;
+                          setDialogState(() {
+                            isLoadingSlots = true;
+                          });
+                          if (doctorId != null) {
+                            try {
+                              final date = selectedDate!;
+                              final dateStr =
+                                  '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+                              final slots = await _workingHoursService.getAvailableSlots(
+                                doctorId,
+                                dateStr,
+                              );
+                              setDialogState(() {
+                                availableSlots = slots;
+                                isLoadingSlots = false;
+                              });
+                            } catch (e) {
+                              print(
+                                '❌ [DoctorHomeScreen] Error loading available slots: $e',
+                              );
+                              setDialogState(() {
+                                availableSlots = [];
+                                isLoadingSlots = false;
+                              });
+                              Get.snackbar(
+                                'خطأ',
+                                'فشل جلب الأوقات المتاحة',
+                                snackPosition: SnackPosition.BOTTOM,
+                                backgroundColor: Colors.red,
+                                colorText: AppColors.white,
+                              );
+                            }
+                          } else {
+                            setDialogState(() {
+                              availableSlots = [];
+                              isLoadingSlots = false;
+                            });
+                          }
+                        },
                         () {
                           if (selectedDate != null && selectedTime != null) {
                             setDialogState(() {
@@ -5119,6 +5199,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
     VoidCallback onBack,
     StateSetter setState,
     {
+      VoidCallback? onRetry,
       String primaryButtonText = 'حجز',
       String hintText = 'لطفا قم بادخال الوقت والتاريخ لتسجيل موعد المريض',
     }
@@ -5136,6 +5217,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
 
     // Use selectedDate or today as reference
     final now = selectedDate ?? DateTime.now();
+    final showRetry = selectedDate != null && onRetry != null && !isLoadingSlots;
 
     return StatefulBuilder(
       builder: (context, setCalendarState) {
@@ -5327,15 +5409,41 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                     ? Container(
                         padding: EdgeInsets.all(24.h),
                         child: Center(
-                          child: Text(
-                            selectedDate == null
-                                ? 'يرجى اختيار تاريخ أولاً'
-                                : 'لا توجد أوقات متاحة لهذا التاريخ',
-                            style: TextStyle(
-                              fontSize: 14.sp,
-                              color: AppColors.textSecondary,
-                            ),
-                            textAlign: TextAlign.center,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                selectedDate == null
+                                    ? 'يرجى اختيار تاريخ أولاً'
+                                    : 'لا توجد أوقات متاحة لهذا التاريخ',
+                                style: TextStyle(
+                                  fontSize: 14.sp,
+                                  color: AppColors.textSecondary,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              if (showRetry) ...[
+                                SizedBox(height: 12.h),
+                                OutlinedButton(
+                                  onPressed: onRetry,
+                                  style: OutlinedButton.styleFrom(
+                                    side: BorderSide(color: AppColors.primary),
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 16.w,
+                                      vertical: 10.h,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    'إعادة المحاولة',
+                                    style: TextStyle(
+                                      fontSize: 12.sp,
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                         ),
                       )
@@ -7672,20 +7780,39 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
     Future<void> _onSave() async {
       final result = await controller.saveWorkingHours();
       if (result['ok'] == true) {
-        Get.snackbar(
-          'تم الحفظ',
-          result['message'] ?? 'تم حفظ أوقات العمل بنجاح',
-          backgroundColor: AppColors.primary,
-          colorText: Colors.white,
-          snackPosition: SnackPosition.TOP,
+        await Get.dialog<void>(
+          AlertDialog(
+            title: Text('تم الحفظ'),
+            content: Text(result['message'] ?? 'تم حفظ أوقات العمل بنجاح'),
+            actions: [
+              TextButton(
+                onPressed: () => Get.back(),
+                child: Text('حسناً'),
+              ),
+            ],
+          ),
         );
       } else {
-        Get.snackbar(
-          'فشل الحفظ',
-          result['message'] ?? 'تعذر حفظ أوقات العمل',
-          backgroundColor: AppColors.error,
-          colorText: Colors.white,
-          snackPosition: SnackPosition.TOP,
+        final rawMessage = result['message']?.toString() ?? '';
+        final message = rawMessage.contains('start_time must be before end_time')
+            ? 'حصل خطا وقت النهاية قبل وقت البداية'
+            : (result['message'] ?? 'تعذر حفظ أوقات العمل');
+        await Get.dialog<void>(
+          AlertDialog(
+            title: Text('تحذير'),
+            content: Text(
+              message,
+              style: TextStyle(color: Colors.red),
+              textAlign: TextAlign.center,
+              textDirection: ui.TextDirection.rtl,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Get.back(),
+                child: Text('حسناً'),
+              ),
+            ],
+          ),
         );
       }
     }

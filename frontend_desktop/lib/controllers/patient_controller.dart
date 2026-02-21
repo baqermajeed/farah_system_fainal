@@ -331,7 +331,7 @@ class PatientController extends GetxController {
       if (NetworkUtils.isNetworkError(e)) {
         NetworkUtils.showNetworkErrorDialog();
       } else {
-        Get.snackbar('خطأ', e.message);
+        Get.snackbar('خطأ', 'خطا');
       }
     } catch (e) {
       print('❌ [PatientController] Error: $e');
@@ -622,7 +622,7 @@ class PatientController extends GetxController {
       if (NetworkUtils.isNetworkError(e)) {
         NetworkUtils.showNetworkErrorDialog();
       } else {
-        Get.snackbar('خطأ', e.message);
+        Get.snackbar('خطأ', 'خطا');
       }
     } catch (e) {
       // تراجع (Rollback) إلى الحالة القديمة
@@ -724,7 +724,7 @@ class PatientController extends GetxController {
       if (NetworkUtils.isNetworkError(e)) {
         NetworkUtils.showNetworkErrorDialog();
       } else {
-        Get.snackbar('خطأ', e.message);
+        Get.snackbar('خطأ', 'خطا');
       }
     } catch (e) {
       if (oldPatient != null) {
@@ -787,9 +787,20 @@ class PatientController extends GetxController {
   PatientModel? getPatientById(String patientId) {
     try {
       return patients.firstWhere((p) => p.id == patientId);
-    } catch (e) {
-      return null;
+    } catch (_) {}
+
+    // Fallback to search results for cases where the patient was opened via search/QR.
+    try {
+      return searchResults.firstWhere((p) => p.id == patientId);
+    } catch (_) {}
+
+    // Final fallback: currently selected patient.
+    final selected = selectedPatient.value;
+    if (selected?.id == patientId) {
+      return selected;
     }
+
+    return null;
   }
 
   // إضافة مريض جديد إلى القائمة وتعيينه كمريض محدد بدون إعادة تحميل كاملة

@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
@@ -15,6 +17,7 @@ import 'package:frontend_desktop/views/add_patient_screen.dart';
 import 'package:frontend_desktop/views/doctor_profile_screen.dart';
 import 'package:frontend_desktop/views/edit_doctor_profile_screen.dart';
 import 'package:frontend_desktop/views/reception_home_screen.dart';
+import 'package:frontend_desktop/views/call_center_home_screen.dart';
 import 'package:frontend_desktop/views/working_hours_page.dart';
 import 'package:frontend_desktop/views/appointments_screen.dart';
 import 'package:frontend_desktop/controllers/auth_controller.dart';
@@ -27,39 +30,51 @@ import 'package:camera/camera.dart';
 List<CameraDescription>? availableCamerasList;
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  
-  // جلب قائمة الكاميرات المتاحة على Windows/Linux/MacOS (اختياري - لا يمنع البناء)
-  // يتم جلب الكاميرات عند الحاجة فقط لتجنب مشاكل البناء
-  availableCamerasList = null; // سيتم جلبها عند الحاجة
+  FlutterError.onError = (details) {
+    FlutterError.dumpErrorToConsole(details);
+  };
 
-  // Initialize Arabic locale for DateFormat
-  await initializeDateFormatting('ar', null);
+  PlatformDispatcher.instance.onError = (error, stack) {
+    debugPrint('❌ [PlatformError] $error\n$stack');
+    return true; // prevent hard crash
+  };
 
-  // Initialize Hive and CacheService for local cache
-  await CacheService().init();
-  
-  // ✅ حل نهائي: مسح Cache القديم عند التحميل الأولي (اختياري - يمكن تعطيله لاحقاً)
-  try {
-    final cacheService = CacheService();
-    // التحقق من حجم Cache - إذا كان كبير جداً، نمسحه
-    final totalCached = cacheService.totalCachedItems;
-    if (totalCached > 500) {
-      print('⚠️ [Main] Large cache detected ($totalCached items), clearing old cache...');
-      await cacheService.clearAll();
-      print('✅ [Main] Old cache cleared');
+  await runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    // جلب قائمة الكاميرات المتاحة على Windows/Linux/MacOS (اختياري - لا يمنع البناء)
+    // يتم جلب الكاميرات عند الحاجة فقط لتجنب مشاكل البناء
+    availableCamerasList = null; // سيتم جلبها عند الحاجة
+
+    // Initialize Arabic locale for DateFormat
+    await initializeDateFormatting('ar', null);
+
+    // Initialize Hive and CacheService for local cache
+    await CacheService().init();
+
+    // ✅ حل نهائي: مسح Cache القديم عند التحميل الأولي (اختياري - يمكن تعطيله لاحقاً)
+    try {
+      final cacheService = CacheService();
+      // التحقق من حجم Cache - إذا كان كبير جداً، نمسحه
+      final totalCached = cacheService.totalCachedItems;
+      if (totalCached > 500) {
+        print('⚠️ [Main] Large cache detected ($totalCached items), clearing old cache...');
+        await cacheService.clearAll();
+        print('✅ [Main] Old cache cleared');
+      }
+    } catch (e) {
+      print('⚠️ [Main] Error checking cache size: $e');
     }
-  } catch (e) {
-    print('⚠️ [Main] Error checking cache size: $e');
-  }
-  
-  // Open metaData box for update timestamps
-  await Hive.openBox('metaData');
 
-  // Initialize AuthController to load persisted session
-  Get.put(AuthController());
+    // Open metaData box for update timestamps
+    await Hive.openBox('metaData');
 
-  runApp(const MyApp());
+    // Initialize AuthController to load persisted session
+    Get.put(AuthController());
+
+    runApp(const MyApp());
+  }, (error, stack) {
+    debugPrint('❌ [ZoneError] $error\n$stack');
+  });
 }
 
 class MyApp extends StatelessWidget {
@@ -138,6 +153,10 @@ class MyApp extends StatelessWidget {
             GetPage(
               name: AppRoutes.receptionHome,
               page: () => const ReceptionHomeScreen(),
+            ),
+            GetPage(
+              name: AppRoutes.callCenterHome,
+              page: () => const CallCenterHomeScreen(),
             ),
             GetPage(
               name: AppRoutes.doctorHome,

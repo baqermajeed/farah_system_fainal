@@ -8,6 +8,7 @@ class AppRoutes {
   static const String callCenterLogin = '/call-center-login';
   static const String receptionHome = '/reception-home';
   static const String doctorHome = '/doctor-home';
+  static const String callCenterHome = '/call-center-home';
   static const String doctorProfile = '/doctor-profile';
   static const String receptionProfile = '/reception-profile';
   static const String addPatient = '/add-patient';

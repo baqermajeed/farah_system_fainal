@@ -177,7 +177,7 @@ class AppointmentController extends GetxController {
       if (NetworkUtils.isNetworkError(e)) {
         NetworkUtils.showNetworkErrorDialog();
       } else {
-        Get.snackbar('خطأ', e.message);
+        Get.snackbar('خطأ', 'خطا');
       }
     } catch (e, stackTrace) {
       print('❌ [AppointmentController] Error loading appointments: $e');
@@ -333,7 +333,7 @@ class AppointmentController extends GetxController {
       if (NetworkUtils.isNetworkError(e)) {
         NetworkUtils.showNetworkErrorDialog();
       } else {
-        Get.snackbar('خطأ', e.message);
+        Get.snackbar('خطأ', 'خطا');
       }
     } catch (e) {
       if (NetworkUtils.isNetworkError(e)) {
@@ -409,7 +409,7 @@ class AppointmentController extends GetxController {
       if (NetworkUtils.isNetworkError(e)) {
         NetworkUtils.showNetworkErrorDialog();
       } else {
-        Get.snackbar('خطأ', e.message);
+        Get.snackbar('خطأ', 'خطا');
       }
     } catch (e) {
       if (NetworkUtils.isNetworkError(e)) {
@@ -565,7 +565,7 @@ class AppointmentController extends GetxController {
       if (NetworkUtils.isNetworkError(e)) {
         NetworkUtils.showNetworkErrorDialog();
       } else {
-        Get.snackbar('خطأ', e.message);
+        Get.snackbar('خطأ', 'خطا');
       }
       rethrow;
     } catch (e) {
@@ -633,7 +633,7 @@ class AppointmentController extends GetxController {
       if (NetworkUtils.isNetworkError(e)) {
         NetworkUtils.showNetworkErrorDialog();
       } else {
-        Get.snackbar('خطأ', e.message);
+        Get.snackbar('خطأ', 'خطا');
       }
       rethrow;
     } catch (e) {
@@ -692,7 +692,7 @@ class AppointmentController extends GetxController {
       if (NetworkUtils.isNetworkError(e)) {
         NetworkUtils.showNetworkErrorDialog();
       } else {
-        Get.snackbar('خطأ', e.message);
+        Get.snackbar('خطأ', 'خطا');
       }
       rethrow;
     } catch (e) {

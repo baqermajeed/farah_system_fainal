@@ -45,7 +45,7 @@ class MedicalRecordController extends GetxController {
       if (NetworkUtils.isNetworkError(e)) {
         NetworkUtils.showNetworkErrorDialog();
       } else {
-        Get.snackbar('خطأ', e.message);
+        Get.snackbar('خطأ', 'خطا');
       }
     } catch (e) {
       if (NetworkUtils.isNetworkError(e)) {
@@ -113,7 +113,7 @@ class MedicalRecordController extends GetxController {
       if (NetworkUtils.isNetworkError(e)) {
         NetworkUtils.showNetworkErrorDialog();
       } else {
-        Get.snackbar('خطأ', e.message);
+        Get.snackbar('خطأ', 'خطا');
       }
       rethrow;
     } catch (e) {
@@ -161,7 +161,7 @@ class MedicalRecordController extends GetxController {
       if (NetworkUtils.isNetworkError(e)) {
         NetworkUtils.showNetworkErrorDialog();
       } else {
-        Get.snackbar('خطأ', e.message);
+        Get.snackbar('خطأ', 'خطا');
       }
       rethrow;
     } catch (e) {
@@ -202,7 +202,7 @@ class MedicalRecordController extends GetxController {
       if (NetworkUtils.isNetworkError(e)) {
         NetworkUtils.showNetworkErrorDialog();
       } else {
-        Get.snackbar('خطأ', e.message);
+        Get.snackbar('خطأ', 'خطا');
       }
       rethrow;
     } catch (e) {

@@ -496,20 +496,39 @@ class WorkingHoursPage extends StatelessWidget {
   Future<void> _onSave() async {
     final result = await controller.saveWorkingHours();
     if (result['ok'] == true) {
-      Get.snackbar(
-        'تم الحفظ',
-        result['message'] ?? 'تم حفظ أوقات العمل بنجاح',
-        backgroundColor: AppColors.primary,
-        colorText: Colors.white,
-        snackPosition: SnackPosition.BOTTOM,
+      await Get.dialog<void>(
+        AlertDialog(
+          title: Text('تم الحفظ'),
+          content: Text(result['message'] ?? 'تم حفظ أوقات العمل بنجاح'),
+          actions: [
+            TextButton(
+              onPressed: () => Get.back(),
+              child: Text('حسناً'),
+            ),
+          ],
+        ),
       );
     } else {
-      Get.snackbar(
-        'فشل الحفظ',
-        result['message'] ?? 'تعذر حفظ أوقات العمل',
-        backgroundColor: const Color(0xFFFF3B30),
-        colorText: Colors.white,
-        snackPosition: SnackPosition.BOTTOM,
+      final rawMessage = result['message']?.toString() ?? '';
+      final message = rawMessage.contains('start_time must be before end_time')
+          ? 'حصل خطا وقت النهاية قبل وقت البداية'
+          : (result['message'] ?? 'تعذر حفظ أوقات العمل');
+      await Get.dialog<void>(
+        AlertDialog(
+          title: Text('تحذير'),
+          content: Text(
+            message,
+            style: TextStyle(color: Colors.red),
+            textAlign: TextAlign.center,
+            textDirection: TextDirection.rtl,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Get.back(),
+              child: Text('حسناً'),
+            ),
+          ],
+        ),
       );
     }
   }

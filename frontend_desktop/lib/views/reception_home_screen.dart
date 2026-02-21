@@ -175,6 +175,15 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
 
     final selected = _patientController.selectedPatient.value;
     if (selected != null) {
+      final userType =
+          _authController.currentUser.value?.userType.toLowerCase();
+
+      // موظف الاستقبال: لا يجلب سجلات/مواعيد المريض الخاصة بالطبيب
+      if (userType == 'receptionist') {
+        await _galleryController.loadGallery(selected.id);
+        return;
+      }
+
       await Future.wait([
         _medicalRecordController.loadPatientRecords(selected.id),
         _galleryController.loadGallery(selected.id),
@@ -3262,6 +3271,45 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                       selectedTime = time;
                     });
                   },
+                  onRetry: () async {
+                    if (selectedDate == null) return;
+                    setDialogState(() {
+                      isLoadingSlots = true;
+                    });
+                    if (doctorId != null) {
+                      try {
+                        final date = selectedDate!;
+                        final dateStr =
+                            '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+                        final slots = await _workingHoursService
+                            .getAvailableSlotsForReception(
+                          doctorId,
+                          dateStr,
+                        );
+                        setDialogState(() {
+                          availableSlots = slots;
+                          isLoadingSlots = false;
+                        });
+                      } catch (e) {
+                        setDialogState(() {
+                          availableSlots = [];
+                          isLoadingSlots = false;
+                        });
+                        Get.snackbar(
+                          'خطأ',
+                          'فشل جلب الأوقات المتاحة',
+                          snackPosition: SnackPosition.BOTTOM,
+                          backgroundColor: Colors.red,
+                          colorText: AppColors.white,
+                        );
+                      }
+                    } else {
+                      setDialogState(() {
+                        availableSlots = [];
+                        isLoadingSlots = false;
+                      });
+                    }
+                  },
                   () async {
                     if (selectedDate == null || selectedTime == null) {
                       Get.snackbar(
@@ -4394,6 +4442,60 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                             selectedTime = time;
                           });
                         },
+                        onRetry: () async {
+                          if (selectedDate == null) return;
+                          setDialogState(() {
+                            isLoadingSlots = true;
+                          });
+                          if (doctorId != null) {
+                            try {
+                              final date = selectedDate!;
+                              final dateStr =
+                                  '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+                              final userType =
+                                  (_authController.currentUser.value?.userType ??
+                                          '')
+                                      .toLowerCase();
+                              final isReceptionOrAdmin =
+                                  userType == 'receptionist' ||
+                                      userType == 'admin';
+                              final slots = isReceptionOrAdmin
+                                  ? await _workingHoursService
+                                      .getAvailableSlotsForReception(
+                                        doctorId,
+                                        dateStr,
+                                      )
+                                  : await _workingHoursService.getAvailableSlots(
+                                      doctorId,
+                                      dateStr,
+                                    );
+                              setDialogState(() {
+                                availableSlots = slots;
+                                isLoadingSlots = false;
+                              });
+                            } catch (e) {
+                              print(
+                                '❌ [ReceptionHomeScreen] Error loading available slots: $e',
+                              );
+                              setDialogState(() {
+                                availableSlots = [];
+                                isLoadingSlots = false;
+                              });
+                              Get.snackbar(
+                                'خطأ',
+                                'فشل جلب الأوقات المتاحة',
+                                snackPosition: SnackPosition.BOTTOM,
+                                backgroundColor: Colors.red,
+                                colorText: AppColors.white,
+                              );
+                            }
+                          } else {
+                            setDialogState(() {
+                              availableSlots = [];
+                              isLoadingSlots = false;
+                            });
+                          }
+                        },
                         () {
                           if (selectedDate != null && selectedTime != null) {
                             setDialogState(() {
@@ -4554,6 +4656,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
     VoidCallback onBack,
     StateSetter setState,
     {
+      VoidCallback? onRetry,
       String primaryButtonText = 'حجز',
       String hintText = 'لطفا قم بادخال الوقت والتاريخ لتسجيل موعد المريض',
     }
@@ -4571,6 +4674,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
 
     // Use selectedDate or today as reference
     final now = selectedDate ?? DateTime.now();
+    final showRetry = selectedDate != null && onRetry != null && !isLoadingSlots;
 
     return StatefulBuilder(
       builder: (context, setCalendarState) {
@@ -4771,15 +4875,41 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                     ? Container(
                         padding: EdgeInsets.all(24.h),
                         child: Center(
-                          child: Text(
-                            selectedDate == null
-                                ? 'يرجى اختيار تاريخ أولاً'
-                                : 'لا توجد أوقات متاحة لهذا التاريخ',
-                            style: TextStyle(
-                              fontSize: 14.sp,
-                              color: AppColors.textSecondary,
-                            ),
-                            textAlign: TextAlign.center,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                selectedDate == null
+                                    ? 'يرجى اختيار تاريخ أولاً'
+                                    : 'لا توجد أوقات متاحة لهذا التاريخ',
+                                style: TextStyle(
+                                  fontSize: 14.sp,
+                                  color: AppColors.textSecondary,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                              if (showRetry) ...[
+                                SizedBox(height: 12.h),
+                                OutlinedButton(
+                                  onPressed: onRetry,
+                                  style: OutlinedButton.styleFrom(
+                                    side: BorderSide(color: AppColors.primary),
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 16.w,
+                                      vertical: 10.h,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    'إعادة المحاولة',
+                                    style: TextStyle(
+                                      fontSize: 12.sp,
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                         ),
                       )
