@@ -140,5 +140,34 @@ class CallCenterService {
       throw ApiException('فشل حذف الموعد: ${e.toString()}');
     }
   }
+
+  /// موظف الاستقبال يقبل الموعد: يُحذف من الجدول ويزيد عداد المقبولة عند الموظف الذي أضافه.
+  Future<void> acceptForReception(String appointmentId) async {
+    try {
+      final response = await _api.post(
+        ApiConstants.receptionCallCenterAppointmentAccept(appointmentId),
+      );
+      if (response.statusCode != 200) throw ApiException('فشل قبول الموعد');
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('فشل قبول الموعد: ${e.toString()}');
+    }
+  }
+
+  /// إحصائيات مواعيد مركز الاتصالات (اليوم، الشهر، النطاق، المقبولة).
+  Future<Map<String, dynamic>> getStats() async {
+    try {
+      final response = await _api.get(
+        ApiConstants.callCenterAppointmentsStats,
+      );
+      if (response.statusCode == 200 && response.data is Map) {
+        return Map<String, dynamic>.from(
+            (response.data as Map).map((k, v) => MapEntry(k.toString(), v)));
+      }
+      return {'today': 0, 'this_month': 0, 'accepted': 0};
+    } catch (e) {
+      return {'today': 0, 'this_month': 0, 'accepted': 0};
+    }
+  }
 }
 

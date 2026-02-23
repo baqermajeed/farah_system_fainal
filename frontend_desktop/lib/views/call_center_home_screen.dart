@@ -1552,12 +1552,14 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
           ),
           SizedBox(height: 8.h),
           Expanded(
-            child: _StatCard(
-              title: 'المواعيد المقبولة',
-              value: '--',
-              subtitle: 'قريباً',
-              icon: Icons.check_circle_outline_rounded,
-              color: const Color(0xFF9B59B6),
+            child: Obx(
+              () => _StatCard(
+                title: 'المواعيد المقبولة',
+                value: _appointmentsController.acceptedCount.value.toString(),
+                subtitle: 'مقبولة من الاستقبال',
+                icon: Icons.check_circle_outline_rounded,
+                color: const Color(0xFF9B59B6),
+              ),
             ),
           ),
         ],

@@ -25,6 +25,9 @@ class User(Document):
     username: Indexed(str, unique=True) | None = None
     password_hash: str | None = None
 
+    # لموظف مركز الاتصالات: عدد المواعيد المقبولة من الاستقبال
+    call_center_accepted_count: int = 0
+
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

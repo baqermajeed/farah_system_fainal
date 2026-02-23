@@ -10,6 +10,8 @@ class CallCenterAppointmentsController extends GetxController {
   final RxnString error = RxnString();
   final RxList<CallCenterAppointmentModel> appointments =
       <CallCenterAppointmentModel>[].obs;
+  /// عدد المواعيد المقبولة من الاستقبال (يُحدّث مع الإحصائيات).
+  final RxInt acceptedCount = 0.obs;
 
   String _lastSearch = '';
 
@@ -21,10 +23,22 @@ class CallCenterAppointmentsController extends GetxController {
     try {
       final list = await _service.getAppointments(search: q);
       appointments.assignAll(list);
+      await loadStats();
     } catch (e) {
       error.value = e.toString();
     } finally {
       loading.value = false;
+    }
+  }
+
+  Future<void> loadStats() async {
+    try {
+      final res = await _service.getStats();
+      acceptedCount.value = (res['accepted'] is int)
+          ? res['accepted'] as int
+          : (int.tryParse(res['accepted']?.toString() ?? '0') ?? 0);
+    } catch (_) {
+      acceptedCount.value = 0;
     }
   }
 

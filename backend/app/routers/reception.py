@@ -3,6 +3,7 @@ from typing import List, Optional
 from datetime import datetime, timezone
 import re
 
+from beanie import PydanticObjectId as OID
 from beanie.operators import In
 
 from app.schemas import (
@@ -570,3 +571,29 @@ async def list_call_center_appointments_for_reception(
         )
         for i in items
     ]
+
+
+@router.post("/call-center-appointments/{appointment_id}/accept")
+async def accept_call_center_appointment_for_reception(
+    appointment_id: str,
+):
+    """موظف الاستقبال يقبل الموعد: يُحذف من جدول المواعيد ويزيد عداد المواعيد المقبولة في حساب موظف الـ call center الذي أضافه."""
+    try:
+        oid = OID(appointment_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid appointment id")
+
+    doc = await CallCenterAppointment.get(oid)
+    if not doc:
+        raise HTTPException(status_code=404, detail="الموعد غير موجود")
+
+    creator_id = doc.created_by_user_id
+    creator = await User.get(creator_id)
+    if creator:
+        creator.call_center_accepted_count = getattr(
+            creator, "call_center_accepted_count", 0
+        ) + 1
+        await creator.save()
+
+    await doc.delete()
+    return {"ok": True, "accepted": True}
