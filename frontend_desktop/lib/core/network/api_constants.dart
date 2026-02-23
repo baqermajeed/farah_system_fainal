@@ -67,6 +67,8 @@ class ApiConstants {
       '/reception/patients/$patientId/upload-image';
   static String receptionPatientGallery(String patientId) =>
       '/reception/patients/$patientId/gallery';
+  static const String receptionCallCenterAppointments =
+      '/reception/call-center-appointments';
 
   // Call Center Endpoints
   static const String callCenterAppointments = '/call-center/appointments';

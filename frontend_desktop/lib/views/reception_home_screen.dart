@@ -36,6 +36,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:frontend_desktop/models/doctor_model.dart';
 import 'package:frontend_desktop/services/patient_service.dart';
 import 'package:frontend_desktop/services/auth_service.dart';
+import 'package:frontend_desktop/services/call_center_service.dart';
+import 'package:frontend_desktop/models/call_center_appointment_model.dart';
 import 'package:flutter/rendering.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
@@ -926,6 +928,30 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                         size: 24.sp,
                       );
                     },
+                  ),
+                ),
+                SizedBox(width: 15.w),
+                // أيقونة مواعيد مركز الاتصالات (التي يدخلها موظفو الـ call center)
+                Tooltip(
+                  message: 'مواعيد مركز الاتصالات',
+                  child: GestureDetector(
+                    onTap: () => _showCallCenterAppointmentsDialog(context),
+                    child: Container(
+                      padding: EdgeInsets.all(6.w),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF649FCC).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8.r),
+                        border: Border.all(
+                          color: const Color(0xB3649FCC),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.headset_mic_rounded,
+                        color: const Color(0xFF649FCC),
+                        size: 24.sp,
+                      ),
+                    ),
                   ),
                 ),
                 SizedBox(width: 30.w),
@@ -7778,6 +7804,187 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
       _phoneController.dispose();
       _ageController.dispose();
     });
+  }
+
+  /// نافذة عرض مواعيد مركز الاتصالات (التي يدخلها جميع موظفي الـ call center).
+  Future<void> _showCallCenterAppointmentsDialog(BuildContext context) async {
+    final callCenterService = CallCenterService();
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.r)),
+        child: Container(
+          width: 700.w,
+          constraints: BoxConstraints(maxHeight: 70.h * 20),
+          padding: EdgeInsets.all(20.r),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.headset_mic_rounded,
+                          color: AppColors.primary, size: 28.sp),
+                      SizedBox(width: 10.w),
+                      Text(
+                        'مواعيد مركز الاتصالات',
+                        style: TextStyle(
+                          fontSize: 20.sp,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    icon: Icon(Icons.close, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+              SizedBox(height: 16.h),
+              Flexible(
+                child: FutureBuilder<List<CallCenterAppointmentModel>>(
+                  future: callCenterService.getAppointmentsForReception(
+                    limit: 100,
+                  ),
+                  builder: (ctx, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(32.r),
+                          child: CircularProgressIndicator(
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      );
+                    }
+                    if (snapshot.hasError) {
+                      return Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24.r),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.error_outline,
+                                  size: 48.sp, color: AppColors.error),
+                              SizedBox(height: 12.h),
+                              Text(
+                                'تعذر جلب المواعيد',
+                                style: TextStyle(
+                                  fontSize: 16.sp,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              SizedBox(height: 8.h),
+                              Text(
+                                snapshot.error.toString(),
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 12.sp,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+                    final list = snapshot.data ?? [];
+                    if (list.isEmpty) {
+                      return Center(
+                        child: Text(
+                          'لا توجد مواعيد مسجلة من مركز الاتصالات',
+                          style: TextStyle(
+                            fontSize: 16.sp,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      );
+                    }
+                    final dateFormat = DateFormat('yyyy/MM/dd HH:mm');
+                    return ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: list.length,
+                      itemBuilder: (context, index) {
+                        final item = list[index];
+                        return Container(
+                          margin: EdgeInsets.only(bottom: 8.h),
+                          padding: EdgeInsets.symmetric(
+                              horizontal: 14.w, vertical: 12.h),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[50],
+                            borderRadius: BorderRadius.circular(12.r),
+                            border: Border.all(
+                              color: const Color(0xB3649FCC),
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  item.patientName,
+                                  style: TextStyle(
+                                    fontSize: 14.sp,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                  textAlign: TextAlign.right,
+                                ),
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  item.patientPhone,
+                                  style: TextStyle(
+                                    fontSize: 13.sp,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                  textAlign: TextAlign.right,
+                                ),
+                              ),
+                              Expanded(
+                                flex: 2,
+                                child: Text(
+                                  dateFormat.format(item.scheduledAt),
+                                  style: TextStyle(
+                                    fontSize: 12.sp,
+                                    color: Colors.grey[700],
+                                  ),
+                                  textAlign: TextAlign.right,
+                                ),
+                              ),
+                              Expanded(
+                                flex: 1,
+                                child: Text(
+                                  item.createdByUsername,
+                                  style: TextStyle(
+                                    fontSize: 11.sp,
+                                    color: Colors.grey[600],
+                                  ),
+                                  textAlign: TextAlign.right,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _showReceptionProfileDialog(BuildContext context) {
