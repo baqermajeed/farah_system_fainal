@@ -112,6 +112,17 @@ class AuthController extends GetxController {
           } else {
             Get.offAllNamed(AppRoutes.userSelection);
           }
+        } else {
+          // التوكن منتهي أو غير صالح (مثل 401) — مسح الجلسة والانتقال لاختيار المستخدم
+          print(
+            '⚠️ [AuthController] Failed to load user info, clearing session',
+          );
+          await _authService.logout();
+          await _cacheService.deleteUser();
+          currentUser.value = null;
+          if (navigate) {
+            Get.offAllNamed(AppRoutes.userSelection);
+          }
         }
       } else {
         print('ℹ️ [AuthController] User is not logged in');
@@ -122,6 +133,9 @@ class AuthController extends GetxController {
     } catch (e) {
       print('❌ [AuthController] Error checking logged in user: $e');
       currentUser.value = null;
+      if (navigate) {
+        Get.offAllNamed(AppRoutes.userSelection);
+      }
     }
   }
 

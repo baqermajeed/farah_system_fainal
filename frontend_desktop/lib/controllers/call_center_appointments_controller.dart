@@ -36,11 +36,15 @@ class CallCenterAppointmentsController extends GetxController {
     required String patientName,
     required String patientPhone,
     required DateTime scheduledAt,
+    String governorate = '',
+    String platform = '',
   }) async {
     await _service.createAppointment(
       patientName: patientName,
       patientPhone: patientPhone,
       scheduledAt: scheduledAt,
+      governorate: governorate,
+      platform: platform,
     );
     await refresh();
   }

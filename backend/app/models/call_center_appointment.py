@@ -11,6 +11,9 @@ class CallCenterAppointment(Document):
     patient_phone: Indexed(str)
     scheduled_at: Indexed(datetime)
 
+    governorate: str = ""   # المحافظة (محافظات العراق)
+    platform: str = ""      # المنصة (انستكرام، واتساب، تيك توك، فيسبوك، اتصال)
+
     created_by_user_id: Indexed(OID)
     created_by_username: str
 

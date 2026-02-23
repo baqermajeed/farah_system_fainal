@@ -155,6 +155,8 @@ class CallCenterAppointmentCreate(BaseModel):
     patient_name: str
     patient_phone: str
     scheduled_at: str  # ISO datetime
+    governorate: Optional[str] = ""
+    platform: Optional[str] = ""
 
     @field_validator("scheduled_at")
     @classmethod
@@ -175,6 +177,8 @@ class CallCenterAppointmentOut(BaseModel):
     patient_name: str
     patient_phone: str
     scheduled_at: str
+    governorate: str = ""
+    platform: str = ""
     created_by_user_id: str
     created_by_username: str
     created_at: str

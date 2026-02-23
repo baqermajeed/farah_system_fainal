@@ -10,6 +10,37 @@ import '../controllers/call_center_appointments_controller.dart';
 import '../core/constants/app_colors.dart';
 import '../core/utils/image_utils.dart';
 
+/// محافظات العراق
+const List<String> _iraqGovernorates = [
+  'بغداد',
+  'البصرة',
+  'نينوى',
+  'أربيل',
+  'السليمانية',
+  'النجف',
+  'كربلاء',
+  'المثنى',
+  'القادسية',
+  'بابل',
+  'واسط',
+  'ديالى',
+  'كركوك',
+  'صلاح الدين',
+  'الأنبار',
+  'ذي قار',
+  'ميسان',
+  'دهوك',
+];
+
+/// المنصات (مصدر الحجز)
+const List<String> _bookingPlatforms = [
+  'انستكرام',
+  'واتساب',
+  'تيك توك',
+  'فيسبوك',
+  'اتصال',
+];
+
 class CallCenterHomeScreen extends StatefulWidget {
   const CallCenterHomeScreen({super.key});
 
@@ -485,6 +516,8 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                   _buildHeaderCell('التاريخ', flex: 2),
                   _buildHeaderCell('اليوم والوقت', flex: 3),
                   _buildHeaderCell('المريض', flex: 2),
+                  _buildHeaderCell('المحافظة', flex: 2),
+                  _buildHeaderCell('المنصة', flex: 2),
                   SizedBox(width: 40.w), // Actions placeholder
                 ],
               ),
@@ -532,6 +565,16 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                               flex: 2,
                               isBold: true,
                               color: const Color(0xFF649FCC),
+                            ),
+                            _buildBodyCell(
+                              item.governorate.isNotEmpty
+                                  ? item.governorate
+                                  : '-',
+                              flex: 2,
+                            ),
+                            _buildBodyCell(
+                              item.platform.isNotEmpty ? item.platform : '-',
+                              flex: 2,
                             ),
                             SizedBox(
                               width: 40.w,
@@ -594,12 +637,181 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
     );
   }
 
+  /// أوقات جاهزة كل ساعة من ٨ صباحاً إلى ٨ مساءً
+  List<TimeOfDay> get _quickTimeSlots {
+    final list = <TimeOfDay>[];
+    for (int h = 8; h <= 20; h++) {
+      list.add(TimeOfDay(hour: h, minute: 0));
+    }
+    return list;
+  }
+
+  Future<void> _showDateTimeSheet({
+    required BuildContext context,
+    required DateTime? initialDate,
+    required TimeOfDay? initialTime,
+    required void Function(DateTime? date, TimeOfDay? time) onPicked,
+  }) async {
+    DateTime? date = initialDate;
+    TimeOfDay? time = initialTime;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) {
+          final dateStr = date != null ? _formatDate(date!) : 'اختر التاريخ';
+          String timeStr = 'اختر الوقت';
+          if (time != null) {
+            final dt = DateTime(2000, 1, 1, time!.hour, time!.minute);
+            timeStr = _formatTime(dt);
+          }
+
+          return Container(
+            padding: EdgeInsets.fromLTRB(24.w, 24.h, 24.w, 24.h + MediaQuery.of(ctx).padding.bottom),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24.r)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  blurRadius: 20,
+                  offset: const Offset(0, -4),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'التاريخ والوقت',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 18.sp,
+                    fontWeight: FontWeight.bold,
+                    color: const Color(0xFF2C3E50),
+                  ),
+                ),
+                SizedBox(height: 20.h),
+                // التاريخ
+                InkWell(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: ctx,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+                      initialDate: date ?? DateTime.now(),
+                      builder: (context, child) {
+                        return Theme(
+                          data: Theme.of(context).copyWith(
+                            colorScheme: ColorScheme.light(
+                              primary: AppColors.primary,
+                              onPrimary: Colors.white,
+                              surface: Colors.white,
+                              onSurface: Colors.black,
+                            ),
+                          ),
+                          child: child!,
+                        );
+                      },
+                    );
+                    if (picked != null) setModalState(() => date = picked);
+                  },
+                  borderRadius: BorderRadius.circular(12.r),
+                  child: Container(
+                    padding: EdgeInsets.symmetric(vertical: 14.h, horizontal: 16.w),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey[300]!),
+                      borderRadius: BorderRadius.circular(12.r),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.calendar_today_rounded, color: AppColors.primary, size: 22.sp),
+                        SizedBox(width: 12.w),
+                        Expanded(
+                          child: Text(
+                            dateStr + (timeStr != 'اختر الوقت' ? '  •  $timeStr' : ''),
+                            style: TextStyle(
+                              fontSize: 15.sp,
+                              fontWeight: date != null ? FontWeight.bold : FontWeight.normal,
+                              color: date != null ? const Color(0xFF334155) : Colors.grey,
+                            ),
+                          ),
+                        ),
+                        Icon(Icons.chevron_left_rounded, color: Colors.grey[400], size: 22.sp),
+                      ],
+                    ),
+                  ),
+                ),
+                SizedBox(height: 16.h),
+                Text(
+                  'الوقت (اضغط على وقت)',
+                  style: TextStyle(fontSize: 13.sp, color: Colors.grey[600], fontWeight: FontWeight.w500),
+                ),
+                SizedBox(height: 10.h),
+                Wrap(
+                  spacing: 8.w,
+                  runSpacing: 8.h,
+                  children: _quickTimeSlots.map((t) {
+                    final isSelected = time != null && time!.hour == t.hour && time!.minute == t.minute;
+                    final dt = DateTime(2000, 1, 1, t.hour, t.minute);
+                    final label = _formatTime(dt);
+                    return Material(
+                      color: isSelected ? AppColors.primary : Colors.grey[100],
+                      borderRadius: BorderRadius.circular(10.r),
+                      child: InkWell(
+                        onTap: () => setModalState(() => time = t),
+                        borderRadius: BorderRadius.circular(10.r),
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
+                          child: Text(
+                            label,
+                            style: TextStyle(
+                              fontSize: 13.sp,
+                              fontWeight: FontWeight.w600,
+                              color: isSelected ? Colors.white : const Color(0xFF334155),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                SizedBox(height: 24.h),
+                SizedBox(
+                  height: 48.h,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      onPicked(date, time);
+                      Navigator.of(ctx).pop();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.r)),
+                      elevation: 0,
+                    ),
+                    child: Text('تم', style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _showCreateAppointmentDialog(BuildContext context) async {
     final formKey = GlobalKey<FormState>();
     final nameController = TextEditingController();
     final phoneController = TextEditingController();
     DateTime? selectedDate;
     TimeOfDay? selectedTime;
+    String? selectedGovernorate;
+    String? selectedPlatform;
 
     await showDialog<void>(
       context: context,
@@ -690,126 +902,132 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                           validator: (v) =>
                               (v == null || v.trim().isEmpty) ? 'مطلوب' : null,
                         ),
+                        SizedBox(height: 16.h),
+
+                        // المحافظة (محافظات العراق)
+                        DropdownButtonFormField<String>(
+                          value: selectedGovernorate,
+                          decoration: InputDecoration(
+                            labelText: 'المحافظة',
+                            prefixIcon: const Icon(Icons.location_city_outlined),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12.r),
+                            ),
+                            filled: true,
+                            fillColor: Colors.grey[50],
+                          ),
+                          hint: const Text('اختر المحافظة'),
+                          items: _iraqGovernorates
+                              .map((g) => DropdownMenuItem(
+                                    value: g,
+                                    child: Text(g),
+                                  ))
+                              .toList(),
+                          onChanged: (v) => setState(() => selectedGovernorate = v),
+                        ),
+                        SizedBox(height: 16.h),
+
+                        // المنصة (مصدر الحجز)
+                        DropdownButtonFormField<String>(
+                          value: selectedPlatform,
+                          decoration: InputDecoration(
+                            labelText: 'المنصة',
+                            prefixIcon: const Icon(Icons.devices_other_outlined),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12.r),
+                            ),
+                            filled: true,
+                            fillColor: Colors.grey[50],
+                          ),
+                          hint: const Text('اختر المنصة'),
+                          items: _bookingPlatforms
+                              .map((p) => DropdownMenuItem(
+                                    value: p,
+                                    child: Text(p),
+                                  ))
+                              .toList(),
+                          onChanged: (v) => setState(() => selectedPlatform = v),
+                        ),
                         SizedBox(height: 24.h),
 
-                        // Date & Time Pickers
-                        Row(
-                          children: [
-                            Expanded(
-                              child: InkWell(
-                                onTap: () async {
-                                  final picked = await showDatePicker(
-                                    context: context,
-                                    firstDate: DateTime(2020),
-                                    lastDate: DateTime.now().add(
-                                      const Duration(days: 365 * 2),
-                                    ),
-                                    initialDate: selectedDate ?? DateTime.now(),
-                                    builder: (context, child) {
-                                      return Theme(
-                                        data: Theme.of(context).copyWith(
-                                          colorScheme: ColorScheme.light(
-                                            primary: AppColors.primary,
-                                            onPrimary: Colors.white,
-                                            surface: Colors.white,
-                                            onSurface: Colors.black,
-                                          ),
-                                        ),
-                                        child: child!,
-                                      );
-                                    },
-                                  );
-                                  if (picked != null) {
-                                    setState(() => selectedDate = picked);
-                                  }
-                                },
-                                borderRadius: BorderRadius.circular(12.r),
-                                child: Container(
-                                  padding: EdgeInsets.symmetric(vertical: 16.h),
-                                  decoration: BoxDecoration(
-                                    border:
-                                        Border.all(color: Colors.grey[300]!),
-                                    borderRadius: BorderRadius.circular(12.r),
-                                  ),
+                        // التاريخ والوقت — زر واحد يفتح ورقة واحدة للاختيار السريع
+                        InkWell(
+                          onTap: () async {
+                            await _showDateTimeSheet(
+                              context: context,
+                              initialDate: selectedDate,
+                              initialTime: selectedTime,
+                              onPicked: (date, time) {
+                                setState(() {
+                                  selectedDate = date;
+                                  selectedTime = time;
+                                });
+                              },
+                            );
+                          },
+                          borderRadius: BorderRadius.circular(12.r),
+                          child: Container(
+                            padding: EdgeInsets.symmetric(
+                                vertical: 18.h, horizontal: 16.w),
+                            decoration: BoxDecoration(
+                              border:
+                                  Border.all(color: Colors.grey[300]!),
+                              borderRadius: BorderRadius.circular(12.r),
+                              color: (selectedDate != null &&
+                                      selectedTime != null)
+                                  ? AppColors.primary.withValues(alpha: 0.06)
+                                  : null,
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.calendar_month_rounded,
+                                  color: AppColors.primary,
+                                  size: 28.sp,
+                                ),
+                                SizedBox(width: 12.w),
+                                Expanded(
                                   child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(Icons.calendar_today,
-                                          color: AppColors.primary),
-                                      SizedBox(height: 8.h),
                                       Text(
-                                        dateLabel,
+                                        'التاريخ والوقت',
                                         style: TextStyle(
-                                          fontSize: 14.sp,
-                                          color: selectedDate != null
-                                              ? Colors.black
-                                              : Colors.grey,
-                                          fontWeight: selectedDate != null
+                                          fontSize: 12.sp,
+                                          color: Colors.grey[600],
+                                        ),
+                                      ),
+                                      SizedBox(height: 4.h),
+                                      Text(
+                                        (selectedDate != null &&
+                                                selectedTime != null)
+                                            ? '$dateLabel  •  $timeLabel'
+                                            : 'اضغط لاختيار التاريخ والوقت',
+                                        style: TextStyle(
+                                          fontSize: 15.sp,
+                                          fontWeight: (selectedDate != null &&
+                                                  selectedTime != null)
                                               ? FontWeight.bold
                                               : FontWeight.normal,
+                                          color: (selectedDate != null &&
+                                                  selectedTime != null)
+                                              ? const Color(0xFF334155)
+                                              : Colors.grey,
                                         ),
                                       ),
                                     ],
                                   ),
                                 ),
-                              ),
-                            ),
-                            SizedBox(width: 16.w),
-                            Expanded(
-                              child: InkWell(
-                                onTap: () async {
-                                  final picked = await showTimePicker(
-                                    context: context,
-                                    initialTime:
-                                        selectedTime ?? TimeOfDay.now(),
-                                    builder: (context, child) {
-                                      return Theme(
-                                        data: Theme.of(context).copyWith(
-                                          colorScheme: ColorScheme.light(
-                                            primary: AppColors.primary,
-                                            onPrimary: Colors.white,
-                                            surface: Colors.white,
-                                            onSurface: Colors.black,
-                                          ),
-                                        ),
-                                        child: child!,
-                                      );
-                                    },
-                                  );
-                                  if (picked != null) {
-                                    setState(() => selectedTime = picked);
-                                  }
-                                },
-                                borderRadius: BorderRadius.circular(12.r),
-                                child: Container(
-                                  padding: EdgeInsets.symmetric(vertical: 16.h),
-                                  decoration: BoxDecoration(
-                                    border:
-                                        Border.all(color: Colors.grey[300]!),
-                                    borderRadius: BorderRadius.circular(12.r),
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      Icon(Icons.access_time,
-                                          color: AppColors.primary),
-                                      SizedBox(height: 8.h),
-                                      Text(
-                                        timeLabel,
-                                        style: TextStyle(
-                                          fontSize: 14.sp,
-                                          color: selectedTime != null
-                                              ? Colors.black
-                                              : Colors.grey,
-                                          fontWeight: selectedTime != null
-                                              ? FontWeight.bold
-                                              : FontWeight.normal,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                                Icon(
+                                  Icons.arrow_forward_ios_rounded,
+                                  size: 14.sp,
+                                  color: Colors.grey[400],
                                 ),
-                              ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
                         SizedBox(height: 32.h),
 
@@ -844,6 +1062,8 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                                     patientName: nameController.text.trim(),
                                     patientPhone: phoneController.text.trim(),
                                     scheduledAt: scheduledAt,
+                                    governorate: selectedGovernorate ?? '',
+                                    platform: selectedPlatform ?? '',
                                   );
                                   if (mounted) {
                                     Navigator.of(ctx).pop();

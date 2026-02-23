@@ -5,6 +5,8 @@ class CallCenterAppointmentModel {
   final DateTime scheduledAt;
   final String createdByUsername;
   final DateTime? createdAt;
+  final String governorate;
+  final String platform;
 
   CallCenterAppointmentModel({
     required this.id,
@@ -13,6 +15,8 @@ class CallCenterAppointmentModel {
     required this.scheduledAt,
     required this.createdByUsername,
     this.createdAt,
+    this.governorate = '',
+    this.platform = '',
   });
 
   factory CallCenterAppointmentModel.fromJson(Map<String, dynamic> json) {
@@ -30,6 +34,8 @@ class CallCenterAppointmentModel {
           ? null
           : DateTime.tryParse(createdRaw) ??
               DateTime.tryParse(createdRaw.replaceAll('Z', '+00:00')),
+      governorate: (json['governorate'] ?? '').toString(),
+      platform: (json['platform'] ?? '').toString(),
     );
   }
 }

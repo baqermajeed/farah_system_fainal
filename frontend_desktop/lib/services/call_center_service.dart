@@ -43,6 +43,8 @@ class CallCenterService {
     required String patientName,
     required String patientPhone,
     required DateTime scheduledAt,
+    String governorate = '',
+    String platform = '',
   }) async {
     try {
       final response = await _api.post(
@@ -51,6 +53,8 @@ class CallCenterService {
           'patient_name': patientName,
           'patient_phone': patientPhone,
           'scheduled_at': scheduledAt.toIso8601String(),
+          'governorate': governorate,
+          'platform': platform,
         },
       );
 
