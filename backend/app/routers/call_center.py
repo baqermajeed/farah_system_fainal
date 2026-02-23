@@ -117,26 +117,30 @@ async def delete_call_center_appointment(
 async def list_call_center_appointments(
     date_from: Optional[str] = Query(None, description="فلترة حسب تاريخ الموعد من (ISO)"),
     date_to: Optional[str] = Query(None, description="فلترة حسب تاريخ الموعد إلى (ISO)"),
-    created_by_user_id: Optional[str] = Query(None, description="فلترة حسب موظف محدد"),
+    created_by_user_id: Optional[str] = Query(None, description="فلترة حسب موظف محدد (للأدمن فقط)"),
     search: Optional[str] = Query(None, description="بحث بالاسم أو الهاتف أو يوزر الموظف"),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
+    current=Depends(get_current_user),
 ):
-    """عرض جدول مواعيد مركز الاتصالات."""
+    """عرض جدول مواعيد مركز الاتصالات. موظف مركز الاتصالات يرى مواعيده فقط، والأدمن يرى الكل أو يفلتر حسب موظف."""
     df, dt = parse_dates(date_from, date_to)
     query = CallCenterAppointment.find()
 
-    if df:
-        query = query.find(CallCenterAppointment.scheduled_at >= df)
-    if dt:
-        query = query.find(CallCenterAppointment.scheduled_at < dt)
-
-    if created_by_user_id:
+    # موظف مركز الاتصالات: مواعيده فقط. الأدمن: الكل أو حسب created_by_user_id
+    if current.role == Role.CALL_CENTER:
+        query = query.find(CallCenterAppointment.created_by_user_id == current.id)
+    elif created_by_user_id:
         try:
             uid = OID(created_by_user_id)
         except Exception:
             raise HTTPException(status_code=400, detail="Invalid created_by_user_id")
         query = query.find(CallCenterAppointment.created_by_user_id == uid)
+
+    if df:
+        query = query.find(CallCenterAppointment.scheduled_at >= df)
+    if dt:
+        query = query.find(CallCenterAppointment.scheduled_at < dt)
 
     if search and search.strip():
         s = search.strip()

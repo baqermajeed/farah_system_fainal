@@ -1566,21 +1566,23 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
   }
 
   Future<void> _pickRange() async {
-    final now = DateTime.now();
-    final range = await showDateRangePicker(
+    final list = _appointmentsController.appointments;
+    final result = await showDialog<DateTimeRange?>(
       context: context,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(now.year + 1),
-      initialDateRange: (_rangeStart != null && _rangeEnd != null)
-          ? DateTimeRange(start: _rangeStart!, end: _rangeEnd!)
-          : DateTimeRange(start: now, end: now),
+      barrierDismissible: false,
+      builder: (ctx) => _RangePickerDialog(
+        initialStart: _rangeStart,
+        initialEnd: _rangeEnd,
+        appointmentsList: list,
+        formatDate: _formatDate,
+      ),
     );
-    if (range == null) return;
-    if (!mounted) return;
-    setState(() {
-      _rangeStart = range.start;
-      _rangeEnd = range.end;
-    });
+    if (result != null && mounted) {
+      setState(() {
+        _rangeStart = result.start;
+        _rangeEnd = result.end;
+      });
+    }
   }
 
   Widget _buildRightSidebarNavigation() {
@@ -1765,6 +1767,319 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
       return dt.isAfter(s.subtract(const Duration(seconds: 1))) &&
           dt.isBefore(e.add(const Duration(seconds: 1)));
     }).length;
+  }
+}
+
+/// دايلوج اختيار الفترة وعرض الإحصائيات
+class _RangePickerDialog extends StatefulWidget {
+  final DateTime? initialStart;
+  final DateTime? initialEnd;
+  final List<CallCenterAppointmentModel> appointmentsList;
+  final String Function(DateTime) formatDate;
+
+  const _RangePickerDialog({
+    this.initialStart,
+    this.initialEnd,
+    required this.appointmentsList,
+    required this.formatDate,
+  });
+
+  @override
+  State<_RangePickerDialog> createState() => _RangePickerDialogState();
+}
+
+class _RangePickerDialogState extends State<_RangePickerDialog> {
+  DateTime? _start;
+  DateTime? _end;
+
+  @override
+  void initState() {
+    super.initState();
+    _start = widget.initialStart;
+    _end = widget.initialEnd;
+  }
+
+  int _countInRange(DateTime start, DateTime end) {
+    final list = widget.appointmentsList;
+    final s = DateTime(start.year, start.month, start.day);
+    final e = DateTime(end.year, end.month, end.day, 23, 59, 59);
+    return list.where((item) {
+      final dt = item.createdAt ?? item.scheduledAt;
+      return dt.isAfter(s.subtract(const Duration(seconds: 1))) &&
+          dt.isBefore(e.add(const Duration(seconds: 1)));
+    }).length;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final count = (_start != null && _end != null && _start!.isBefore(_end!.add(const Duration(days: 1))))
+        ? _countInRange(_start!, _end!)
+        : null;
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24.r)),
+      elevation: 12,
+      backgroundColor: Colors.transparent,
+      child: Container(
+        constraints: BoxConstraints(maxWidth: 420.w),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24.r),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.15),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: EdgeInsets.all(24.r),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(10.r),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12.r),
+                    ),
+                    child: Icon(Icons.date_range_rounded, color: AppColors.primary, size: 24.sp),
+                  ),
+                  SizedBox(width: 12.w),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'إحصائيات ضمن فترة',
+                          style: TextStyle(
+                            fontSize: 18.sp,
+                            fontWeight: FontWeight.bold,
+                            color: const Color(0xFF2C3E50),
+                          ),
+                        ),
+                        Text(
+                          'اختر من وإلى',
+                          style: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: Icon(Icons.close_rounded, color: Colors.grey[600], size: 22.sp),
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.grey[100],
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.r)),
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 20.h),
+              _DateCard(
+                label: 'من تاريخ',
+                date: _start,
+                formatDate: widget.formatDate,
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(now.year + 1),
+                    initialDate: _start ?? now,
+                    builder: (context, child) => Theme(
+                      data: Theme.of(context).copyWith(
+                        colorScheme: ColorScheme.light(
+                          primary: AppColors.primary,
+                          onPrimary: Colors.white,
+                        ),
+                      ),
+                      child: child!,
+                    ),
+                  );
+                  if (picked != null) setState(() => _start = picked);
+                },
+              ),
+              SizedBox(height: 12.h),
+              _DateCard(
+                label: 'إلى تاريخ',
+                date: _end,
+                formatDate: widget.formatDate,
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    firstDate: _start ?? DateTime(2020),
+                    lastDate: DateTime(now.year + 1),
+                    initialDate: _end ?? _start ?? now,
+                    builder: (context, child) => Theme(
+                      data: Theme.of(context).copyWith(
+                        colorScheme: ColorScheme.light(
+                          primary: AppColors.primary,
+                          onPrimary: Colors.white,
+                        ),
+                      ),
+                      child: child!,
+                    ),
+                  );
+                  if (picked != null) setState(() => _end = picked);
+                },
+              ),
+              if (count != null) ...[
+                SizedBox(height: 16.h),
+                Container(
+                  padding: EdgeInsets.symmetric(vertical: 16.h, horizontal: 20.w),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(14.r),
+                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.insights_rounded, color: AppColors.primary, size: 28.sp),
+                      SizedBox(width: 10.w),
+                      Text(
+                        'عدد المواعيد: ',
+                        style: TextStyle(fontSize: 14.sp, color: Colors.grey[700]),
+                      ),
+                      Text(
+                        '$count',
+                        style: TextStyle(
+                          fontSize: 20.sp,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              SizedBox(height: 24.h),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: TextButton.styleFrom(
+                        padding: EdgeInsets.symmetric(vertical: 14.h),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12.r),
+                          side: BorderSide(color: Colors.grey[300]!),
+                        ),
+                      ),
+                      child: Text('إلغاء', style: TextStyle(color: Colors.grey[700], fontSize: 15.sp)),
+                    ),
+                  ),
+                  SizedBox(width: 12.w),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: (_start != null && _end != null)
+                          ? () {
+                              if (_start!.isAfter(_end!)) {
+                                setState(() {
+                                  final t = _start;
+                                  _start = _end;
+                                  _end = t;
+                                });
+                              }
+                              Navigator.of(context).pop(DateTimeRange(start: _start!, end: _end!));
+                            }
+                          : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        disabledBackgroundColor: Colors.grey[300],
+                        padding: EdgeInsets.symmetric(vertical: 14.h),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.r)),
+                        elevation: 0,
+                      ),
+                      child: Text('تطبيق', style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DateCard extends StatelessWidget {
+  final String label;
+  final DateTime? date;
+  final String Function(DateTime) formatDate;
+  final VoidCallback onTap;
+
+  const _DateCard({
+    required this.label,
+    required this.date,
+    required this.formatDate,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16.r),
+      elevation: 0,
+      shadowColor: Colors.black.withValues(alpha: 0.06),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16.r),
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 20.h),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16.r),
+            border: Border.all(color: Colors.grey[200]!),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(12.r),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12.r),
+                ),
+                child: Icon(Icons.calendar_today_rounded, color: AppColors.primary, size: 24.sp),
+              ),
+              SizedBox(width: 16.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 12.sp,
+                        color: Colors.grey[600],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    SizedBox(height: 6.h),
+                    Text(
+                      date != null ? formatDate(date!) : 'اضغط لاختيار التاريخ',
+                      style: TextStyle(
+                        fontSize: 17.sp,
+                        fontWeight: date != null ? FontWeight.bold : FontWeight.w500,
+                        color: date != null ? const Color(0xFF2C3E50) : Colors.grey[500],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.arrow_forward_ios_rounded, size: 16.sp, color: Colors.grey[400]),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
