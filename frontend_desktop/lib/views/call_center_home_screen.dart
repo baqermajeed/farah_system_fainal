@@ -533,10 +533,15 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                     Divider(height: 1, color: Colors.grey[100]),
                 itemBuilder: (context, index) {
                   final item = list[index];
+                  final isAccepted = item.isAccepted;
                   return Material(
-                    color: Colors.transparent,
+                    color: isAccepted
+                        ? const Color(0xFFE8F5E9)
+                        : Colors.transparent,
                     child: InkWell(
-                      hoverColor: const Color(0xFFF1F5F9),
+                      hoverColor: isAccepted
+                          ? const Color(0xFFC8E6C9)
+                          : const Color(0xFFF1F5F9),
                       onTap: () {},
                       child: Padding(
                         padding: EdgeInsets.symmetric(

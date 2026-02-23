@@ -51,6 +51,7 @@ async def create_call_center_appointment(
         created_by_user_id=str(doc.created_by_user_id),
         created_by_username=doc.created_by_username,
         created_at=doc.created_at.isoformat(),
+        status=getattr(doc, "status", "pending") or "pending",
     )
 
 
@@ -93,6 +94,7 @@ async def update_call_center_appointment(
         created_by_user_id=str(doc.created_by_user_id),
         created_by_username=doc.created_by_username,
         created_at=doc.created_at.isoformat(),
+        status=getattr(doc, "status", "pending") or "pending",
     )
 
 
@@ -167,6 +169,7 @@ async def list_call_center_appointments(
             created_by_user_id=str(i.created_by_user_id),
             created_by_username=i.created_by_username,
             created_at=i.created_at.isoformat(),
+            status=getattr(i, "status", "pending") or "pending",
         )
         for i in items
     ]

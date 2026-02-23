@@ -191,6 +191,7 @@ class CallCenterAppointmentOut(BaseModel):
     created_by_user_id: str
     created_by_username: str
     created_at: str
+    status: str = "pending"  # "pending" | "accepted"
 
     class Config:
         from_attributes = True

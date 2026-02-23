@@ -534,9 +534,9 @@ async def list_call_center_appointments_for_reception(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=200),
 ):
-    """عرض جميع مواعيد مركز الاتصالات (التي أدخلها موظفو الـ call center) لموظف الاستقبال."""
+    """عرض مواعيد مركز الاتصالات غير المقبولة فقط (المقبولة تُخفى من قائمة الاستقبال)."""
     df, dt = parse_dates(date_from, date_to)
-    query = CallCenterAppointment.find()
+    query = CallCenterAppointment.find(CallCenterAppointment.status == "pending")
 
     if df:
         query = query.find(CallCenterAppointment.scheduled_at >= df)
@@ -568,6 +568,7 @@ async def list_call_center_appointments_for_reception(
             created_by_user_id=str(i.created_by_user_id),
             created_by_username=i.created_by_username,
             created_at=i.created_at.isoformat(),
+            status=getattr(i, "status", "pending") or "pending",
         )
         for i in items
     ]
@@ -577,7 +578,7 @@ async def list_call_center_appointments_for_reception(
 async def accept_call_center_appointment_for_reception(
     appointment_id: str,
 ):
-    """موظف الاستقبال يقبل الموعد: يُحذف من جدول المواعيد ويزيد عداد المواعيد المقبولة في حساب موظف الـ call center الذي أضافه."""
+    """موظف الاستقبال يقبل الموعد: يُخفى من قائمة الاستقبال (يُعلّم مقبولاً) ويزيد عداد المواعيد المقبولة في حساب موظف الـ call center. في حساب الـ call center يبقى الموعد ويظهر الصف بلون أخضر."""
     try:
         oid = OID(appointment_id)
     except Exception:
@@ -595,5 +596,6 @@ async def accept_call_center_appointment_for_reception(
         ) + 1
         await creator.save()
 
-    await doc.delete()
+    doc.status = "accepted"
+    await doc.save()
     return {"ok": True, "accepted": True}

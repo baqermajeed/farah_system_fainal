@@ -7,6 +7,8 @@ class CallCenterAppointmentModel {
   final DateTime? createdAt;
   final String governorate;
   final String platform;
+  /// "pending" = لم يُقبل بعد، "accepted" = قبله الاستقبال (يُعرض الصف بلون أخضر).
+  final String status;
 
   CallCenterAppointmentModel({
     required this.id,
@@ -17,7 +19,10 @@ class CallCenterAppointmentModel {
     this.createdAt,
     this.governorate = '',
     this.platform = '',
+    this.status = 'pending',
   });
+
+  bool get isAccepted => status == 'accepted';
 
   factory CallCenterAppointmentModel.fromJson(Map<String, dynamic> json) {
     final scheduledRaw = (json['scheduled_at'] ?? '').toString();
@@ -36,6 +41,7 @@ class CallCenterAppointmentModel {
               DateTime.tryParse(createdRaw.replaceAll('Z', '+00:00')),
       governorate: (json['governorate'] ?? '').toString(),
       platform: (json['platform'] ?? '').toString(),
+      status: (json['status'] ?? 'pending').toString(),
     );
   }
 }

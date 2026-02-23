@@ -17,6 +17,9 @@ class CallCenterAppointment(Document):
     created_by_user_id: Indexed(OID)
     created_by_username: str
 
+    # pending = لم يُقبل بعد، accepted = قبله موظف الاستقبال (يُخفى من قائمة الاستقبال ويُعرض بلون أخضر في حساب الـ call center)
+    status: str = "pending"  # "pending" | "accepted"
+
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
