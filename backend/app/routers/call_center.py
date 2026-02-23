@@ -5,7 +5,7 @@ from beanie import PydanticObjectId as OID
 
 from app.constants import Role
 from app.security import require_roles, get_current_user
-from app.schemas import CallCenterAppointmentCreate, CallCenterAppointmentOut
+from app.schemas import CallCenterAppointmentCreate, CallCenterAppointmentOut, CallCenterAppointmentUpdate
 from app.models import CallCenterAppointment
 from app.services.stats_service import parse_dates
 
@@ -52,6 +52,65 @@ async def create_call_center_appointment(
         created_by_username=doc.created_by_username,
         created_at=doc.created_at.isoformat(),
     )
+
+
+@router.put("/appointments/{appointment_id}", response_model=CallCenterAppointmentOut)
+async def update_call_center_appointment(
+    appointment_id: str,
+    payload: CallCenterAppointmentUpdate,
+    current=Depends(get_current_user),
+):
+    """تعديل موعد مركز الاتصالات."""
+    try:
+        oid = OID(appointment_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid appointment id")
+    doc = await CallCenterAppointment.get(oid)
+    if not doc:
+        raise HTTPException(status_code=404, detail="الموعد غير موجود")
+    if payload.patient_name is not None:
+        doc.patient_name = payload.patient_name
+    if payload.patient_phone is not None:
+        doc.patient_phone = payload.patient_phone
+    if payload.scheduled_at is not None:
+        try:
+            doc.scheduled_at = datetime.fromisoformat(payload.scheduled_at.replace("Z", "+00:00"))
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid scheduled_at format")
+    if payload.governorate is not None:
+        doc.governorate = payload.governorate
+    if payload.platform is not None:
+        doc.platform = payload.platform
+    doc.updated_at = datetime.now(timezone.utc)
+    await doc.save()
+    return CallCenterAppointmentOut(
+        id=str(doc.id),
+        patient_name=doc.patient_name,
+        patient_phone=doc.patient_phone,
+        scheduled_at=doc.scheduled_at.isoformat(),
+        governorate=doc.governorate,
+        platform=doc.platform,
+        created_by_user_id=str(doc.created_by_user_id),
+        created_by_username=doc.created_by_username,
+        created_at=doc.created_at.isoformat(),
+    )
+
+
+@router.delete("/appointments/{appointment_id}")
+async def delete_call_center_appointment(
+    appointment_id: str,
+    current=Depends(get_current_user),
+):
+    """حذف موعد مركز الاتصالات."""
+    try:
+        oid = OID(appointment_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid appointment id")
+    doc = await CallCenterAppointment.get(oid)
+    if not doc:
+        raise HTTPException(status_code=404, detail="الموعد غير موجود")
+    await doc.delete()
+    return {"ok": True}
 
 
 @router.get("/appointments", response_model=List[CallCenterAppointmentOut])

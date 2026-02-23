@@ -48,5 +48,29 @@ class CallCenterAppointmentsController extends GetxController {
     );
     await refresh();
   }
+
+  Future<void> updateAppointment({
+    required String id,
+    String? patientName,
+    String? patientPhone,
+    DateTime? scheduledAt,
+    String? governorate,
+    String? platform,
+  }) async {
+    await _service.updateAppointment(
+      id: id,
+      patientName: patientName,
+      patientPhone: patientPhone,
+      scheduledAt: scheduledAt,
+      governorate: governorate,
+      platform: platform,
+    );
+    await refresh();
+  }
+
+  Future<void> deleteAppointment(String id) async {
+    await _service.deleteAppointment(id);
+    await refresh();
+  }
 }
 

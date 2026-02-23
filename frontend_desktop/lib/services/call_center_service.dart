@@ -67,5 +67,43 @@ class CallCenterService {
       throw ApiException('فشل إنشاء الموعد: ${e.toString()}');
     }
   }
+
+  Future<void> updateAppointment({
+    required String id,
+    String? patientName,
+    String? patientPhone,
+    DateTime? scheduledAt,
+    String? governorate,
+    String? platform,
+  }) async {
+    try {
+      final data = <String, dynamic>{};
+      if (patientName != null) data['patient_name'] = patientName;
+      if (patientPhone != null) data['patient_phone'] = patientPhone;
+      if (scheduledAt != null) data['scheduled_at'] = scheduledAt.toIso8601String();
+      if (governorate != null) data['governorate'] = governorate;
+      if (platform != null) data['platform'] = platform;
+      final response = await _api.put(
+        ApiConstants.callCenterAppointment(id),
+        data: data,
+      );
+      if (response.statusCode != 200) throw ApiException('فشل تعديل الموعد');
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('فشل تعديل الموعد: ${e.toString()}');
+    }
+  }
+
+  Future<void> deleteAppointment(String id) async {
+    try {
+      final response = await _api.delete(
+        ApiConstants.callCenterAppointment(id),
+      );
+      if (response.statusCode != 200) throw ApiException('فشل حذف الموعد');
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('فشل حذف الموعد: ${e.toString()}');
+    }
+  }
 }
 

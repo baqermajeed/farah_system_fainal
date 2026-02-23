@@ -172,6 +172,15 @@ class CallCenterAppointmentCreate(BaseModel):
         raise ValueError("scheduled_at يجب أن يتضمن التاريخ والوقت مثل 2025-11-01T14:30")
 
 
+class CallCenterAppointmentUpdate(BaseModel):
+    """حقول اختيارية لتعديل الموعد."""
+    patient_name: Optional[str] = None
+    patient_phone: Optional[str] = None
+    scheduled_at: Optional[str] = None  # ISO datetime
+    governorate: Optional[str] = None
+    platform: Optional[str] = None
+
+
 class CallCenterAppointmentOut(BaseModel):
     id: str
     patient_name: str
