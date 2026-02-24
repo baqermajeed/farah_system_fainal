@@ -36,6 +36,7 @@ async def create_call_center_appointment(
         scheduled_at=scheduled_at,
         governorate=payload.governorate or "",
         platform=payload.platform or "",
+        note=payload.note or "",
         created_by_user_id=current.id,
         created_by_username=created_by_username,
     )
@@ -48,6 +49,7 @@ async def create_call_center_appointment(
         scheduled_at=doc.scheduled_at.isoformat(),
         governorate=doc.governorate,
         platform=doc.platform,
+        note=doc.note,
         created_by_user_id=str(doc.created_by_user_id),
         created_by_username=doc.created_by_username,
         created_at=doc.created_at.isoformat(),
@@ -82,6 +84,8 @@ async def update_call_center_appointment(
         doc.governorate = payload.governorate
     if payload.platform is not None:
         doc.platform = payload.platform
+    if payload.note is not None:
+        doc.note = payload.note
     doc.updated_at = datetime.now(timezone.utc)
     await doc.save()
     return CallCenterAppointmentOut(
@@ -91,6 +95,7 @@ async def update_call_center_appointment(
         scheduled_at=doc.scheduled_at.isoformat(),
         governorate=doc.governorate,
         platform=doc.platform,
+        note=doc.note,
         created_by_user_id=str(doc.created_by_user_id),
         created_by_username=doc.created_by_username,
         created_at=doc.created_at.isoformat(),
@@ -166,6 +171,7 @@ async def list_call_center_appointments(
             scheduled_at=i.scheduled_at.isoformat(),
             governorate=getattr(i, "governorate", "") or "",
             platform=getattr(i, "platform", "") or "",
+            note=getattr(i, "note", "") or "",
             created_by_user_id=str(i.created_by_user_id),
             created_by_username=i.created_by_username,
             created_at=i.created_at.isoformat(),

@@ -157,6 +157,7 @@ class CallCenterAppointmentCreate(BaseModel):
     scheduled_at: str  # ISO datetime
     governorate: Optional[str] = ""
     platform: Optional[str] = ""
+    note: Optional[str] = ""  # ملاحظة اختيارية
 
     @field_validator("scheduled_at")
     @classmethod
@@ -179,6 +180,7 @@ class CallCenterAppointmentUpdate(BaseModel):
     scheduled_at: Optional[str] = None  # ISO datetime
     governorate: Optional[str] = None
     platform: Optional[str] = None
+    note: Optional[str] = None
 
 
 class CallCenterAppointmentOut(BaseModel):
@@ -188,6 +190,7 @@ class CallCenterAppointmentOut(BaseModel):
     scheduled_at: str
     governorate: str = ""
     platform: str = ""
+    note: str = ""
     created_by_user_id: str
     created_by_username: str
     created_at: str

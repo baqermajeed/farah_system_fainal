@@ -80,6 +80,7 @@ class CallCenterService {
     required DateTime scheduledAt,
     String governorate = '',
     String platform = '',
+    String note = '',
   }) async {
     try {
       final response = await _api.post(
@@ -90,6 +91,7 @@ class CallCenterService {
           'scheduled_at': scheduledAt.toIso8601String(),
           'governorate': governorate,
           'platform': platform,
+          'note': note,
         },
       );
 
@@ -110,6 +112,7 @@ class CallCenterService {
     DateTime? scheduledAt,
     String? governorate,
     String? platform,
+    String? note,
   }) async {
     try {
       final data = <String, dynamic>{};
@@ -118,6 +121,7 @@ class CallCenterService {
       if (scheduledAt != null) data['scheduled_at'] = scheduledAt.toIso8601String();
       if (governorate != null) data['governorate'] = governorate;
       if (platform != null) data['platform'] = platform;
+      if (note != null) data['note'] = note;
       final response = await _api.put(
         ApiConstants.callCenterAppointment(id),
         data: data,

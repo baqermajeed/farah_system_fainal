@@ -52,6 +52,7 @@ class CallCenterAppointmentsController extends GetxController {
     required DateTime scheduledAt,
     String governorate = '',
     String platform = '',
+    String note = '',
   }) async {
     await _service.createAppointment(
       patientName: patientName,
@@ -59,6 +60,7 @@ class CallCenterAppointmentsController extends GetxController {
       scheduledAt: scheduledAt,
       governorate: governorate,
       platform: platform,
+      note: note,
     );
     await refresh();
   }
@@ -70,6 +72,7 @@ class CallCenterAppointmentsController extends GetxController {
     DateTime? scheduledAt,
     String? governorate,
     String? platform,
+    String? note,
   }) async {
     await _service.updateAppointment(
       id: id,
@@ -78,6 +81,7 @@ class CallCenterAppointmentsController extends GetxController {
       scheduledAt: scheduledAt,
       governorate: governorate,
       platform: platform,
+      note: note,
     );
     await refresh();
   }

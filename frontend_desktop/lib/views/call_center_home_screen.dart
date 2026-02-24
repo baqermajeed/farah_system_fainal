@@ -111,7 +111,7 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
                                 SizedBox(
-                                  width: 260.w,
+                                  width: 200.w,
                                   child: _buildStatsPanel(),
                                 ),
                                 SizedBox(width: 16.w),
@@ -512,13 +512,13 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
               ),
               child: Row(
                 children: [
-                  
                   _buildHeaderCell('الموظف', flex: 2),
                   _buildHeaderCell('المحافظة', flex: 2),
                   _buildHeaderCell('المنصة', flex: 2),
                   _buildHeaderCell('رقم الهاتف', flex: 2),
                   _buildHeaderCell('التاريخ', flex: 2),
                   _buildHeaderCell('اليوم والوقت', flex: 3),
+                  _buildHeaderCell('ملاحظة', flex: 3),
                   _buildHeaderCell('المريض', flex: 2),
                   SizedBox(width: 40.w), // Actions placeholder
                 ],
@@ -578,7 +578,10 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                               _formatDayTime(item.scheduledAt),
                               flex: 3,
                             ),
-                         
+                            _buildBodyCell(
+                              item.note.isNotEmpty ? item.note : '-',
+                              flex: 3,
+                            ),
                             _buildBodyCell(
                               item.patientName,
                               flex: 2,
@@ -587,69 +590,71 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                             ),
                             SizedBox(
                               width: 40.w,
-                              child: PopupMenuButton<String>(
-                                padding: EdgeInsets.zero,
-                                icon: Icon(
-                                  Icons.more_vert_rounded,
-                                  color: Colors.grey[400],
-                                  size: 20.sp,
-                                ),
-                                onSelected: (value) async {
-                                  if (value == 'edit') {
-                                    await _showEditAppointmentDialog(context, item);
-                                  } else if (value == 'delete') {
-                                    final confirm = await Get.dialog<bool>(
-                                      AlertDialog(
-                                        title: const Text('تأكيد الحذف'),
-                                        content: const Text(
-                                          'هل أنت متأكد من حذف هذا الموعد؟',
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () => Navigator.of(context).pop(false),
-                                            child: Text('إلغاء', style: TextStyle(color: Colors.grey[600])),
-                                          ),
-                                          TextButton(
-                                            onPressed: () => Navigator.of(context).pop(true),
-                                            child: Text('حذف', style: TextStyle(color: AppColors.error)),
-                                          ),
-                                        ],
+                              child: item.isAccepted
+                                  ? const SizedBox.shrink()
+                                  : PopupMenuButton<String>(
+                                      padding: EdgeInsets.zero,
+                                      icon: Icon(
+                                        Icons.more_vert_rounded,
+                                        color: Colors.grey[400],
+                                        size: 20.sp,
                                       ),
-                                    );
-                                    if (confirm == true) {
-                                      await _appointmentsController.deleteAppointment(item.id);
-                                      if (context.mounted) {
-                                        Get.snackbar(
-                                          'تم',
-                                          'تم حذف الموعد',
-                                          snackPosition: SnackPosition.BOTTOM,
-                                          backgroundColor: AppColors.success,
-                                          colorText: AppColors.white,
-                                          margin: EdgeInsets.all(20.r),
-                                        );
-                                      }
-                                    }
-                                  }
-                                },
-                                itemBuilder: (context) => [
-                                  const PopupMenuItem(
-                                    value: 'edit',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.edit_outlined, size: 20),
-                                        SizedBox(width: 8),
-                                        Text('تعديل الموعد'),
-                                      ],
-                                    ),
-                                  ),
-                                  const PopupMenuItem(
-                                    value: 'delete',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.delete_outline_rounded, size: 20, color: Colors.red),
-                                        SizedBox(width: 8),
-                                        Text('حذف', style: TextStyle(color: Colors.red)),
-                                      ],
+                                      onSelected: (value) async {
+                                        if (value == 'edit') {
+                                          await _showEditAppointmentDialog(context, item);
+                                        } else if (value == 'delete') {
+                                          final confirm = await Get.dialog<bool>(
+                                            AlertDialog(
+                                              title: const Text('تأكيد الحذف'),
+                                              content: const Text(
+                                                'هل أنت متأكد من حذف هذا الموعد؟',
+                                              ),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () => Navigator.of(context).pop(false),
+                                                  child: Text('إلغاء', style: TextStyle(color: Colors.grey[600])),
+                                                ),
+                                                TextButton(
+                                                  onPressed: () => Navigator.of(context).pop(true),
+                                                  child: Text('حذف', style: TextStyle(color: AppColors.error)),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                          if (confirm == true) {
+                                            await _appointmentsController.deleteAppointment(item.id);
+                                            if (context.mounted) {
+                                              Get.snackbar(
+                                                'تم',
+                                                'تم حذف الموعد',
+                                                snackPosition: SnackPosition.BOTTOM,
+                                                backgroundColor: AppColors.success,
+                                                colorText: AppColors.white,
+                                                margin: EdgeInsets.all(20.r),
+                                              );
+                                            }
+                                          }
+                                        }
+                                      },
+                                      itemBuilder: (context) => [
+                                        const PopupMenuItem(
+                                          value: 'edit',
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.edit_outlined, size: 20),
+                                              SizedBox(width: 8),
+                                              Text('تعديل الموعد'),
+                                            ],
+                                          ),
+                                        ),
+                                        const PopupMenuItem(
+                                          value: 'delete',
+                                          child: Row(
+                                            children: [
+                                              Icon(Icons.delete_outline_rounded, size: 20, color: Colors.red),
+                                              SizedBox(width: 8),
+                                              Text('حذف', style: TextStyle(color: Colors.red)),
+                                            ],
                                     ),
                                   ),
                                 ],
@@ -879,6 +884,7 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
     final formKey = GlobalKey<FormState>();
     final nameController = TextEditingController();
     final phoneController = TextEditingController();
+    final noteController = TextEditingController();
     DateTime? selectedDate;
     TimeOfDay? selectedTime;
     String? selectedGovernorate;
@@ -1019,6 +1025,24 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                               .toList(),
                           onChanged: (v) => setState(() => selectedPlatform = v),
                         ),
+                        SizedBox(height: 16.h),
+
+                        // ملاحظة (اختيارية)
+                        TextFormField(
+                          controller: noteController,
+                          textAlign: TextAlign.right,
+                          maxLines: 2,
+                          decoration: InputDecoration(
+                            labelText: 'ملاحظة (اختيارية)',
+                            hintText: 'ملاحظة من موظف الاتصالات عند إضافة الموعد',
+                            prefixIcon: const Icon(Icons.note_outlined),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12.r),
+                            ),
+                            filled: true,
+                            fillColor: Colors.grey[50],
+                          ),
+                        ),
                         SizedBox(height: 24.h),
 
                         // التاريخ والوقت — زر واحد يفتح ورقة واحدة للاختيار السريع
@@ -1135,6 +1159,7 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                                     scheduledAt: scheduledAt,
                                     governorate: selectedGovernorate ?? '',
                                     platform: selectedPlatform ?? '',
+                                    note: noteController.text.trim(),
                                   );
                                   if (mounted) {
                                     Navigator.of(ctx).pop();
@@ -1207,6 +1232,7 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
     final formKey = GlobalKey<FormState>();
     final nameController = TextEditingController(text: item.patientName);
     final phoneController = TextEditingController(text: item.patientPhone);
+    final noteController = TextEditingController(text: item.note);
     DateTime? selectedDate = item.scheduledAt;
     TimeOfDay? selectedTime = TimeOfDay(
       hour: item.scheduledAt.hour,
@@ -1343,6 +1369,21 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                               .toList(),
                           onChanged: (v) => setState(() => selectedPlatform = v),
                         ),
+                        SizedBox(height: 16.h),
+                        TextFormField(
+                          controller: noteController,
+                          textAlign: TextAlign.right,
+                          maxLines: 2,
+                          decoration: InputDecoration(
+                            labelText: 'ملاحظة (اختيارية)',
+                            prefixIcon: const Icon(Icons.note_outlined),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12.r),
+                            ),
+                            filled: true,
+                            fillColor: Colors.grey[50],
+                          ),
+                        ),
                         SizedBox(height: 24.h),
                         InkWell(
                           onTap: () async {
@@ -1442,6 +1483,7 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                                     scheduledAt: scheduledAt,
                                     governorate: selectedGovernorate ?? '',
                                     platform: selectedPlatform ?? '',
+                                    note: noteController.text.trim(),
                                   );
                                   if (context.mounted) {
                                     Navigator.of(ctx).pop();

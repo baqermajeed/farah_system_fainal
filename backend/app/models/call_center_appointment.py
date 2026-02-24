@@ -13,6 +13,7 @@ class CallCenterAppointment(Document):
 
     governorate: str = ""   # المحافظة (محافظات العراق)
     platform: str = ""      # المنصة (انستكرام، واتساب، تيك توك، فيسبوك، اتصال)
+    note: str = ""          # ملاحظة اختيارية من موظف الاتصالات عند الإضافة
 
     created_by_user_id: Indexed(OID)
     created_by_username: str

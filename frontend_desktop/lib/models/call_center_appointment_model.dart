@@ -7,6 +7,8 @@ class CallCenterAppointmentModel {
   final DateTime? createdAt;
   final String governorate;
   final String platform;
+  /// ملاحظة اختيارية من موظف الاتصالات عند الإضافة.
+  final String note;
   /// "pending" = لم يُقبل بعد، "accepted" = قبله الاستقبال (يُعرض الصف بلون أخضر).
   final String status;
 
@@ -19,6 +21,7 @@ class CallCenterAppointmentModel {
     this.createdAt,
     this.governorate = '',
     this.platform = '',
+    this.note = '',
     this.status = 'pending',
   });
 
@@ -41,6 +44,7 @@ class CallCenterAppointmentModel {
               DateTime.tryParse(createdRaw.replaceAll('Z', '+00:00')),
       governorate: (json['governorate'] ?? '').toString(),
       platform: (json['platform'] ?? '').toString(),
+      note: (json['note'] ?? '').toString(),
       status: (json['status'] ?? 'pending').toString(),
     );
   }

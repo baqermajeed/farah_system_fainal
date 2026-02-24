@@ -565,6 +565,7 @@ async def list_call_center_appointments_for_reception(
             scheduled_at=i.scheduled_at.isoformat(),
             governorate=getattr(i, "governorate", "") or "",
             platform=getattr(i, "platform", "") or "",
+            note=getattr(i, "note", "") or "",
             created_by_user_id=str(i.created_by_user_id),
             created_by_username=i.created_by_username,
             created_at=i.created_at.isoformat(),
