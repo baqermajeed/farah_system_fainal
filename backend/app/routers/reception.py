@@ -555,7 +555,7 @@ async def list_call_center_appointments_for_reception(
             }
         )
 
-    items = await query.sort("-scheduled_at").skip(skip).limit(limit).to_list()
+    items = await query.sort("-created_at").skip(skip).limit(limit).to_list()
 
     return [
         CallCenterAppointmentOut(

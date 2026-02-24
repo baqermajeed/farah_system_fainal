@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -80,6 +81,16 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
         search: _searchController.text,
       );
     });
+  }
+
+  /// التحقق من رقم الهاتف: 11 رقماً فقط ويبدأ بـ 07
+  static String? _validatePhone(String? value) {
+    if (value == null || value.trim().isEmpty) return 'مطلوب';
+    final digits = value.trim().replaceAll(RegExp(r'\s'), '');
+    if (digits.length != 11) return 'رقم الهاتف يجب أن يكون 11 رقماً';
+    if (!digits.startsWith('07')) return 'رقم الهاتف يجب أن يبدأ بـ 07';
+    if (!RegExp(r'^[0-9]+$').hasMatch(digits)) return 'رقم الهاتف يجب أن يحتوي على أرقام فقط';
+    return null;
   }
 
   @override
@@ -513,16 +524,16 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
               child: Row(
                 children: [
                   _buildHeaderCell('الموظف', flex: 2),
+                  _buildHeaderCell('ملاحظة', flex: 3),
                   _buildHeaderCell('المحافظة', flex: 2),
                   _buildHeaderCell('المنصة', flex: 2),
                   _buildHeaderCell('رقم الهاتف', flex: 2),
                   _buildHeaderCell('التاريخ', flex: 2),
                   _buildHeaderCell('اليوم والوقت', flex: 3),
-                  _buildHeaderCell('ملاحظة', flex: 3),
                   _buildHeaderCell('المريض', flex: 2),
                   SizedBox(width: 40.w), // Actions placeholder
                 ],
-              ),
+              )
             ),
             // Table Rows
             Expanded(
@@ -555,6 +566,10 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                                   : '-',
                               flex: 2,
                             ),
+                            _buildBodyCell(
+                              item.note.isNotEmpty ? item.note : '-',
+                              flex: 3,
+                            ),
                                _buildBodyCell(
                               item.governorate.isNotEmpty
                                   ? item.governorate
@@ -578,10 +593,7 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                               _formatDayTime(item.scheduledAt),
                               flex: 3,
                             ),
-                            _buildBodyCell(
-                              item.note.isNotEmpty ? item.note : '-',
-                              flex: 3,
-                            ),
+                           
                             _buildBodyCell(
                               item.patientName,
                               flex: 2,
@@ -962,22 +974,28 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                         ),
                         SizedBox(height: 16.h),
 
-                        // Phone Field
+                        // Phone Field (11 رقم، يبدأ بـ 07، أرقام فقط)
                         TextFormField(
                           controller: phoneController,
                           keyboardType: TextInputType.phone,
                           textAlign: TextAlign.right,
+                          maxLength: 11,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(11),
+                          ],
                           decoration: InputDecoration(
-                            labelText: 'رقم الهاتف',
+                            labelText: 'رقم الهاتف (07xxxxxxxxx)',
+                            hintText: '07xxxxxxxxx',
                             prefixIcon: const Icon(Icons.phone_outlined),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12.r),
                             ),
                             filled: true,
                             fillColor: Colors.grey[50],
+                            counterText: '',
                           ),
-                          validator: (v) =>
-                              (v == null || v.trim().isEmpty) ? 'مطلوب' : null,
+                          validator: _validatePhone,
                         ),
                         SizedBox(height: 16.h),
 
@@ -1315,17 +1333,23 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                           controller: phoneController,
                           keyboardType: TextInputType.phone,
                           textAlign: TextAlign.right,
+                          maxLength: 11,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(11),
+                          ],
                           decoration: InputDecoration(
-                            labelText: 'رقم الهاتف',
+                            labelText: 'رقم الهاتف (07xxxxxxxxx)',
+                            hintText: '07xxxxxxxxx',
                             prefixIcon: const Icon(Icons.phone_outlined),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12.r),
                             ),
                             filled: true,
                             fillColor: Colors.grey[50],
+                            counterText: '',
                           ),
-                          validator: (v) =>
-                              (v == null || v.trim().isEmpty) ? 'مطلوب' : null,
+                          validator: _validatePhone,
                         ),
                         SizedBox(height: 16.h),
                         DropdownButtonFormField<String>(
