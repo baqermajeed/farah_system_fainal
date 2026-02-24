@@ -155,6 +155,7 @@ class _ReceptionLoginScreenState extends State<ReceptionLoginScreen> {
                                         username:
                                             _usernameController.text.trim(),
                                         password: _passwordController.text,
+                                        expectedUserType: 'receptionist',
                                       );
                                     },
                               borderRadius: BorderRadius.circular(16.r),

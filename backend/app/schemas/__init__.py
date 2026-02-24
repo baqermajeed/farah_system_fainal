@@ -195,6 +195,7 @@ class CallCenterAppointmentOut(BaseModel):
     created_by_username: str
     created_at: str
     status: str = "pending"  # "pending" | "accepted"
+    accepted_at: Optional[str] = None  # تاريخ قبول الموعد (ISO)، للإحصائيات حسب شهر القبول
 
     class Config:
         from_attributes = True

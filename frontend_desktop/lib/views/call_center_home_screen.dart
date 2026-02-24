@@ -58,6 +58,9 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
   Timer? _searchDebounce;
   DateTime? _rangeStart;
   DateTime? _rangeEnd;
+  /// فترة المواعيد المقبولة (إذا null تُعرض مواعيد هذا الشهر)
+  DateTime? _acceptedRangeStart;
+  DateTime? _acceptedRangeEnd;
 
   @override
   void initState() {
@@ -515,7 +518,7 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
           children: [
             // Table Header
             Container(
-              padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 20.h),
+              padding: EdgeInsets.only(left: 4.w, right: 4.w, top: 20.h, bottom: 20.h),
               decoration: BoxDecoration(
                 color: const Color(0xFFF8FAFC),
                 borderRadius: BorderRadius.vertical(top: Radius.circular(24.r)),
@@ -529,8 +532,8 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                   _buildHeaderCell('المنصة', flex: 2),
                   _buildHeaderCell('رقم الهاتف', flex: 2),
                   _buildHeaderCell('التاريخ', flex: 2),
-                  _buildHeaderCell('اليوم والوقت', flex: 3),
-                  _buildHeaderCell('المريض', flex: 2),
+                  _buildHeaderCell('اليوم والوقت', flex: 2),
+                  _buildHeaderCell('المريض', flex: 4),
                   SizedBox(width: 40.w), // Actions placeholder
                 ],
               )
@@ -555,8 +558,8 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                           : const Color(0xFFF1F5F9),
                       onTap: () {},
                       child: Padding(
-                        padding: EdgeInsets.symmetric(
-                            horizontal: 24.w, vertical: 18.h),
+                        padding: EdgeInsets.only(
+                            left: 4.w, right: 4.w, top: 18.h, bottom: 18.h),
                         child: Row(
                           children: [
                             
@@ -584,6 +587,7 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                               item.patientPhone,
                               flex: 2,
                               isPhone: true,
+                              color: const Color(0xFF649FCC),
                             ),
                             _buildBodyCell(
                               _formatDate(item.scheduledAt),
@@ -591,12 +595,11 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                             ),
                             _buildBodyCell(
                               _formatDayTime(item.scheduledAt),
-                              flex: 3,
+                              flex: 2,
                             ),
-                           
                             _buildBodyCell(
                               item.patientName,
-                              flex: 2,
+                              flex: 4,
                               isBold: true,
                               color: const Color(0xFF649FCC),
                             ),
@@ -608,7 +611,7 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                                       padding: EdgeInsets.zero,
                                       icon: Icon(
                                         Icons.more_vert_rounded,
-                                        color: Colors.grey[400],
+                                        color: Colors.orange,
                                         size: 20.sp,
                                       ),
                                       onSelected: (value) async {
@@ -686,12 +689,12 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
     });
   }
 
-  Widget _buildHeaderCell(String text, {int flex = 1}) {
+  Widget _buildHeaderCell(String text, {int flex = 1, TextAlign textAlign = TextAlign.center}) {
     return Expanded(
       flex: flex,
       child: Text(
         text,
-        textAlign: TextAlign.start,
+        textAlign: textAlign,
         style: TextStyle(
           fontSize: 14.sp,
           fontWeight: FontWeight.bold,
@@ -707,12 +710,13 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
     bool isBold = false,
     bool isPhone = false,
     Color? color,
+    TextAlign textAlign = TextAlign.center,
   }) {
     return Expanded(
       flex: flex,
       child: Text(
         text.isEmpty ? '-' : text,
-        textAlign: TextAlign.start,
+        textAlign: textAlign,
         style: TextStyle(
           fontSize: 14.sp,
           fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
@@ -1623,15 +1627,27 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
           ),
           SizedBox(height: 8.h),
           Expanded(
-            child: Obx(
-              () => _StatCard(
+            child: Obx(() {
+              final list = _appointmentsController.appointments;
+              final acceptedThisMonth = _countAcceptedThisMonth(list);
+              final acceptedInRange = (_acceptedRangeStart != null &&
+                      _acceptedRangeEnd != null)
+                  ? _countAcceptedInRange(list, _acceptedRangeStart!, _acceptedRangeEnd!)
+                  : null;
+              final acceptedCount = acceptedInRange ?? acceptedThisMonth;
+              final acceptedSubtitle = (_acceptedRangeStart != null &&
+                      _acceptedRangeEnd != null)
+                  ? '${_formatDate(_acceptedRangeStart!)} → ${_formatDate(_acceptedRangeEnd!)}'
+                  : 'هذا الشهر';
+              return _StatCard(
                 title: 'المواعيد المقبولة',
-                value: _appointmentsController.acceptedCount.value.toString(),
-                subtitle: 'مقبولة من الاستقبال',
+                value: acceptedCount.toString(),
+                subtitle: acceptedSubtitle,
                 icon: Icons.check_circle_outline_rounded,
                 color: const Color(0xFF9B59B6),
-              ),
-            ),
+                onTap: _pickAcceptedRange,
+              );
+            }),
           ),
         ],
       );
@@ -1841,6 +1857,50 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
           dt.isBefore(e.add(const Duration(seconds: 1)));
     }).length;
   }
+
+  /// عدد المواعيد المقبولة في هذا الشهر (حسب شهر القبول، وليس شهر الإنشاء)
+  int _countAcceptedThisMonth(List<CallCenterAppointmentModel> list) {
+    final now = DateTime.now();
+    return list.where((item) {
+      if (!item.isAccepted) return false;
+      final dt = item.acceptedAt ?? item.createdAt ?? item.scheduledAt;
+      return dt.year == now.year && dt.month == now.month;
+    }).length;
+  }
+
+  /// عدد المواعيد المقبولة ضمن فترة من–إلى (حسب تاريخ القبول)
+  int _countAcceptedInRange(
+      List<CallCenterAppointmentModel> list, DateTime start, DateTime end) {
+    final s = DateTime(start.year, start.month, start.day);
+    final e = DateTime(end.year, end.month, end.day, 23, 59, 59);
+    return list.where((item) {
+      if (!item.isAccepted) return false;
+      final dt = item.acceptedAt ?? item.createdAt ?? item.scheduledAt;
+      return dt.isAfter(s.subtract(const Duration(seconds: 1))) &&
+          dt.isBefore(e.add(const Duration(seconds: 1)));
+    }).length;
+  }
+
+  Future<void> _pickAcceptedRange() async {
+    final list = _appointmentsController.appointments;
+    final result = await showDialog<DateTimeRange?>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => _RangePickerDialog(
+        initialStart: _acceptedRangeStart,
+        initialEnd: _acceptedRangeEnd,
+        appointmentsList: list,
+        formatDate: _formatDate,
+        acceptedOnly: true,
+      ),
+    );
+    if (result != null && mounted) {
+      setState(() {
+        _acceptedRangeStart = result.start;
+        _acceptedRangeEnd = result.end;
+      });
+    }
+  }
 }
 
 /// دايلوج اختيار الفترة وعرض الإحصائيات
@@ -1849,12 +1909,15 @@ class _RangePickerDialog extends StatefulWidget {
   final DateTime? initialEnd;
   final List<CallCenterAppointmentModel> appointmentsList;
   final String Function(DateTime) formatDate;
+  /// عند true تُحسب فقط المواعيد المقبولة ضمن الفترة
+  final bool acceptedOnly;
 
   const _RangePickerDialog({
     this.initialStart,
     this.initialEnd,
     required this.appointmentsList,
     required this.formatDate,
+    this.acceptedOnly = false,
   });
 
   @override
@@ -1877,7 +1940,10 @@ class _RangePickerDialogState extends State<_RangePickerDialog> {
     final s = DateTime(start.year, start.month, start.day);
     final e = DateTime(end.year, end.month, end.day, 23, 59, 59);
     return list.where((item) {
-      final dt = item.createdAt ?? item.scheduledAt;
+      if (widget.acceptedOnly && !item.isAccepted) return false;
+      final dt = widget.acceptedOnly
+          ? (item.acceptedAt ?? item.createdAt ?? item.scheduledAt)
+          : (item.createdAt ?? item.scheduledAt);
       return dt.isAfter(s.subtract(const Duration(seconds: 1))) &&
           dt.isBefore(e.add(const Duration(seconds: 1)));
     }).length;
@@ -1889,6 +1955,9 @@ class _RangePickerDialogState extends State<_RangePickerDialog> {
     final count = (_start != null && _end != null && _start!.isBefore(_end!.add(const Duration(days: 1))))
         ? _countInRange(_start!, _end!)
         : null;
+    final isAcceptedOnly = widget.acceptedOnly;
+    final title = isAcceptedOnly ? 'المواعيد المقبولة ضمن فترة' : 'إحصائيات ضمن فترة';
+    final countLabel = isAcceptedOnly ? 'عدد المواعيد المقبولة: ' : 'عدد المواعيد: ';
 
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24.r)),
@@ -1921,7 +1990,11 @@ class _RangePickerDialogState extends State<_RangePickerDialog> {
                       color: AppColors.primary.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(12.r),
                     ),
-                    child: Icon(Icons.date_range_rounded, color: AppColors.primary, size: 24.sp),
+                    child: Icon(
+                      isAcceptedOnly ? Icons.check_circle_outline_rounded : Icons.date_range_rounded,
+                      color: AppColors.primary,
+                      size: 24.sp,
+                    ),
                   ),
                   SizedBox(width: 12.w),
                   Expanded(
@@ -1929,7 +2002,7 @@ class _RangePickerDialogState extends State<_RangePickerDialog> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'إحصائيات ضمن فترة',
+                          title,
                           style: TextStyle(
                             fontSize: 18.sp,
                             fontWeight: FontWeight.bold,
@@ -1983,11 +2056,13 @@ class _RangePickerDialogState extends State<_RangePickerDialog> {
                 date: _end,
                 formatDate: widget.formatDate,
                 onTap: () async {
+                  final first = _start ?? DateTime(2020);
+                  final initial = _end ?? _start ?? now;
                   final picked = await showDatePicker(
                     context: context,
-                    firstDate: _start ?? DateTime(2020),
+                    firstDate: first,
                     lastDate: DateTime(now.year + 1),
-                    initialDate: _end ?? _start ?? now,
+                    initialDate: initial.isBefore(first) ? first : initial,
                     builder: (context, child) => Theme(
                       data: Theme.of(context).copyWith(
                         colorScheme: ColorScheme.light(
@@ -2016,7 +2091,7 @@ class _RangePickerDialogState extends State<_RangePickerDialog> {
                       Icon(Icons.insights_rounded, color: AppColors.primary, size: 28.sp),
                       SizedBox(width: 10.w),
                       Text(
-                        'عدد المواعيد: ',
+                        countLabel,
                         style: TextStyle(fontSize: 14.sp, color: Colors.grey[700]),
                       ),
                       Text(

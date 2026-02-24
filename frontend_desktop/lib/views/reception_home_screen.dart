@@ -7890,7 +7890,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
   /// نافذة عرض مواعيد مركز الاتصالات (نفس جدول حساب الـ call center، حجم ثابت + زر قبول).
   Future<void> _showCallCenterAppointmentsDialog(BuildContext context) async {
     final callCenterService = CallCenterService();
-    const double dialogWidth = 920;
+    const double dialogWidth = 1050;
     const double dialogHeight = 560;
     showDialog(
       context: context,
@@ -8493,11 +8493,11 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
 /// زر قبول الموعد في دايلوج مواعيد مركز الاتصالات (حساب الاستقبال).
 class _AcceptAppointmentButton extends StatefulWidget {
   final String appointmentId;
-  final VoidCallback onAccepted;
+  final void Function(String appointmentId)? onAccepted;
 
   const _AcceptAppointmentButton({
     required this.appointmentId,
-    required this.onAccepted,
+    this.onAccepted,
   });
 
   @override
@@ -8522,7 +8522,7 @@ class _AcceptAppointmentButtonState extends State<_AcceptAppointmentButton> {
                   try {
                     await CallCenterService().acceptForReception(widget.appointmentId);
                     if (mounted) {
-                      widget.onAccepted();
+                      widget.onAccepted?.call(widget.appointmentId);
                       Get.snackbar(
                         'تم',
                         'تم قبول الموعد',
@@ -8604,201 +8604,308 @@ class _CallCenterAppointmentsDialogContent extends StatefulWidget {
 
 class _CallCenterAppointmentsDialogContentState
     extends State<_CallCenterAppointmentsDialogContent> {
-  int _refreshKey = 0;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  Timer? _debounceTimer;
+
+  List<CallCenterAppointmentModel>? _list;
+  bool _isLoading = false;
+  Object? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(_onSearchChanged);
+    _load();
+  }
+
+  void _onSearchChanged() {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 400), () {
+      if (mounted) {
+        setState(() => _searchQuery = _searchController.text.trim());
+        _load();
+      }
+    });
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final list = await widget.callCenterService.getAppointmentsForReception(
+        limit: 200,
+        search: _searchQuery.isEmpty ? null : _searchQuery,
+      );
+      if (mounted) {
+        setState(() {
+          _list = list;
+          _isLoading = false;
+          _error = null;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e;
+          _isLoading = false;
+          // نبقى على _list السابق إن وُجد (لا نخفي الجدول)
+        });
+      }
+    }
+  }
+
+  void _onAccepted(String appointmentId) {
+    setState(() {
+      _list = _list?.where((e) => e.id != appointmentId).toList() ?? [];
+    });
+  }
+
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final onAcceptCallback = () => setState(() => _refreshKey++);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
           padding: EdgeInsets.fromLTRB(24.w, 20.h, 16.w, 16.h),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Icon(Icons.headset_mic_rounded,
-                      color: AppColors.primary, size: 28.sp),
-                  SizedBox(width: 10.w),
-                  Text(
-                    'مواعيد مركز الاتصالات',
-                    style: TextStyle(
-                      fontSize: 20.sp,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ],
-              ),
               IconButton(
                 onPressed: () => Navigator.of(widget.dialogContext).pop(),
                 icon: Icon(Icons.close, color: Colors.grey[600]),
+              ),
+              Expanded(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.headset_mic_rounded,
+                        color: AppColors.primary, size: 28.sp),
+                    SizedBox(width: 10.w),
+                    Text(
+                      'مواعيد مركز الاتصالات',
+                      style: TextStyle(
+                        fontSize: 20.sp,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(
+                width: 220.w,
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: 'بحث (اسم، هاتف، موظف)',
+                    hintStyle: TextStyle(fontSize: 12.sp, color: Colors.grey[600]),
+                    prefixIcon: Icon(Icons.search, size: 20.sp, color: Colors.grey[600]),
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.r),
+                      borderSide: BorderSide(color: Colors.grey[300]!),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.r),
+                      borderSide: BorderSide(color: Colors.grey[300]!),
+                    ),
+                    filled: true,
+                    fillColor: const Color(0xFFF8FAFC),
+                  ),
+                  style: TextStyle(fontSize: 13.sp),
+                  onSubmitted: (_) {
+                    setState(() => _searchQuery = _searchController.text.trim());
+                    _load();
+                  },
+                ),
               ),
             ],
           ),
         ),
         Divider(height: 1, color: Colors.grey[200]),
         Expanded(
-          child: FutureBuilder<List<CallCenterAppointmentModel>>(
-            key: ValueKey(_refreshKey),
-            future: widget.callCenterService.getAppointmentsForReception(limit: 100),
-            builder: (ctx, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snapshot.hasError) {
-                return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.error_outline_rounded,
-                          size: 60.sp, color: AppColors.textSecondary),
-                      SizedBox(height: 16.h),
-                      Text(
-                        'تعذر تحميل المواعيد',
-                        style: TextStyle(
-                            fontSize: 16.sp, color: AppColors.textSecondary),
-                      ),
-                      SizedBox(height: 8.h),
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 24.w),
-                        child: Text(
-                          snapshot.error.toString(),
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              fontSize: 12.sp, color: AppColors.textHint),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }
-              final list = snapshot.data ?? [];
-              if (list.isEmpty) {
-                return Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.calendar_today_outlined,
-                          size: 48.sp, color: const Color(0xFF649FCC)),
-                      SizedBox(height: 24.h),
-                      Text(
-                        'لا توجد مواعيد',
-                        style: TextStyle(
-                            fontSize: 18.sp,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textPrimary),
-                      ),
-                      SizedBox(height: 8.h),
-                      Text(
-                        'لم يُسجّل أي موعد من مركز الاتصالات',
-                        style: TextStyle(
-                            fontSize: 14.sp, color: AppColors.textSecondary),
-                      ),
-                    ],
-                  ),
-                );
-              }
-              return Container(
-                margin: EdgeInsets.fromLTRB(16.w, 0, 16.w, 16.h),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24.r),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 24,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                          horizontal: 24.w, vertical: 20.h),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.vertical(
-                            top: Radius.circular(24.r)),
-                        border: Border(
-                            bottom: BorderSide(color: Colors.grey[200]!)),
-                      ),
-                      child: Row(
-                        children: [
-                          widget.ccHeaderCell('الموظف', flex: 2),
-                          widget.ccHeaderCell('المحافظة', flex: 2),
-                          widget.ccHeaderCell('المنصة', flex: 2),
-                          widget.ccHeaderCell('رقم الهاتف', flex: 2),
-                          widget.ccHeaderCell('التاريخ', flex: 2),
-                          widget.ccHeaderCell('اليوم والوقت', flex: 3),
-                          widget.ccHeaderCell('المريض', flex: 2),
-                          SizedBox(width: 70.w),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: ListView.separated(
-                        padding: EdgeInsets.zero,
-                        itemCount: list.length,
-                        separatorBuilder: (_, __) =>
-                            Divider(height: 1, color: Colors.grey[100]),
-                        itemBuilder: (context, index) {
-                          final item = list[index];
-                          return Padding(
-                            padding: EdgeInsets.symmetric(
-                                horizontal: 24.w, vertical: 18.h),
-                            child: Row(
-                              children: [
-                                widget.ccBodyCell(
-                                    item.createdByUsername.isNotEmpty
-                                        ? item.createdByUsername
-                                        : '-',
-                                    flex: 2),
-                                widget.ccBodyCell(
-                                    item.governorate.isNotEmpty
-                                        ? item.governorate
-                                        : '-',
-                                    flex: 2),
-                                widget.ccBodyCell(
-                                    item.platform.isNotEmpty
-                                        ? item.platform
-                                        : '-',
-                                    flex: 2),
-                                widget.ccBodyCell(item.patientPhone,
-                                    flex: 2, isPhone: true),
-                                widget.ccBodyCell(
-                                    widget.ccFormatDate(item.scheduledAt),
-                                    flex: 2),
-                                widget.ccBodyCell(
-                                    widget.ccFormatDayTime(item.scheduledAt),
-                                    flex: 3),
-                                widget.ccBodyCell(item.patientName,
-                                    flex: 2,
-                                    isBold: true,
-                                    color: const Color(0xFF649FCC)),
-                                SizedBox(
-                                  width: 70.w,
-                                  child: _AcceptAppointmentButton(
-                                    appointmentId: item.id,
-                                    onAccepted: onAcceptCallback,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
+          child: _buildBody(),
         ),
       ],
+    );
+  }
+
+  Widget _buildBody() {
+    // تحميل أولي فقط: لا قائمة بعد
+    if (_list == null && _isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    // خطأ ولا توجد قائمة سابقة
+    if (_list == null && _error != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline_rounded,
+                size: 60.sp, color: AppColors.textSecondary),
+            SizedBox(height: 16.h),
+            Text(
+              'تعذر تحميل المواعيد',
+              style: TextStyle(
+                  fontSize: 16.sp, color: AppColors.textSecondary),
+            ),
+            SizedBox(height: 8.h),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 24.w),
+              child: Text(
+                _error.toString(),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 12.sp, color: AppColors.textHint),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final list = _list ?? [];
+
+    return Container(
+      margin: EdgeInsets.fromLTRB(16.w, 0, 16.w, 16.h),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24.r),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // شريط تحميل رفيع عند البحث/التحديث بدون إخفاء الجدول
+          if (_isLoading)
+            LinearProgressIndicator(
+              backgroundColor: Colors.grey[200],
+              color: AppColors.primary,
+              minHeight: 3,
+            ),
+          Container(
+            padding: EdgeInsets.symmetric(
+                horizontal: 24.w, vertical: 20.h),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.vertical(
+                  top: Radius.circular(_isLoading ? 0 : 24.r)),
+              border: Border(
+                  bottom: BorderSide(color: Colors.grey[200]!)),
+            ),
+            child: Row(
+              children: [
+                widget.ccHeaderCell('الموظف', flex: 2),
+                widget.ccHeaderCell('الملاحظات', flex: 3),
+                widget.ccHeaderCell('المحافظة', flex: 2),
+                widget.ccHeaderCell('المنصة', flex: 2),
+                widget.ccHeaderCell('رقم الهاتف', flex: 2),
+                widget.ccHeaderCell('التاريخ', flex: 2),
+                widget.ccHeaderCell('اليوم والوقت', flex: 3),
+                widget.ccHeaderCell('المريض', flex: 2),
+                SizedBox(width: 70.w),
+              ],
+            ),
+          ),
+          Expanded(
+            child: list.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.calendar_today_outlined,
+                            size: 48.sp, color: const Color(0xFF649FCC)),
+                        SizedBox(height: 24.h),
+                        Text(
+                          'لا توجد مواعيد',
+                          style: TextStyle(
+                              fontSize: 18.sp,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary),
+                        ),
+                        SizedBox(height: 8.h),
+                        Text(
+                          _searchQuery.isEmpty
+                              ? 'لم يُسجّل أي موعد من مركز الاتصالات'
+                              : 'لا توجد نتائج للبحث',
+                          style: TextStyle(
+                              fontSize: 14.sp, color: AppColors.textSecondary),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.separated(
+                    padding: EdgeInsets.zero,
+                    itemCount: list.length,
+                    separatorBuilder: (_, __) =>
+                        Divider(height: 1, color: Colors.grey[100]),
+                    itemBuilder: (context, index) {
+                      final item = list[index];
+                      return Padding(
+                        padding: EdgeInsets.symmetric(
+                            horizontal: 24.w, vertical: 18.h),
+                        child: Row(
+                          children: [
+                            widget.ccBodyCell(
+                                item.createdByUsername.isNotEmpty
+                                    ? item.createdByUsername
+                                    : '-',
+                                flex: 2),
+                            widget.ccBodyCell(
+                                item.note.isNotEmpty ? item.note : '-',
+                                flex: 3),
+                            widget.ccBodyCell(
+                                item.governorate.isNotEmpty
+                                    ? item.governorate
+                                    : '-',
+                                flex: 2),
+                            widget.ccBodyCell(
+                                item.platform.isNotEmpty
+                                    ? item.platform
+                                    : '-',
+                                flex: 2),
+                            widget.ccBodyCell(item.patientPhone,
+                                flex: 2, isPhone: true),
+                            widget.ccBodyCell(
+                                widget.ccFormatDate(item.scheduledAt),
+                                flex: 2),
+                            widget.ccBodyCell(
+                                widget.ccFormatDayTime(item.scheduledAt),
+                                flex: 3),
+                            widget.ccBodyCell(item.patientName,
+                                flex: 2,
+                                isBold: true,
+                                color: const Color(0xFF649FCC)),
+                            SizedBox(
+                              width: 70.w,
+                              child: _AcceptAppointmentButton(
+                                appointmentId: item.id,
+                                onAccepted: _onAccepted,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
     );
   }
 }

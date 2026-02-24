@@ -140,11 +140,13 @@ class AuthController extends GetxController {
   }
 
   // تسجيل دخول الطاقم (username/password)
+  /// [expectedUserType] إن وُجد: يرفض الدخول إذا كان نوع المستخدم المُرجَع من API غير مطابق (مثلاً: اختيار مركز الاتصالات وإدخال بيانات موظف استقبال).
   Future<void> loginDoctor({
     required String username,
     required String password,
+    String? expectedUserType,
   }) async {
-    print('🎯 [AuthController] loginDoctor called: $username');
+    print('🎯 [AuthController] loginDoctor called: $username (expected: $expectedUserType)');
 
     if (username.trim().isEmpty || password.trim().isEmpty) {
       Get.snackbar('خطأ', 'يرجى إدخال اسم المستخدم وكلمة المرور');
@@ -164,6 +166,26 @@ class AuthController extends GetxController {
         if (userRes['ok'] == true) {
           final userData = userRes['data'] as Map<String, dynamic>;
           final user = UserModel.fromJson(userData);
+          final actualType = user.userType.toLowerCase();
+
+          // التحقق من تطابق نوع المستخدم مع صفحة الدخول المختارة
+          if (expectedUserType != null && expectedUserType.trim().isNotEmpty) {
+            final expected = expectedUserType.trim().toLowerCase().replaceAll(' ', '_');
+            final actualNorm = actualType.replaceAll(' ', '_');
+            if (actualNorm != expected) {
+              await _authService.logout();
+              await _cacheService.deleteUser();
+              currentUser.value = null;
+              isLoading.value = false;
+              Get.snackbar(
+                'رفض الدخول',
+                'هذا الحساب لا يطابق نوع المستخدم المختار. يرجى استخدام صفحة تسجيل الدخول المناسبة.',
+                snackPosition: SnackPosition.TOP,
+              );
+              return;
+            }
+          }
+
           currentUser.value = user;
           
           // حفظ في Cache - بنفس طريقة eversheen
@@ -172,7 +194,7 @@ class AuthController extends GetxController {
           await _syncPatientProfileId();
 
           String targetRoute;
-          switch (user.userType.toLowerCase()) {
+          switch (actualType) {
             case 'doctor':
               targetRoute = AppRoutes.doctorHome;
               break;

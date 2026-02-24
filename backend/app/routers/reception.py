@@ -570,6 +570,7 @@ async def list_call_center_appointments_for_reception(
             created_by_username=i.created_by_username,
             created_at=i.created_at.isoformat(),
             status=getattr(i, "status", "pending") or "pending",
+            accepted_at=i.accepted_at.isoformat() if getattr(i, "accepted_at", None) else None,
         )
         for i in items
     ]
@@ -598,5 +599,6 @@ async def accept_call_center_appointment_for_reception(
         await creator.save()
 
     doc.status = "accepted"
+    doc.accepted_at = datetime.now(timezone.utc)
     await doc.save()
     return {"ok": True, "accepted": True}

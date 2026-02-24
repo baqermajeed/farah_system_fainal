@@ -99,32 +99,46 @@ class _CallCenterLoginScreenState extends State<CallCenterLoginScreen> {
                     ),
                     SizedBox(height: 24.h),
                     // Username field
-                    CustomTextField(
-                      controller: _usernameController,
-                      labelText: AppStrings.receptionUsername,
-                      prefixIcon: const Icon(Icons.person),
+                    Center(
+                      child: SizedBox(
+                        width: 300.w,
+                        child: CustomTextField(
+                          controller: _usernameController,
+                          labelText: AppStrings.receptionUsername,
+                          hintText: 'اسم المستخدم',
+                          prefixIcon: const Icon(Icons.person),
+                        ),
+                      ),
                     ),
                     SizedBox(height: 16.h),
                     // Password field
-                    CustomTextField(
-                      controller: _passwordController,
-                      labelText: AppStrings.password,
-                      prefixIcon: const Icon(Icons.lock),
-                      obscureText: true,
+                    Center(
+                      child: SizedBox(
+                        width: 300.w,
+                        child: CustomTextField(
+                          controller: _passwordController,
+                          labelText: AppStrings.password,
+                          hintText: '••••••••',
+                          prefixIcon: const Icon(Icons.lock),
+                          obscureText: true,
+                        ),
+                      ),
                     ),
                     SizedBox(height: 24.h),
                     // Login button
                     Obx(
-                      () => SizedBox(
-                        width: double.infinity,
-                        height: 56.h,
-                        child: ElevatedButton(
+                      () => Center(
+                        child: SizedBox(
+                          width: 300.w,
+                          height: 50.h,
+                          child: ElevatedButton(
                           onPressed: _authController.isLoading.value
                               ? null
                               : () {
                                   _authController.loginDoctor(
                                     username: _usernameController.text,
                                     password: _passwordController.text,
+                                    expectedUserType: 'call_center',
                                   );
                                 },
                           style: ElevatedButton.styleFrom(
@@ -142,14 +156,14 @@ class _CallCenterLoginScreenState extends State<CallCenterLoginScreen> {
                               : Text(
                                   AppStrings.login,
                                   style: TextStyle(
-                                    fontSize: 18.sp,
+                                    fontSize: 16.sp,
                                     fontWeight: FontWeight.w600,
                                     color: AppColors.white,
                                   ),
                                 ),
                         ),
                       ),
-                    ),
+                    )),
                     SizedBox(height: 32.h),
                   ],
                 ),

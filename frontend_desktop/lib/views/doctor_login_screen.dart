@@ -45,6 +45,7 @@ class _DoctorLoginScreenState extends State<DoctorLoginScreen> {
     await _authController.loginDoctor(
       username: _usernameController.text,
       password: _passwordController.text,
+      expectedUserType: 'doctor',
     );
   }
 

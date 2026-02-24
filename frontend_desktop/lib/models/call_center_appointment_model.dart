@@ -5,6 +5,8 @@ class CallCenterAppointmentModel {
   final DateTime scheduledAt;
   final String createdByUsername;
   final DateTime? createdAt;
+  /// تاريخ قبول الموعد من الاستقبال (للإحصائيات حسب شهر القبول).
+  final DateTime? acceptedAt;
   final String governorate;
   final String platform;
   /// ملاحظة اختيارية من موظف الاتصالات عند الإضافة.
@@ -19,6 +21,7 @@ class CallCenterAppointmentModel {
     required this.scheduledAt,
     required this.createdByUsername,
     this.createdAt,
+    this.acceptedAt,
     this.governorate = '',
     this.platform = '',
     this.note = '',
@@ -30,6 +33,7 @@ class CallCenterAppointmentModel {
   factory CallCenterAppointmentModel.fromJson(Map<String, dynamic> json) {
     final scheduledRaw = (json['scheduled_at'] ?? '').toString();
     final createdRaw = (json['created_at'] ?? '').toString();
+    final acceptedRaw = (json['accepted_at'] ?? '').toString();
     return CallCenterAppointmentModel(
       id: (json['id'] ?? '').toString(),
       patientName: (json['patient_name'] ?? '').toString(),
@@ -42,6 +46,10 @@ class CallCenterAppointmentModel {
           ? null
           : DateTime.tryParse(createdRaw) ??
               DateTime.tryParse(createdRaw.replaceAll('Z', '+00:00')),
+      acceptedAt: acceptedRaw.isEmpty
+          ? null
+          : DateTime.tryParse(acceptedRaw) ??
+              DateTime.tryParse(acceptedRaw.replaceAll('Z', '+00:00')),
       governorate: (json['governorate'] ?? '').toString(),
       platform: (json['platform'] ?? '').toString(),
       note: (json['note'] ?? '').toString(),

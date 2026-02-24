@@ -1,3 +1,4 @@
+from typing import Optional
 from beanie import Document, Indexed
 from beanie import PydanticObjectId as OID
 from pydantic import Field
@@ -20,6 +21,8 @@ class CallCenterAppointment(Document):
 
     # pending = لم يُقبل بعد، accepted = قبله موظف الاستقبال (يُخفى من قائمة الاستقبال ويُعرض بلون أخضر في حساب الـ call center)
     status: str = "pending"  # "pending" | "accepted"
+    # تاريخ قبول الموعد من الاستقبال (للإحصائيات حسب شهر القبول)
+    accepted_at: Optional[datetime] = None
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
