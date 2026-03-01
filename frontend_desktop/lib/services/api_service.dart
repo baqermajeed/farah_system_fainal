@@ -54,15 +54,19 @@ class ApiService {
         onError: (error, handler) async {
           // Handle errors globally
           if (error.response?.statusCode == 401) {
-            // Token expired - try to refresh
             final requestOptions = error.requestOptions;
-            
+
+            // طلب مرسل لـ API آخر (مثل الكندي) — لا نجدد التوكن ولا نعيد المحاولة (نتجنب حلقة لا نهائية)
+            if (!_isRequestToMainBackend(requestOptions)) {
+              return handler.next(error);
+            }
+
             // إذا كان الطلب هو refresh token نفسه، لا نعيد المحاولة
             if (requestOptions.path.contains('/auth/refresh')) {
               await _handleUnauthorized();
               return handler.next(error);
             }
-            
+
             // إذا كنا نعيد التجديد حالياً، نضيف الطلب للقائمة المعلقة
             if (_isRefreshing) {
               return _addPendingRequest(requestOptions, handler);
@@ -107,6 +111,21 @@ class ApiService {
     } catch (e) {
       print('Warning: Could not clear storage: $e');
     }
+  }
+
+  /// الطلب مرسل إلى الـ API الرئيسي (نفس baseUrl) وليس إلى سيرفر آخر (مثل الكندي).
+  bool _isRequestToMainBackend(RequestOptions options) {
+    final path = options.path;
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+      try {
+        final uri = Uri.parse(path);
+        final mainUri = Uri.parse(ApiConstants.baseUrl);
+        return uri.host == mainUri.host;
+      } catch (_) {
+        return true;
+      }
+    }
+    return true;
   }
 
   // إضافة طلب للقائمة المعلقة
@@ -198,11 +217,51 @@ class ApiService {
   }
 
   // GET Request
+  /// When [baseUrlOverride] is set, the request is sent to that base URL (e.g. for call center Kendy branch).
   Future<dio.Response> get(
     String endpoint, {
     Map<String, dynamic>? queryParameters,
     dio.Options? options,
+    String? baseUrlOverride,
   }) async {
+    if (baseUrlOverride != null && baseUrlOverride.isNotEmpty) {
+      final base = baseUrlOverride.endsWith('/')
+          ? baseUrlOverride.substring(0, baseUrlOverride.length - 1)
+          : baseUrlOverride;
+      final path = endpoint.startsWith('/') ? endpoint : '/$endpoint';
+      final uri = queryParameters != null && queryParameters.isNotEmpty
+            ? Uri.parse('$base$path').replace(
+                queryParameters: Map<String, String>.fromEntries(
+                  queryParameters.entries.map(
+                    (e) => MapEntry(e.key, e.value?.toString() ?? ''),
+                  ),
+                ),
+              )
+            : Uri.parse('$base$path');
+      try {
+        final token = await _storage.read(key: ApiConstants.tokenKey);
+        final headers = <String, dynamic>{
+          'Accept': 'application/json',
+          if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+        };
+        final response = await _dio.fetch(
+          RequestOptions(
+            method: 'GET',
+            path: uri.toString(),
+            headers: headers,
+            sendTimeout: options?.sendTimeout ??
+                const Duration(milliseconds: ApiConstants.connectionTimeout),
+            receiveTimeout: options?.receiveTimeout ??
+                const Duration(milliseconds: ApiConstants.receiveTimeout),
+          ),
+        );
+        return response;
+      } on DioException catch (e) {
+        throw _handleDioError(e);
+      } catch (e) {
+        throw NetworkException(e.toString());
+      }
+    }
     try {
       final response = await _dio.get(
         endpoint,
@@ -218,12 +277,62 @@ class ApiService {
   }
 
   // POST Request
+  /// When [baseUrlOverride] is set, the request is sent to that base URL (e.g. for call center Kendy branch).
   Future<dio.Response> post(
     String endpoint, {
     dynamic data,
     dio.FormData? formData,
     dio.Options? options,
+    String? baseUrlOverride,
   }) async {
+    dynamic requestData = formData ?? data;
+    if (formData == null &&
+        data is String &&
+        options?.contentType == 'application/x-www-form-urlencoded') {
+      requestData = utf8.encode(data);
+    }
+
+    if (baseUrlOverride != null && baseUrlOverride.isNotEmpty) {
+      final base = baseUrlOverride.endsWith('/')
+          ? baseUrlOverride.substring(0, baseUrlOverride.length - 1)
+          : baseUrlOverride;
+      final path = endpoint.startsWith('/') ? endpoint : '/$endpoint';
+      final uri = Uri.parse('$base$path');
+      print('🌐 [ApiService] POST Request (override): $uri');
+      try {
+        final token = await _storage.read(key: ApiConstants.tokenKey);
+        final headers = <String, dynamic>{
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+        };
+        final optsHeaders = options?.headers;
+        if (optsHeaders != null) {
+          for (final e in optsHeaders.entries) {
+            headers[e.key] = e.value;
+          }
+        }
+        final response = await _dio.fetch(
+          RequestOptions(
+            method: 'POST',
+            path: uri.toString(),
+            data: requestData,
+            headers: headers,
+            sendTimeout: options?.sendTimeout ??
+                const Duration(milliseconds: ApiConstants.connectionTimeout),
+            receiveTimeout: options?.receiveTimeout ??
+                const Duration(milliseconds: ApiConstants.receiveTimeout),
+          ),
+        );
+        print('✅ [ApiService] POST Success (override): ${response.statusCode}');
+        return response;
+      } on DioException catch (e) {
+        throw _handleDioError(e);
+      } catch (e) {
+        throw NetworkException(e.toString());
+      }
+    }
+
     final fullUrl = '${ApiConstants.baseUrl}$endpoint';
     print('🌐 [ApiService] POST Request: $fullUrl');
     if (options?.headers != null) {
@@ -235,16 +344,6 @@ class ApiService {
     } else if (data != null) {
       print('🌐 [ApiService] Data Type: ${data.runtimeType}');
       print('🌐 [ApiService] Data: $data');
-    }
-
-    // Handle form-urlencoded strings - convert to UTF-8 bytes so Dio sends as raw body
-    dynamic requestData = formData ?? data;
-    if (formData == null && 
-        data is String && 
-        options?.contentType == 'application/x-www-form-urlencoded') {
-      // Convert string to UTF-8 bytes to ensure Dio sends it as raw body
-      requestData = utf8.encode(data);
-      print('🌐 [ApiService] Converting form-urlencoded string to UTF-8 bytes');
     }
 
     try {
@@ -263,12 +362,46 @@ class ApiService {
   }
 
   // PUT Request
+  /// When [baseUrlOverride] is set, the request is sent to that base URL (e.g. for call center Kendy branch).
   Future<dio.Response> put(
     String endpoint, {
     Map<String, dynamic>? data,
     dio.FormData? formData,
     dio.Options? options,
+    String? baseUrlOverride,
   }) async {
+    if (baseUrlOverride != null && baseUrlOverride.isNotEmpty) {
+      final base = baseUrlOverride.endsWith('/')
+          ? baseUrlOverride.substring(0, baseUrlOverride.length - 1)
+          : baseUrlOverride;
+      final path = endpoint.startsWith('/') ? endpoint : '/$endpoint';
+      final uri = Uri.parse('$base$path');
+      try {
+        final token = await _storage.read(key: ApiConstants.tokenKey);
+        final headers = <String, dynamic>{
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+        };
+        final response = await _dio.fetch(
+          RequestOptions(
+            method: 'PUT',
+            path: uri.toString(),
+            data: formData ?? data,
+            headers: headers,
+            sendTimeout: options?.sendTimeout ??
+                const Duration(milliseconds: ApiConstants.connectionTimeout),
+            receiveTimeout: options?.receiveTimeout ??
+                const Duration(milliseconds: ApiConstants.receiveTimeout),
+          ),
+        );
+        return response;
+      } on DioException catch (e) {
+        throw _handleDioError(e);
+      } catch (e) {
+        throw NetworkException(e.toString());
+      }
+    }
     try {
       final response = await _dio.put(
         endpoint,
@@ -300,11 +433,44 @@ class ApiService {
   }
 
   // DELETE Request
+  /// When [baseUrlOverride] is set, the request is sent to that base URL (e.g. for call center Kendy branch).
   Future<dio.Response> delete(
     String endpoint, {
     Map<String, dynamic>? data,
     dio.Options? options,
+    String? baseUrlOverride,
   }) async {
+    if (baseUrlOverride != null && baseUrlOverride.isNotEmpty) {
+      final base = baseUrlOverride.endsWith('/')
+          ? baseUrlOverride.substring(0, baseUrlOverride.length - 1)
+          : baseUrlOverride;
+      final path = endpoint.startsWith('/') ? endpoint : '/$endpoint';
+      final uri = Uri.parse('$base$path');
+      try {
+        final token = await _storage.read(key: ApiConstants.tokenKey);
+        final headers = <String, dynamic>{
+          'Accept': 'application/json',
+          if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+        };
+        final response = await _dio.fetch(
+          RequestOptions(
+            method: 'DELETE',
+            path: uri.toString(),
+            data: data,
+            headers: headers,
+            sendTimeout: options?.sendTimeout ??
+                const Duration(milliseconds: ApiConstants.connectionTimeout),
+            receiveTimeout: options?.receiveTimeout ??
+                const Duration(milliseconds: ApiConstants.receiveTimeout),
+          ),
+        );
+        return response;
+      } on DioException catch (e) {
+        throw _handleDioError(e);
+      } catch (e) {
+        throw NetworkException(e.toString());
+      }
+    }
     try {
       final response = await _dio.delete(
         endpoint,

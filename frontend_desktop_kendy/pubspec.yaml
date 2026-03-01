@@ -1,0 +1,82 @@
+name: frontend_desktop
+description: "Al-Kendy Dental System - Desktop Application"
+publish_to: 'none'
+version: 1.0.0
+
+environment:
+  # Allow patch-level Dart versions (e.g. 3.10.1) while keeping Dart 3.x requirement.
+  sdk: ">=3.10.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # State Management & Routing
+  get: ^4.6.6
+  
+  # Responsive UI
+  flutter_screenutil: ^5.9.0
+  
+  # Fonts
+  google_fonts: ^6.1.0
+  
+  # HTTP Client
+  dio: ^5.4.0
+  http: ^1.2.0
+  
+  # Secure Storage
+  flutter_secure_storage: ^9.0.0
+  http_parser: ^4.1.2
+  
+  # Image Picker
+  image_picker: ^1.0.7
+  
+  # Camera (for Windows desktop camera support)
+  camera: ^0.11.0+1
+  
+  # File Picker (for Windows desktop)
+  file_picker: ^8.0.0+1
+  
+  # QR Code
+  qr_flutter: ^4.1.0
+  
+  # Date formatting
+  intl: ^0.19.0
+  
+  # Cached Network Image
+  cached_network_image: ^3.3.1
+
+  # Local cache
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+
+  # Printing QR codes
+  printing: ^5.13.1
+  pdf: ^3.11.0
+  camera_windows: ^0.2.6+4
+  
+  # File system
+  path_provider: ^2.1.1
+  path: ^1.8.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.2
+  hive_generator: ^2.0.1
+  build_runner: ^2.4.13
+
+flutter_launcher_icons:
+  windows:
+    generate: true
+    image_path: "assets/images/kendy_logo.png"
+
+flutter:
+  uses-material-design: true
+  
+  # Assets
+  assets:
+    - assets/images/
+    - assets/splash/
+

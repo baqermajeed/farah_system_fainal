@@ -21,7 +21,7 @@ class CallCenterAppointmentsController extends GetxController {
     final q = search?.trim() ?? '';
     _lastSearch = q;
     try {
-      final list = await _service.getAppointments(search: q);
+      final list = await _service.getAppointmentsFromBoth(search: q);
       appointments.assignAll(list);
       await loadStats();
     } catch (e) {
@@ -50,6 +50,7 @@ class CallCenterAppointmentsController extends GetxController {
     required String patientName,
     required String patientPhone,
     required DateTime scheduledAt,
+    required String branch,
     String governorate = '',
     String platform = '',
     String note = '',
@@ -58,6 +59,7 @@ class CallCenterAppointmentsController extends GetxController {
       patientName: patientName,
       patientPhone: patientPhone,
       scheduledAt: scheduledAt,
+      branch: branch,
       governorate: governorate,
       platform: platform,
       note: note,
@@ -73,6 +75,7 @@ class CallCenterAppointmentsController extends GetxController {
     String? governorate,
     String? platform,
     String? note,
+    String? branch,
   }) async {
     await _service.updateAppointment(
       id: id,
@@ -82,12 +85,13 @@ class CallCenterAppointmentsController extends GetxController {
       governorate: governorate,
       platform: platform,
       note: note,
+      branch: branch,
     );
     await refresh();
   }
 
-  Future<void> deleteAppointment(String id) async {
-    await _service.deleteAppointment(id);
+  Future<void> deleteAppointment(String id, {String? branch}) async {
+    await _service.deleteAppointment(id, branch: branch);
     await refresh();
   }
 }

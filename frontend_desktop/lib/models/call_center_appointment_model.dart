@@ -1,3 +1,5 @@
+import 'package:frontend_desktop/core/network/api_constants.dart';
+
 class CallCenterAppointmentModel {
   final String id;
   final String patientName;
@@ -13,6 +15,8 @@ class CallCenterAppointmentModel {
   final String note;
   /// "pending" = لم يُقبل بعد، "accepted" = قبله الاستقبال (يُعرض الصف بلون أخضر).
   final String status;
+  /// فرع الموعد: farah_najaf أو kendy_baghdad (للعرض ومعرفة الـ API عند التعديل/الحذف).
+  final String branch;
 
   CallCenterAppointmentModel({
     required this.id,
@@ -26,11 +30,26 @@ class CallCenterAppointmentModel {
     this.platform = '',
     this.note = '',
     this.status = 'pending',
+    this.branch = '',
   });
 
   bool get isAccepted => status == 'accepted';
 
-  factory CallCenterAppointmentModel.fromJson(Map<String, dynamic> json) {
+  /// اسم الفرع للعرض في الجدول.
+  String get branchDisplay {
+    if (branch == ApiConstants.callCenterBranchKendyBaghdad) {
+      return 'عيادة الكندي بغداد';
+    }
+    if (branch == ApiConstants.callCenterBranchFarahNajaf) {
+      return 'عيادة فرح النجف';
+    }
+    return branch.isNotEmpty ? branch : '-';
+  }
+
+  factory CallCenterAppointmentModel.fromJson(
+    Map<String, dynamic> json, {
+    String? branch,
+  }) {
     final scheduledRaw = (json['scheduled_at'] ?? '').toString();
     final createdRaw = (json['created_at'] ?? '').toString();
     final acceptedRaw = (json['accepted_at'] ?? '').toString();
@@ -54,6 +73,7 @@ class CallCenterAppointmentModel {
       platform: (json['platform'] ?? '').toString(),
       note: (json['note'] ?? '').toString(),
       status: (json['status'] ?? 'pending').toString(),
+      branch: branch ?? (json['branch'] ?? '').toString(),
     );
   }
 }

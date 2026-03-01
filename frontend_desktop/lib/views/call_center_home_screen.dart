@@ -9,6 +9,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../controllers/auth_controller.dart';
 import '../controllers/call_center_appointments_controller.dart';
 import '../core/constants/app_colors.dart';
+import '../core/network/api_constants.dart';
 import '../models/call_center_appointment_model.dart';
 import '../core/utils/image_utils.dart';
 
@@ -41,6 +42,12 @@ const List<String> _bookingPlatforms = [
   'تيك توك',
   'فيسبوك',
   'اتصال',
+];
+
+/// الفروع عند إضافة موعد: فرح النجف → backend، الكندي بغداد → backend_kendy
+const List<MapEntry<String, String>> _callCenterBranches = [
+  MapEntry(ApiConstants.callCenterBranchFarahNajaf, 'عيادة فرح النجف'),
+  MapEntry(ApiConstants.callCenterBranchKendyBaghdad, 'عيادة الكندي بغداد'),
 ];
 
 class CallCenterHomeScreen extends StatefulWidget {
@@ -125,7 +132,7 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
                                 SizedBox(
-                                  width: 200.w,
+                                  width: 140.w,
                                   child: _buildStatsPanel(),
                                 ),
                                 SizedBox(width: 16.w),
@@ -527,12 +534,14 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
               child: Row(
                 children: [
                   _buildHeaderCell('الموظف', flex: 2),
+                  _buildHeaderCell('الفرع', flex: 2),
                   _buildHeaderCell('ملاحظة', flex: 3),
                   _buildHeaderCell('المحافظة', flex: 2),
                   _buildHeaderCell('المنصة', flex: 2),
                   _buildHeaderCell('رقم الهاتف', flex: 2),
                   _buildHeaderCell('التاريخ', flex: 2),
                   _buildHeaderCell('اليوم والوقت', flex: 2),
+                  
                   _buildHeaderCell('المريض', flex: 4),
                   SizedBox(width: 40.w), // Actions placeholder
                 ],
@@ -570,6 +579,10 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                               flex: 2,
                             ),
                             _buildBodyCell(
+                              item.branchDisplay,
+                              flex: 2,
+                            ),
+                            _buildBodyCell(
                               item.note.isNotEmpty ? item.note : '-',
                               flex: 3,
                             ),
@@ -597,6 +610,7 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                               _formatDayTime(item.scheduledAt),
                               flex: 2,
                             ),
+                           
                             _buildBodyCell(
                               item.patientName,
                               flex: 4,
@@ -637,7 +651,10 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                                             ),
                                           );
                                           if (confirm == true) {
-                                            await _appointmentsController.deleteAppointment(item.id);
+                                            await _appointmentsController.deleteAppointment(
+                                              item.id,
+                                              branch: item.branch.isNotEmpty ? item.branch : null,
+                                            );
                                             if (context.mounted) {
                                               Get.snackbar(
                                                 'تم',
@@ -905,6 +922,7 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
     TimeOfDay? selectedTime;
     String? selectedGovernorate;
     String? selectedPlatform;
+    String? selectedBranch;
 
     await showDialog<void>(
       context: context,
@@ -1049,6 +1067,31 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                         ),
                         SizedBox(height: 16.h),
 
+                        // الفرع (مطلوب): فرح النجف → backend، الكندي بغداد → backend_kendy
+                        DropdownButtonFormField<String>(
+                          value: selectedBranch,
+                          decoration: InputDecoration(
+                            labelText: 'الفرع',
+                            prefixIcon: const Icon(Icons.business_outlined),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12.r),
+                            ),
+                            filled: true,
+                            fillColor: Colors.grey[50],
+                          ),
+                          hint: const Text('اختر الفرع'),
+                          items: _callCenterBranches
+                              .map((e) => DropdownMenuItem(
+                                    value: e.key,
+                                    child: Text(e.value),
+                                  ))
+                              .toList(),
+                          onChanged: (v) => setState(() => selectedBranch = v),
+                          validator: (v) =>
+                              v == null || v.isEmpty ? 'يرجى اختيار الفرع' : null,
+                        ),
+                        SizedBox(height: 16.h),
+
                         // ملاحظة (اختيارية)
                         TextFormField(
                           controller: noteController,
@@ -1155,6 +1198,18 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                               child: ElevatedButton(
                                 onPressed: () async {
                                   if (!formKey.currentState!.validate()) return;
+                                  if (selectedBranch == null ||
+                                      selectedBranch!.isEmpty) {
+                                    Get.snackbar(
+                                      'تنبيه',
+                                      'يرجى اختيار الفرع',
+                                      snackPosition: SnackPosition.TOP,
+                                      backgroundColor: AppColors.error,
+                                      colorText: AppColors.white,
+                                      margin: EdgeInsets.all(20.r),
+                                    );
+                                    return;
+                                  }
                                   if (selectedDate == null ||
                                       selectedTime == null) {
                                     Get.snackbar(
@@ -1179,6 +1234,7 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                                     patientName: nameController.text.trim(),
                                     patientPhone: phoneController.text.trim(),
                                     scheduledAt: scheduledAt,
+                                    branch: selectedBranch!,
                                     governorate: selectedGovernorate ?? '',
                                     platform: selectedPlatform ?? '',
                                     note: noteController.text.trim(),
@@ -1512,6 +1568,7 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                                     governorate: selectedGovernorate ?? '',
                                     platform: selectedPlatform ?? '',
                                     note: noteController.text.trim(),
+                                    branch: item.branch.isNotEmpty ? item.branch : null,
                                   );
                                   if (context.mounted) {
                                     Navigator.of(ctx).pop();

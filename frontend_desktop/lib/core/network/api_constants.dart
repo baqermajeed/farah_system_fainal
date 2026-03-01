@@ -32,6 +32,24 @@ class ApiConstants {
     return _defaultBaseUrl;
   }
 
+  /// Base URL for عيادة الكندي بغداد (backend_kendy) — نفس الرابط في frontend_desktop_kendy.
+  /// Use `--dart-define=API_KENDY_BASE_URL=<url>` to override.
+  static const String _defaultKendyBaseUrl = 'https://alkendysys.farahdent.com';
+  static const String _kendyBaseUrlOverride = String.fromEnvironment(
+    'API_KENDY_BASE_URL',
+    defaultValue: '',
+  );
+
+  static String get baseUrlKendy {
+    final override = _kendyBaseUrlOverride.trim();
+    if (override.isNotEmpty) return override;
+    return _defaultKendyBaseUrl;
+  }
+
+  /// قيم الفرع عند إضافة موعد من مركز الاتصالات.
+  static const String callCenterBranchFarahNajaf = 'farah_najaf';   // عيادة فرح النجف → backend
+  static const String callCenterBranchKendyBaghdad = 'kendy_baghdad'; // عيادة الكندي بغداد → backend_kendy
+
   // API Endpoints
   static const String authRequestOtp = '/auth/request-otp';
   static const String authVerifyOtp = '/auth/verify-otp';

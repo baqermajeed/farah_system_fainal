@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     # Firebase Admin SDK service account
     FIREBASE_CREDENTIALS_FILE: str | None = None
 
+    # سري لاستدعاءات الـ API الداخلية (مثلاً من backend الكندي لزيادة عداد مقبولة موظف النجف)
+    INTERNAL_API_SECRET: str | None = None
+
     class Config:
         env_file = ".env"
         case_sensitive = False

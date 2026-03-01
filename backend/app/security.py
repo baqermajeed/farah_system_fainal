@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Callable
 
 from beanie import PydanticObjectId as OID
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 from passlib.context import CryptContext
@@ -123,3 +123,12 @@ def require_roles(allowed: List[Role]) -> Callable:
         return current_user
 
     return checker
+
+
+async def verify_internal_secret(
+    x_internal_secret: str | None = Header(None, alias="X-Internal-Secret"),
+):
+    """للتحقق من طلبات الـ API الداخلية (مثلاً من backend الكندي)."""
+    secret = get_settings().INTERNAL_API_SECRET
+    if not secret or not x_internal_secret or x_internal_secret != secret:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
