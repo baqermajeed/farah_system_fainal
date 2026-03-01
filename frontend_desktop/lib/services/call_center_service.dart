@@ -139,7 +139,7 @@ class CallCenterService {
 
   /// [branch]: ApiConstants.callCenterBranchFarahNajaf → backend (فرح النجف)،
   /// ApiConstants.callCenterBranchKendyBaghdad → backend_kendy (الكندي بغداد).
-  /// عند اختيار الكندي يُحفظ الموعد في الكندي وفي النجف معاً.
+  /// عند اختيار الكندي يُحفظ الموعد في الكندي فقط (يظهر مرة واحدة في الجدول).
   Future<void> createAppointment({
     required String patientName,
     required String patientPhone,
@@ -161,31 +161,10 @@ class CallCenterService {
     try {
       final isKendy = branch == ApiConstants.callCenterBranchKendyBaghdad;
 
-      if (isKendy) {
-        // إرسال إلى الكندي
-        final responseKendy = await _api.post(
-          ApiConstants.callCenterAppointments,
-          data: Map<String, dynamic>.from(payload),
-          baseUrlOverride: ApiConstants.baseUrlKendy,
-        );
-        if (responseKendy.statusCode != 200 && responseKendy.statusCode != 201) {
-          throw ApiException('فشل إنشاء الموعد في فرع الكندي');
-        }
-        // حفظ نفس الموعد في فرع النجف أيضاً
-        final responseNajaf = await _api.post(
-          ApiConstants.callCenterAppointments,
-          data: Map<String, dynamic>.from(payload),
-        );
-        if (responseNajaf.statusCode != 200 && responseNajaf.statusCode != 201) {
-          throw ApiException('فشل إنشاء الموعد في فرع النجف');
-        }
-        return;
-      }
-
-      // فرع النجف فقط
       final response = await _api.post(
         ApiConstants.callCenterAppointments,
-        data: payload,
+        data: Map<String, dynamic>.from(payload),
+        baseUrlOverride: isKendy ? ApiConstants.baseUrlKendy : null,
       );
       if (response.statusCode == 200 || response.statusCode == 201) {
         return;
