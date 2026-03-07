@@ -36,6 +36,14 @@ class Patient(Document):
     # طرق الدفع المتفق عليها مع المريض (مثلاً: نقد، ماستر كارد، كمبيالة، تعهد)
     payment_methods: list[str] = Field(default_factory=list)
 
+    # حالة تفعيل المريض (الآلية الجديدة):
+    # pending: جديد وبانتظار تنشيط الاستقبال
+    # active: تم تنشيطه من الاستقبال
+    # inactive: انتهى يوم إضافته بدون تنشيط
+    activity_status: Literal["pending", "active", "inactive"] = "pending"
+    activated_at: datetime | None = None
+    inactivated_at: datetime | None = None
+
     qr_code_data: Indexed(str, unique=True) = ""
     qr_image_path: str | None = None
 

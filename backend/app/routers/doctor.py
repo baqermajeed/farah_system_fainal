@@ -100,6 +100,7 @@ def _build_doctor_patient_out(patient: Patient, user: User, doctor_id: str) -> P
         visit_type=getattr(patient, "visit_type", None),
         consultation_type=getattr(patient, "consultation_type", None),
         payment_methods=payment_methods,
+        activity_status=getattr(patient, "activity_status", "pending"),
         doctor_ids=[str(did) for did in patient.doctor_ids],
         doctor_profiles=doctor_profiles,
         qr_code_data=patient.qr_code_data,
@@ -154,6 +155,7 @@ def _build_doctor_patient_out_from_agg(patient_doc: dict, user_doc: dict, doctor
         visit_type=patient_doc.get("visit_type"),
         consultation_type=patient_doc.get("consultation_type"),
         payment_methods=payment_methods,
+        activity_status=patient_doc.get("activity_status", "pending"),
         doctor_ids=[str(d) for d in patient_doc.get("doctor_ids", [])],
         doctor_profiles=doctor_profiles_out,
         qr_code_data=patient_doc.get("qr_code_data", ""),
@@ -571,7 +573,7 @@ async def my_inactive_patients(
 
     التعريف الحالي لغير النشطين:
     - مرضى جدد (visit_type == "مريض جديد") تم تحويلهم للطبيب لكن لم يقم
-      الطبيب بأي إجراء عليهم في يوم التحويل الأول، وتمت إزالتهم تلقائياً
+      موظف الاستقبال بتنشيطهم في يوم التحويل الأول، وتمت إزالتهم تلقائياً
       من قائمته بواسطة منطق `cleanup_inactive_new_patients_for_doctor`.
     - يتم الاعتماد على سجلات `InactivePatientLog` لحساب هؤلاء المرضى.
     """

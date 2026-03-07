@@ -25,7 +25,7 @@ class PatientController extends GetxController {
   var isLoadingMorePatients = false.obs;
   var hasMorePatients = true.obs;
   final int pageLimit = 25; // 25 مريض في كل مرة (بدلاً من 10 في eversheen)
-  
+
   // ⭐ متغيرات البحث - بنفس طريقة eversheen
   RxList<PatientModel> searchResults = <PatientModel>[].obs;
   RxBool isSearching = false.obs;
@@ -33,7 +33,7 @@ class PatientController extends GetxController {
   var hasMoreSearchResults = true.obs;
   var isLoadingMoreSearch = false.obs;
   var lastSearchQuery = ''.obs;
-  
+
   // ⭐ متغيرات للجلب الذكي (للتوافق مع الكود القديم)
   final RxInt loadedPatientsCount = 0.obs;
   final RxString loadingProgress = ''.obs;
@@ -87,14 +87,14 @@ class PatientController extends GetxController {
     for (final p in cached) {
       cachedMap[p.id] = p;
     }
-    
+
     int newCount = 0;
     int updatedCount = 0;
-    
+
     // إضافة/تحديث المرضى من recent
     for (final recentPatient in recent) {
       final cachedPatient = cachedMap[recentPatient.id];
-      
+
       if (cachedPatient == null) {
         // ⭐ مريض جديد
         cachedMap[recentPatient.id] = recentPatient;
@@ -106,15 +106,17 @@ class PatientController extends GetxController {
         if (isUpdated) {
           cachedMap[recentPatient.id] = recentPatient;
           updatedCount++;
-          print('🔄 [PatientController] Updated patient: ${recentPatient.name}');
+          print(
+            '🔄 [PatientController] Updated patient: ${recentPatient.name}',
+          );
         }
       }
     }
-    
+
     // ترتيب حسب ID (الأحدث أولاً)
     final merged = cachedMap.values.toList();
     merged.sort((a, b) => b.id.compareTo(a.id));
-    
+
     return {
       'merged': merged,
       'newCount': newCount,
@@ -126,14 +128,15 @@ class PatientController extends GetxController {
   bool _isPatientUpdated(PatientModel cached, PatientModel recent) {
     // مقارنة الحقول المهمة
     return cached.name != recent.name ||
-           cached.phoneNumber != recent.phoneNumber ||
-           cached.age != recent.age ||
-           cached.city != recent.city ||
-           cached.visitType != recent.visitType ||
-           cached.treatmentHistory?.length != recent.treatmentHistory?.length ||
-           cached.doctorIds.length != recent.doctorIds.length ||
-           cached.imageUrl != recent.imageUrl ||
-           !_areStringListsEqual(cached.paymentMethods, recent.paymentMethods);
+        cached.phoneNumber != recent.phoneNumber ||
+        cached.age != recent.age ||
+        cached.city != recent.city ||
+        cached.visitType != recent.visitType ||
+        cached.activityStatus != recent.activityStatus ||
+        cached.treatmentHistory?.length != recent.treatmentHistory?.length ||
+        cached.doctorIds.length != recent.doctorIds.length ||
+        cached.imageUrl != recent.imageUrl ||
+        !_areStringListsEqual(cached.paymentMethods, recent.paymentMethods);
   }
 
   bool _areStringListsEqual(List<String>? a, List<String>? b) {
@@ -158,12 +161,14 @@ class PatientController extends GetxController {
   }) async {
     var skip = currentCount;
     int batchNumber = 1;
-    
+
     while (batchNumber <= maxBatches && hasMorePatients.value) {
       try {
         final batchStartTime = DateTime.now();
-        print('📦 [PatientController] Loading batch ${batchNumber + 1} (skip: $skip, limit: $batchSize)...');
-        
+        print(
+          '📦 [PatientController] Loading batch ${batchNumber + 1} (skip: $skip, limit: $batchSize)...',
+        );
+
         List<PatientModel> batch;
         if (userType == 'receptionist') {
           batch = await _patientService.getAllPatients(
@@ -176,69 +181,76 @@ class PatientController extends GetxController {
             limit: batchSize,
           );
         }
-        
+
         if (batch.isEmpty) {
           print('✅ [PatientController] No more patients to load');
           hasMorePatients.value = false;
           break;
         }
-        
+
         final batchDuration = DateTime.now().difference(batchStartTime);
-        
+
         // إضافة الوجبة الجديدة للقائمة
         patients.addAll(batch);
         loadedPatientsCount.value = patients.length;
-        
+
         loadingProgress.value = 'جاري التحميل: ${patients.length} مريض...';
-        
-        print('✅ [PatientController] Batch ${batchNumber + 1}: ${batch.length} patients in ${batchDuration.inMilliseconds}ms');
+
+        print(
+          '✅ [PatientController] Batch ${batchNumber + 1}: ${batch.length} patients in ${batchDuration.inMilliseconds}ms',
+        );
         print('📊 [PatientController] Total: ${patients.length} patients');
-        
+
         // تحديث الكاش كل 5 وجبات
         if (batchNumber % 5 == 0) {
           try {
             await _cacheService.savePatients(patients.toList());
-            print('💾 [PatientController] Cache updated (batch ${batchNumber + 1})');
+            print(
+              '💾 [PatientController] Cache updated (batch ${batchNumber + 1})',
+            );
           } catch (e) {
             print('❌ [PatientController] Error updating cache: $e');
           }
         }
-        
+
         if (batch.length < batchSize) {
           hasMorePatients.value = false;
           print('✅ [PatientController] Reached end of data');
           break;
         }
-        
+
         skip += batchSize;
         batchNumber++;
-        
+
         // استراحة صغيرة بين الوجبات
         await Future.delayed(Duration(milliseconds: 100));
-        
       } catch (e) {
-        print('❌ [PatientController] Error loading batch ${batchNumber + 1}: $e');
+        print(
+          '❌ [PatientController] Error loading batch ${batchNumber + 1}: $e',
+        );
         skip += batchSize;
         batchNumber++;
-        
+
         if (batchNumber > 3) {
-          print('⚠️ [PatientController] Too many errors, stopping batch loading');
+          print(
+            '⚠️ [PatientController] Too many errors, stopping batch loading',
+          );
           hasMorePatients.value = false;
           break;
         }
       }
     }
-    
+
     // تحديث الكاش النهائي
     try {
       await _cacheService.savePatients(patients.toList());
     } catch (e) {
       print('❌ [PatientController] Error updating final cache: $e');
     }
-    
+
     isFetchingInBackground.value = false;
     loadingProgress.value = 'تم تحميل ${patients.length} مريض';
-    
+
     final totalTime = DateTime.now().difference(startTime);
     print('🎯 [PatientController] Batch loading complete!');
     print('👥 Total patients: ${patients.length}');
@@ -261,7 +273,9 @@ class PatientController extends GetxController {
         isLoadingMorePatients.value = true;
       }
 
-      print('📋 [PatientController] Loading patients - page: $currentPage, limit: $pageLimit');
+      print(
+        '📋 [PatientController] Loading patients - page: $currentPage, limit: $pageLimit',
+      );
 
       // 1) محاولة التحميل من الكاش أولاً (Hive) - بنفس طريقة eversheen
       if (isInitial || isRefresh) {
@@ -314,17 +328,24 @@ class PatientController extends GetxController {
         currentPage++;
       }
 
-      print('✅ [PatientController] Loaded ${patientsList.length} patients from API (total: ${patients.length})');
+      print(
+        '✅ [PatientController] Loaded ${patientsList.length} patients from API (total: ${patients.length})',
+      );
 
       // 3) تحديث الكاش بعد نجاح الجلب من API - بنفس طريقة eversheen
       // تشغيل في الخلفية بدون انتظار لتجنب blocking UI thread
       unawaited(
-        _cacheService.savePatients(patients.toList()).then((_) {
-          print('💾 [PatientController] Cache updated with ${patients.length} patients');
-        }).catchError((e, stackTrace) {
-          print('❌ [PatientController] Error updating cache: $e');
-          print('❌ [PatientController] Stack trace: $stackTrace');
-        }),
+        _cacheService
+            .savePatients(patients.toList())
+            .then((_) {
+              print(
+                '💾 [PatientController] Cache updated with ${patients.length} patients',
+              );
+            })
+            .catchError((e, stackTrace) {
+              print('❌ [PatientController] Error updating cache: $e');
+              print('❌ [PatientController] Stack trace: $stackTrace');
+            }),
       );
     } on ApiException catch (e) {
       print('❌ [PatientController] ApiException: ${e.message}');
@@ -354,9 +375,9 @@ class PatientController extends GetxController {
 
   // ⭐ الدالة الرئيسية: جلب ذكي مع الكاش
   Future<void> loadPatientsSmart({
-    int initialBatchSize = 100,  // حجم أول وجبة
-    int batchSize = 100,          // حجم باقي الوجبات
-    int maxBatches = 200,        // أقصى عدد وجبات
+    int initialBatchSize = 100, // حجم أول وجبة
+    int batchSize = 100, // حجم باقي الوجبات
+    int maxBatches = 200, // أقصى عدد وجبات
     int recentPatientsCheck = 200, // عدد المرضى الأحدث للتحقق
   }) async {
     try {
@@ -365,48 +386,53 @@ class PatientController extends GetxController {
       loadedPatientsCount.value = 0;
       loadingProgress.value = '';
       hasMorePatients.value = true;
-      
+
       print('📋 [PatientController] Starting smart loading...');
       final startTime = DateTime.now();
-      
+
       final authController = Get.find<AuthController>();
       final userType = authController.currentUser.value?.userType;
-      
+
       // ⭐ الخطوة 1: محاولة قراءة الكاش - بنفس طريقة eversheen
       final cachedPatients = _cacheService.getAllPatients();
       final cachedLastUpdated = _cacheService.getLastUpdateTime('patients');
       final hasCache = cachedPatients.isNotEmpty;
-      
+
       if (hasCache) {
-        print('✅ [PatientController] Found ${cachedPatients.length} patients in cache');
+        print(
+          '✅ [PatientController] Found ${cachedPatients.length} patients in cache',
+        );
         print('📅 [PatientController] Cache last updated: $cachedLastUpdated');
       }
-      
+
       // ⭐ الخطوة 2: إذا الكاش موجود - عرضه فوراً والتحقق من التحديثات
       if (hasCache && cachedPatients.isNotEmpty) {
         print('📦 [PatientController] Cache found - displaying immediately');
-        
+
         // عرض الكاش فوراً
         patients.value = cachedPatients;
         loadedPatientsCount.value = cachedPatients.length;
-        loadingProgress.value = 'تم تحميل ${cachedPatients.length} مريض من الكاش';
+        loadingProgress.value =
+            'تم تحميل ${cachedPatients.length} مريض من الكاش';
         isLoading.value = false; // ⭐ مهم: إيقاف loading للعرض الفوري
-        
-        print('✅ [PatientController] Displaying ${cachedPatients.length} patients from cache');
-        
+
+        print(
+          '✅ [PatientController] Displaying ${cachedPatients.length} patients from cache',
+        );
+
         // ⭐ التحقق من التحديثات في الخلفية (غير blocking)
         _checkForUpdates(
           userType: userType,
           cachedPatients: cachedPatients,
           recentPatientsCheck: recentPatientsCheck,
         );
-        
+
         return; // ⭐ خروج مبكر - عرض الكاش فوراً
       }
-      
+
       // ⭐ الخطوة 3: إذا الكاش فارغ - جلب على شكل وجبات
       print('📦 [PatientController] Cache is empty - loading in batches...');
-      
+
       // جلب أول وجبة
       List<PatientModel> firstBatch;
       if (userType == 'receptionist') {
@@ -420,20 +446,22 @@ class PatientController extends GetxController {
           limit: initialBatchSize,
         );
       }
-      
+
       if (firstBatch.isEmpty) {
         print('⚠️ [PatientController] No patients found');
         patients.value = [];
         isLoading.value = false;
         return;
       }
-      
+
       patients.value = firstBatch;
       loadedPatientsCount.value = firstBatch.length;
       loadingProgress.value = 'تم تحميل ${firstBatch.length} مريض';
-      
-      print('✅ [PatientController] First batch loaded: ${firstBatch.length} patients');
-      
+
+      print(
+        '✅ [PatientController] First batch loaded: ${firstBatch.length} patients',
+      );
+
       // تحديث الكاش بأول وجبة - بنفس طريقة eversheen
       try {
         await _cacheService.savePatients(patients.toList());
@@ -441,12 +469,12 @@ class PatientController extends GetxController {
       } catch (e) {
         print('❌ [PatientController] Error updating cache: $e');
       }
-      
+
       // جلب باقي الوجبات في الخلفية
       if (firstBatch.length == initialBatchSize) {
         isFetchingInBackground.value = true;
         loadingProgress.value = 'جاري تحميل باقي البيانات...';
-        
+
         _loadRemainingBatches(
           userType: userType,
           currentCount: firstBatch.length,
@@ -455,9 +483,8 @@ class PatientController extends GetxController {
           startTime: startTime,
         );
       }
-      
+
       isLoading.value = false;
-      
     } catch (e) {
       print('❌ [PatientController] Error in smart loading: $e');
       if (NetworkUtils.isNetworkError(e)) {
@@ -477,7 +504,7 @@ class PatientController extends GetxController {
   }) async {
     try {
       print('🔄 [PatientController] Checking for updates...');
-      
+
       // جلب المرضى الأحدث من API
       List<PatientModel> recentPatients;
       if (userType == 'receptionist') {
@@ -491,18 +518,21 @@ class PatientController extends GetxController {
           limit: recentPatientsCheck,
         );
       }
-      
+
       // دمج التحديثات
       final updated = _mergePatients(cachedPatients, recentPatients);
-      
+
       if (updated['newCount'] > 0 || updated['updatedCount'] > 0) {
-        print('🔄 [PatientController] Found ${updated['newCount']} new and ${updated['updatedCount']} updated patients');
-        
+        print(
+          '🔄 [PatientController] Found ${updated['newCount']} new and ${updated['updatedCount']} updated patients',
+        );
+
         // تحديث القائمة
         patients.value = updated['merged'] as List<PatientModel>;
         loadedPatientsCount.value = patients.length;
-        loadingProgress.value = 'تم تحديث ${updated['newCount'] + updated['updatedCount']} مريض';
-        
+        loadingProgress.value =
+            'تم تحديث ${updated['newCount'] + updated['updatedCount']} مريض';
+
         // تحديث الكاش - بنفس طريقة eversheen
         try {
           await _cacheService.savePatients(patients.toList());
@@ -510,7 +540,7 @@ class PatientController extends GetxController {
         } catch (e) {
           print('❌ [PatientController] Error updating cache: $e');
         }
-        
+
         // إشعار المستخدم (اختياري)
         if (updated['newCount'] > 0 || updated['updatedCount'] > 0) {
           Get.snackbar(
@@ -524,7 +554,6 @@ class PatientController extends GetxController {
         print('✅ [PatientController] No updates found - cache is up to date');
         loadingProgress.value = 'البيانات محدثة';
       }
-      
     } catch (e) {
       print('❌ [PatientController] Error checking for updates: $e');
       // لا نعرض خطأ للمستخدم لأن الكاش موجود ويعمل
@@ -567,6 +596,7 @@ class PatientController extends GetxController {
           qrCodeData: oldPatient.qrCodeData,
           qrImagePath: oldPatient.qrImagePath,
           paymentMethods: oldPatient.paymentMethods,
+          activityStatus: oldPatient.activityStatus,
         );
 
         patients[index] = optimisticPatient;
@@ -676,6 +706,7 @@ class PatientController extends GetxController {
           qrCodeData: oldPatient.qrCodeData,
           qrImagePath: oldPatient.qrImagePath,
           paymentMethods: methods,
+          activityStatus: oldPatient.activityStatus,
         );
 
         patients[index] = optimisticPatient;
@@ -751,7 +782,10 @@ class PatientController extends GetxController {
   }
 
   // تحديث الأطباء المرتبطين بمريض معين في الواجهة بدون إعادة تحميل كاملة
-  Future<void> updatePatientDoctorIds(String patientId, List<String> doctorIds) async {
+  Future<void> updatePatientDoctorIds(
+    String patientId,
+    List<String> doctorIds,
+  ) async {
     final index = patients.indexWhere((p) => p.id == patientId);
     if (index == -1) return;
 
@@ -770,6 +804,7 @@ class PatientController extends GetxController {
       qrCodeData: patient.qrCodeData,
       qrImagePath: patient.qrImagePath,
       paymentMethods: patient.paymentMethods,
+      activityStatus: patient.activityStatus,
     );
 
     patients[index] = updatedPatient;
@@ -782,6 +817,38 @@ class PatientController extends GetxController {
     try {
       await _cacheService.savePatient(updatedPatient);
     } catch (_) {}
+  }
+
+  Future<void> activatePatientByReception(String patientId) async {
+    try {
+      isLoading.value = true;
+      final updatedPatient = await _patientService.activatePatient(patientId);
+      final index = patients.indexWhere((p) => p.id == patientId);
+      if (index != -1) {
+        patients[index] = updatedPatient;
+      }
+      if (selectedPatient.value?.id == patientId) {
+        selectedPatient.value = updatedPatient;
+      }
+      try {
+        await _cacheService.savePatient(updatedPatient);
+      } catch (_) {}
+      Get.snackbar('نجح', 'تم تنشيط المريض');
+    } on ApiException catch (e) {
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', e.message);
+      }
+    } catch (e) {
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', 'فشل تنشيط المريض');
+      }
+    } finally {
+      isLoading.value = false;
+    }
   }
 
   PatientModel? getPatientById(String patientId) {
@@ -807,7 +874,7 @@ class PatientController extends GetxController {
   Future<void> addPatient(PatientModel patient) async {
     // ⭐ التحقق إذا كان المريض موجود بالفعل
     final existingIndex = patients.indexWhere((p) => p.id == patient.id);
-    
+
     if (existingIndex != -1) {
       // ⭐ إذا كان موجود، نحدثه بدلاً من إضافته
       patients[existingIndex] = patient;
@@ -818,7 +885,7 @@ class PatientController extends GetxController {
       loadedPatientsCount.value = patients.length; // ⭐ تحديث العداد
       print('✅ [PatientController] Patient added: ${patient.name}');
     }
-    
+
     selectedPatient.value = patient;
 
     // تحديث الكاش بعد الإضافة/التحديث - بنفس طريقة eversheen

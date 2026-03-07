@@ -82,6 +82,7 @@ class PatientOut(BaseModel):
     visit_type: Optional[str] = None
     consultation_type: Optional[str] = None
     payment_methods: Optional[List[str]] = None
+    activity_status: Optional[str] = None  # pending | active | inactive
     # Mongo ObjectId تُرجع كنصوص في الـ API
     doctor_ids: List[str] = []  # قائمة معرفات الأطباء المرتبطين
     doctor_profiles: Dict[str, DoctorPatientProfileOut] = Field(default_factory=dict)

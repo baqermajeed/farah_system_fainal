@@ -47,8 +47,10 @@ class ApiConstants {
   }
 
   /// قيم الفرع عند إضافة موعد من مركز الاتصالات.
-  static const String callCenterBranchFarahNajaf = 'farah_najaf';   // عيادة فرح النجف → backend
-  static const String callCenterBranchKendyBaghdad = 'kendy_baghdad'; // عيادة الكندي بغداد → backend_kendy
+  static const String callCenterBranchFarahNajaf =
+      'farah_najaf'; // عيادة فرح النجف → backend
+  static const String callCenterBranchKendyBaghdad =
+      'kendy_baghdad'; // عيادة الكندي بغداد → backend_kendy
 
   // API Endpoints
   static const String authRequestOtp = '/auth/request-otp';
@@ -83,6 +85,8 @@ class ApiConstants {
   static const String receptionAssignPatient = '/reception/assign';
   static String receptionUploadPatientImage(String patientId) =>
       '/reception/patients/$patientId/upload-image';
+  static String receptionActivatePatient(String patientId) =>
+      '/reception/patients/$patientId/activate';
   static String receptionPatientGallery(String patientId) =>
       '/reception/patients/$patientId/gallery';
   static const String receptionCallCenterAppointments =
@@ -165,7 +169,8 @@ class ApiConstants {
   // Stats Endpoints
   static String doctorPatientTransferStats(String doctorId) =>
       '/stats/doctors/$doctorId/patient-transfers';
-  static const String doctorAllDoctorsTransferStats = '/doctor/doctors/transfer-stats';
+  static const String doctorAllDoctorsTransferStats =
+      '/doctor/doctors/transfer-stats';
 
   // Socket.IO
   static String get socketUrl =>

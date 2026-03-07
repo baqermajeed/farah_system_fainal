@@ -69,26 +69,9 @@ def _reset_doctor_profile_assignment(patient: Patient, doctor_id: str, assigned_
 
 def _touch_doctor_last_action(patient: Patient, doctor_id: str) -> None:
     """
-    تحديث حقل last_action_at للطبيب على هذا المريض عند تنفيذ أي إجراء علاجي.
-
-    نستخدمه فقط/أساساً مع المرضى الجدد (visit_type == \"مريض جديد\")،
-    لكنه لا يضر لو تم استدعاؤه مع مرضى آخرين.
+    Deprecated: لم نعد نعتمد نشاط الطبيب بالإجراءات لتفعيل/إلغاء تفعيل المرضى.
     """
-    try:
-        key = str(doctor_id)
-        profile = patient.doctor_profiles.get(key)
-        if profile is None:
-            profile = DoctorPatientProfile()
-        now = datetime.now(timezone.utc)
-        profile.last_action_at = now
-
-        assigned_at = getattr(profile, "assigned_at", None)
-        if assigned_at and _same_utc_day(assigned_at, now):
-            profile.active_on_assigned_day = True
-        patient.doctor_profiles[key] = profile
-    except Exception:
-        # لا نسمح لهذا الفشل أن يعطل منطق العملية الأساسية (ملاحظة، موعد، ...)
-        pass
+    return
 
 async def get_patient_by_id(patient_id: str) -> Tuple[Patient, User]:
     """Fetch patient and its user info or 404."""
@@ -129,17 +112,16 @@ async def list_doctor_patients(doctor_id: str, skip: int = 0, limit: Optional[in
 
 async def cleanup_inactive_new_patients_for_doctor(doctor_id: str) -> int:
     """
-    إزالة المرضى الجدد غير النشطين من قائمة طبيب معيّن.
+    تحويل المرضى الجدد غير المُفعّلين إلى "inactive" وإزالتهم من حساب الطبيب.
 
     المنطق:
     - نركّز فقط على المرضى الذين نوع زيارتهم \"مريض جديد\".
-    - لكل مريض/طبيب نستخدم:
-        * assigned_at: تاريخ تحويل/إضافة المريض لهذا الطبيب.
-        * last_action_at: آخر إجراء قام به الطبيب على هذا المريض.
-    - إذا انتهى يوم التحويل (منتصف الليل) ولم يحدث أي إجراء في نفس ذلك اليوم
-      (أو last_action_at ليس في نفس يوم assigned_at)، نزيل الطبيب من doctor_ids
-      ونحذف profil هذا الطبيب من doctor_profiles لهذا المريض.
-    - يبقى المريض في حساب الاستقبال دائماً.
+    - نطبّق فقط على المرضى الذين activity_status == \"pending\".
+    - إذا انتهى يوم التحويل ولم يفعّله موظف الاستقبال، نعتبره \"inactive\".
+    - عند التحويل إلى inactive:
+      * حذف جميع الأطباء من doctor_ids (المريض يخرج من حسابات الأطباء)
+      * تفريغ doctor_profiles
+      * إضافة InactivePatientLog لكل طبيب كان مرتبطاً بالمريض (للإحصائيات)
     """
     try:
         did = OID(doctor_id)
@@ -152,11 +134,12 @@ async def cleanup_inactive_new_patients_for_doctor(doctor_id: str) -> int:
     doctor_key = str(did)
 
     try:
-        # نستهدف فقط المرضى الجدد المرتبطين بهذا الطبيب
+        # نستهدف فقط المرضى الجدد المرتبطين بهذا الطبيب وبحالة pending
         patients = await Patient.find(
             {
                 "doctor_ids": {"$in": [did]},
                 "visit_type": "مريض جديد",
+                "activity_status": "pending",
             }
         ).to_list()
 
@@ -179,56 +162,67 @@ async def cleanup_inactive_new_patients_for_doctor(doctor_id: str) -> int:
             if now < day_end:
                 continue
 
-            last_action = profile.last_action_at
-            is_active_same_day = False
-            if getattr(profile, "active_on_assigned_day", False):
-                is_active_same_day = True
-            elif last_action:
-                # نتحقق فقط من أن آخر إجراء في نفس يوم التحويل
-                if _same_utc_day(assigned_utc, last_action):
-                    is_active_same_day = True
-
-            if is_active_same_day:
-                # هذا المريض اعتُبر نشطاً في يومه الأول، يبقى في قائمة الطبيب
+            # ما زال pending بعد انتهاء يوم التحويل => inactive
+            removed_doctors = list(patient.doctor_ids or [])
+            if not removed_doctors:
                 continue
 
-            # مريض جديد، انتهى يوم التحويل بدون أي إجراء من الطبيب -> غير نشط
-            # نحذفه من doctor_ids ونزيل ملف الطبيب من doctor_profiles
-            # ونضيف سجل في InactivePatientLog للإحصائيات
-            new_doctor_ids = [d for d in patient.doctor_ids if d != did]
-            if len(new_doctor_ids) == len(patient.doctor_ids):
-                # لم يكن الطبيب في القائمة فعلياً (حالة متسقة)
-                continue
+            from app.models import InactivePatientLog
+            for removed_doctor_id in removed_doctors:
+                try:
+                    removed_doctor_key = str(removed_doctor_id)
+                    removed_profile = profiles.get(removed_doctor_key)
+                    original_assigned_at = (
+                        removed_profile.assigned_at
+                        if removed_profile and getattr(removed_profile, "assigned_at", None)
+                        else assigned_at
+                    )
+                    await InactivePatientLog(
+                        patient_id=patient.id,
+                        doctor_id=removed_doctor_id,
+                        removed_at=now,
+                        original_assigned_at=original_assigned_at,
+                    ).insert()
+                except Exception as log_error:
+                    print(
+                        f"⚠️ Warning: Failed to create InactivePatientLog for patient {patient.id}, doctor {removed_doctor_id}: {log_error}"
+                    )
 
-            # إضافة سجل أن هذا المريض حُذف لكونه غير نشط
-            try:
-                from app.models import InactivePatientLog
-                await InactivePatientLog(
-                    patient_id=patient.id,
-                    doctor_id=did,
-                    removed_at=now,
-                    original_assigned_at=assigned_at,
-                ).insert()
-            except Exception as log_error:
-                # لا نوقف العملية إذا فشل حفظ السجل
-                print(f"⚠️ Warning: Failed to create InactivePatientLog for patient {patient.id}, doctor {doctor_id}: {log_error}")
-
-            patient.doctor_ids = new_doctor_ids
-            if doctor_key in profiles:
-                profiles.pop(doctor_key, None)
-                patient.doctor_profiles = profiles
+            patient.doctor_ids = []
+            patient.doctor_profiles = {}
+            patient.activity_status = "inactive"
+            patient.inactivated_at = now
 
             await patient.save()
             removed_count += 1
 
         if removed_count:
-            print(f"✅ [cleanup_inactive_new_patients_for_doctor] Removed {removed_count} inactive new patients for doctor {doctor_id}")
+            print(
+                f"✅ [cleanup_inactive_new_patients_for_doctor] Marked {removed_count} pending new patients as inactive for doctor {doctor_id}"
+            )
         return removed_count
     except Exception as e:
         print(f"❌ Error in cleanup_inactive_new_patients_for_doctor: {e}")
         import traceback
         traceback.print_exc()
         return 0
+
+
+async def activate_patient_by_reception(*, patient_id: str) -> Patient:
+    """
+    تفعيل المريض من موظف الاستقبال:
+    pending -> active
+    """
+    patient = await Patient.get(OID(patient_id))
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    now = datetime.now(timezone.utc)
+    patient.activity_status = "active"
+    patient.activated_at = now
+    patient.inactivated_at = None
+    await patient.save()
+    return patient
 
 
 
@@ -350,40 +344,19 @@ async def assign_patient_doctors(
         ).insert()
         _reset_doctor_profile_assignment(patient, str(doctor_id), assigned_at=assignment_time)
     
-    # للأطباء المزالين: إنشاء InactivePatientLog للإحصائيات
+    # للأطباء المزالين: لا ننشئ InactivePatientLog هنا.
+    # السجل يُنشأ فقط عند انتقال المريض من pending إلى inactive تلقائياً.
     removed_doctors = prev_doctor_ids - new_doctor_ids
-    for doctor_id in removed_doctors:
-        print(f"📝 [assign_patient_doctors] Doctor {doctor_id} was removed, creating InactivePatientLog")
-        try:
-            from app.models import InactivePatientLog, AssignmentLog
-            
-            # البحث عن آخر AssignmentLog لهذا الطبيب مع هذا المريض للحصول على original_assigned_at
-            last_assignment = await AssignmentLog.find(
-                AssignmentLog.patient_id == patient.id,
-                AssignmentLog.doctor_id == doctor_id,
-            ).sort(-AssignmentLog.assigned_at).first()
-            
-            # استخدام assigned_at من AssignmentLog إذا كان موجوداً، وإلا من doctor_profiles
-            original_assigned_at = assignment_time
-            if last_assignment and last_assignment.assigned_at:
-                original_assigned_at = last_assignment.assigned_at
-            else:
-                # محاولة الحصول من doctor_profiles
-                doctor_key = str(doctor_id)
-                profile = patient.doctor_profiles.get(doctor_key) if patient.doctor_profiles else None
-                if profile and hasattr(profile, 'assigned_at') and profile.assigned_at:
-                    original_assigned_at = profile.assigned_at
-            
-            # إنشاء InactivePatientLog
-            await InactivePatientLog(
-                patient_id=patient.id,
-                doctor_id=doctor_id,
-                removed_at=assignment_time,
-                original_assigned_at=original_assigned_at,
-            ).insert()
-            print(f"✅ [assign_patient_doctors] Created InactivePatientLog for doctor {doctor_id}, patient {patient.id}")
-        except Exception as log_error:
-            print(f"⚠️ Warning: Failed to create InactivePatientLog for patient {patient.id}, doctor {doctor_id}: {log_error}")
+    if removed_doctors:
+        print(
+            f"ℹ️ [assign_patient_doctors] Removed doctors for patient {patient.id}: {list(removed_doctors)} (no inactive logs on manual removal)"
+        )
+
+    # إعادة الحالة إلى pending عند وجود ربط جديد لطبيب لمريض جديد.
+    if patient.visit_type == "مريض جديد" and added_doctors and patient.activity_status != "active":
+        patient.activity_status = "pending"
+        patient.activated_at = None
+        patient.inactivated_at = None
 
     print(f"💾 [assign_patient_doctors] Saving patient...")
     await patient.save()
@@ -412,8 +385,6 @@ async def set_treatment_type(*, patient_id: str, doctor_id: str, treatment_type:
         profile = DoctorPatientProfile(treatment_type=treatment_type)
     patient.doctor_profiles[doctor_key] = profile
 
-    # تسجيل نشاط للطبيب على هذا المريض (نوع علاج جديد لمريض جديد في نفس اليوم)
-    _touch_doctor_last_action(patient, doctor_id)
     patient.doctor_profiles[doctor_key] = profile
     await patient.save()
     
@@ -455,8 +426,6 @@ async def set_payment_methods(*, patient_id: str, doctor_id: str, methods: List[
     profile.payment_methods = methods
     patient.doctor_profiles[doctor_key] = profile
 
-    # تسجيل نشاط للطبيب على هذا المريض
-    _touch_doctor_last_action(patient, doctor_id)
     await patient.save()
     return patient
 
@@ -485,8 +454,6 @@ async def create_note(
     )
     await tn.insert()
 
-    # أي إضافة سجل تعتبر إجراءً على المريض
-    _touch_doctor_last_action(patient, doctor_id)
     await patient.save()
     return tn
 
@@ -517,8 +484,6 @@ async def update_note(
             # للتوافق مع البيانات القديمة
             tn.image_path = image_paths[0] if image_paths else None
 
-    # تحديث يعتبر إجراءً أيضاً
-    _touch_doctor_last_action(patient, doctor_id)
     await patient.save()
 
     await tn.save()
@@ -544,8 +509,6 @@ async def delete_note(
     
     await tn.delete()
 
-    # حذف السجل يعتبر إجراءً على المريض
-    _touch_doctor_last_action(patient, doctor_id)
     await patient.save()
 
     return True
@@ -574,16 +537,9 @@ async def create_gallery_image(
     )
     await gi.insert()
 
-    # إذا كانت الصورة مرفوعة من طبيب، نعتبرها إجراءً على المريض
+    # لا نربط النشاط بحفظ الصور ضمن آلية تفعيل المرضى الجديدة.
     if doctor_id:
-        try:
-            patient = await Patient.get(OID(patient_id))
-            if patient:
-                _touch_doctor_last_action(patient, doctor_id)
-                await patient.save()
-        except Exception:
-            # لا نوقف حفظ الصورة في حال فشل تحديث النشاط
-            pass
+        pass
 
     return gi
 
@@ -603,15 +559,9 @@ async def delete_gallery_image(*, gallery_image_id: str, patient_id: str, doctor
 
         await gi.delete()
 
-        # حذف صورة من الطبيب يعتبر إجراءً كذلك
+        # لا نربط حذف الصورة بآلية تفعيل المرضى.
         if doctor_id:
-            try:
-                patient = await Patient.get(OID(patient_id))
-                if patient:
-                    _touch_doctor_last_action(patient, doctor_id)
-                    await patient.save()
-            except Exception:
-                pass
+            pass
 
         return True
     except Exception as e:
@@ -658,8 +608,6 @@ async def create_appointment(
     )
     await ap.insert()
 
-    # إنشاء موعد جديد يعتبر إجراءً على المريض
-    _touch_doctor_last_action(patient, doctor_id)
     await patient.save()
 
     # Notify patient about new appointment (push notification)
@@ -881,11 +829,10 @@ async def delete_appointment(*, appointment_id: str, patient_id: str, doctor_id:
 
         await appointment.delete()
 
-        # حذف الموعد يعتبر إجراءً أيضاً
+        # لا نربط حذف الموعد بآلية تفعيل المرضى.
         try:
             patient = await Patient.get(OID(patient_id))
             if patient:
-                _touch_doctor_last_action(patient, doctor_id)
                 await patient.save()
         except Exception:
             pass
@@ -931,9 +878,7 @@ async def update_appointment_status(
         appointment.updated_at = datetime.now(timezone.utc)
         await appointment.save()
 
-        # تغيير حالة الموعد يعتبر إجراءً كذلك
         if patient:
-            _touch_doctor_last_action(patient, doctor_id)
             await patient.save()
 
         return appointment
@@ -982,9 +927,8 @@ async def update_appointment_datetime(
 
         await appointment.save()
 
-        # تعديل موعد يعتبر أيضاً إجراءً
+        # لا نربط تعديل الموعد بآلية تفعيل المرضى.
         if patient:
-            _touch_doctor_last_action(patient, doctor_id)
             await patient.save()
 
         return appointment

@@ -166,11 +166,7 @@ class DoctorService {
     try {
       final response = await _api.get(
         ApiConstants.doctorPatients,
-        queryParameters: {
-          'skip': skip,
-          'limit': limit,
-          'search': searchQuery,
-        },
+        queryParameters: {'skip': skip, 'limit': limit, 'search': searchQuery},
       );
 
       if (response.statusCode == 200) {
@@ -203,29 +199,39 @@ class DoctorService {
     try {
       final response = await _api.get(ApiConstants.doctorDoctors);
       print('📋 [DoctorService] Response status: ${response.statusCode}');
-      print('📋 [DoctorService] Response data type: ${response.data.runtimeType}');
+      print(
+        '📋 [DoctorService] Response data type: ${response.data.runtimeType}',
+      );
       print('📋 [DoctorService] Raw response data: ${response.data}');
-      
+
       if (response.statusCode == 200) {
         final data = response.data;
         if (data is! List) {
           print('❌ [DoctorService] Response data is not a List: $data');
           throw ApiException('تنسيق البيانات غير صحيح');
         }
-        
+
         print('📋 [DoctorService] Doctors data (List): $data');
-        final doctors = data.map((json) {
-          if (json is! Map) {
-            print('❌ [DoctorService] Doctor item is not a Map: $json');
-            return null;
-          }
-          final jsonMap = json as Map<String, dynamic>;
-          print('📋 [DoctorService] Doctor JSON: $jsonMap');
-          print('📋 [DoctorService] today_transfers value: ${jsonMap['today_transfers']} (type: ${jsonMap['today_transfers'].runtimeType})');
-          return DoctorModel.fromJson(jsonMap);
-        }).where((d) => d != null).cast<DoctorModel>().toList();
-        
-        print('📋 [DoctorService] Parsed doctors with transfers: ${doctors.map((d) => '${d.name}: ${d.todayTransfers}').join(', ')}');
+        final doctors = data
+            .map((json) {
+              if (json is! Map) {
+                print('❌ [DoctorService] Doctor item is not a Map: $json');
+                return null;
+              }
+              final jsonMap = json as Map<String, dynamic>;
+              print('📋 [DoctorService] Doctor JSON: $jsonMap');
+              print(
+                '📋 [DoctorService] today_transfers value: ${jsonMap['today_transfers']} (type: ${jsonMap['today_transfers'].runtimeType})',
+              );
+              return DoctorModel.fromJson(jsonMap);
+            })
+            .where((d) => d != null)
+            .cast<DoctorModel>()
+            .toList();
+
+        print(
+          '📋 [DoctorService] Parsed doctors with transfers: ${doctors.map((d) => '${d.name}: ${d.todayTransfers}').join(', ')}',
+        );
         return doctors;
       }
       throw ApiException('فشل جلب قائمة الأطباء');
@@ -245,10 +251,7 @@ class DoctorService {
     try {
       final response = await _api.post(
         ApiConstants.doctorTransferPatient(patientId),
-        data: {
-          'target_doctor_id': targetDoctorId,
-          'mode': mode,
-        },
+        data: {'target_doctor_id': targetDoctorId, 'mode': mode},
       );
       if (response.statusCode == 200) {
         return _mapPatientOutToModel(response.data);
@@ -650,10 +653,7 @@ class DoctorService {
     int limit = 50,
   }) async {
     try {
-      final queryParams = <String, dynamic>{
-        'skip': skip,
-        'limit': limit,
-      };
+      final queryParams = <String, dynamic>{'skip': skip, 'limit': limit};
 
       // التبويبات الجديدة: day=today, day=month, status=late, date_from/date_to
       if (day != null) queryParams['day'] = day;
@@ -842,7 +842,9 @@ class DoctorService {
       if (dateFrom != null) queryParams['date_from'] = dateFrom;
       if (dateTo != null) queryParams['date_to'] = dateTo;
 
-      print('📊 [DoctorService] Fetching all doctors transfer stats from: ${ApiConstants.doctorAllDoctorsTransferStats}');
+      print(
+        '📊 [DoctorService] Fetching all doctors transfer stats from: ${ApiConstants.doctorAllDoctorsTransferStats}',
+      );
       print('📊 [DoctorService] Query params: $queryParams');
 
       final response = await _api.get(
@@ -851,7 +853,9 @@ class DoctorService {
       );
 
       print('📊 [DoctorService] Response status: ${response.statusCode}');
-      print('📊 [DoctorService] Response data type: ${response.data.runtimeType}');
+      print(
+        '📊 [DoctorService] Response data type: ${response.data.runtimeType}',
+      );
 
       if (response.statusCode == 200) {
         final data = response.data as Map<String, dynamic>;
@@ -870,7 +874,9 @@ class DoctorService {
     } catch (e) {
       print('❌ [DoctorService] Error fetching all doctors transfer stats: $e');
       if (e is ApiException) rethrow;
-      throw ApiException('فشل جلب إحصائيات التحويلات لجميع الأطباء: ${e.toString()}');
+      throw ApiException(
+        'فشل جلب إحصائيات التحويلات لجميع الأطباء: ${e.toString()}',
+      );
     }
   }
 
@@ -908,8 +914,11 @@ class DoctorService {
       paymentMethods: json['payment_methods'] != null
           ? List<String>.from(json['payment_methods'])
           : (json['paymentMethods'] != null
-              ? List<String>.from(json['paymentMethods'])
-              : null),
+                ? List<String>.from(json['paymentMethods'])
+                : null),
+      activityStatus:
+          (json['activity_status'] ?? json['activityStatus'] ?? 'pending')
+              .toString(),
     );
   }
 }

@@ -423,10 +423,10 @@ async def get_doctor_patient_transfer_stats(
     """
     إحصائيات المرضى المحولين لهذا الطبيب:
     - عدد المرضى المحولين خلال اليوم/الشهر/فترة محددة (من AssignmentLog)
-    - عدد المرضى النشطين خلال اليوم/الشهر/فترة محددة (transfers - inactive)
+    - عدد المرضى النشطين خلال اليوم/الشهر/فترة محددة (activity_status == active)
     - عدد المرضى غير النشطين (حتى لو تم حذفهم من حسابه) خلال اليوم/الشهر/فترة محددة (من InactivePatientLog)
     
-    ملاحظة: نستخدم AssignmentLog لحساب التحويلات و InactivePatientLog لحساب غير النشطين.
+    ملاحظة: التحويلات من AssignmentLog، وغير النشطين من InactivePatientLog، والنشطين من Patient.activity_status.
     """
     from beanie import PydanticObjectId as OID
     from beanie.operators import And
@@ -492,10 +492,28 @@ async def get_doctor_patient_transfer_stats(
         inactive_range_query = inactive_range_query.find(InactivePatientLog.original_assigned_at < dt)
     inactive_in_range = await inactive_range_query.count()
     
-    # حساب النشطين: التحويلات - غير النشطين
-    active_today = max(0, transfers_today - inactive_today)
-    active_month = max(0, transfers_month - inactive_month)
-    active_in_range = max(0, transfers_in_range - inactive_in_range)
+    # حساب النشطين وفق الآلية الجديدة:
+    # نعدّ فقط المرضى الحاليين المرتبطين بالطبيب وحالتهم active،
+    # ثم نصنفهم حسب assigned_at الخاص بهذا الطبيب.
+    active_today = 0
+    active_month = 0
+    active_in_range = 0
+    active_patients = await Patient.find(
+        {"doctor_ids": {"$in": [did]}, "activity_status": "active"}
+    ).to_list()
+    doctor_key = str(did)
+    for p in active_patients:
+        profile = (p.doctor_profiles or {}).get(doctor_key)
+        assigned_at = getattr(profile, "assigned_at", None) if profile else None
+        if not assigned_at:
+            continue
+        assigned_at_utc = _to_utc(assigned_at)
+        if today_start <= assigned_at_utc < tomorrow_start:
+            active_today += 1
+        if month_start <= assigned_at_utc < next_month_start:
+            active_month += 1
+        if (df is None or assigned_at_utc >= df) and (dt is None or assigned_at_utc < dt):
+            active_in_range += 1
     
     return {
         "doctor_id": doctor_id,
@@ -537,10 +555,10 @@ async def get_all_doctors_patient_transfer_stats(
     """
     إحصائيات المرضى المحولين لجميع الأطباء (للطبيب المدير):
     - عدد المرضى المحولين يومياً وشهرياً لكل طبيب
-    - عدد المرضى النشطين يومياً وشهرياً لكل طبيب
+    - عدد المرضى النشطين يومياً وشهرياً لكل طبيب (activity_status == active)
     - عدد المرضى غير النشطين يومياً وشهرياً لكل طبيب
     
-    ملاحظة: نستخدم AssignmentLog لحساب التحويلات و InactivePatientLog لحساب غير النشطين.
+    ملاحظة: التحويلات من AssignmentLog، وغير النشطين من InactivePatientLog، والنشطين من Patient.activity_status.
     """
     from beanie import PydanticObjectId as OID
     from beanie.operators import In
@@ -612,10 +630,26 @@ async def get_all_doctors_patient_transfer_stats(
             inactive_range_query = inactive_range_query.find(InactivePatientLog.original_assigned_at < dt)
         inactive_in_range = await inactive_range_query.count()
         
-        # حساب النشطين: التحويلات - غير النشطين
-        active_today = max(0, transfers_today - inactive_today)
-        active_month = max(0, transfers_month - inactive_month)
-        active_in_range = max(0, transfers_in_range - inactive_in_range)
+        # حساب النشطين وفق الآلية الجديدة (activity_status == active)
+        active_today = 0
+        active_month = 0
+        active_in_range = 0
+        active_patients = await Patient.find(
+            {"doctor_ids": {"$in": [did]}, "activity_status": "active"}
+        ).to_list()
+        doctor_key = str(did)
+        for p in active_patients:
+            profile = (p.doctor_profiles or {}).get(doctor_key)
+            assigned_at = getattr(profile, "assigned_at", None) if profile else None
+            if not assigned_at:
+                continue
+            assigned_at_utc = _to_utc(assigned_at)
+            if today_start <= assigned_at_utc < tomorrow_start:
+                active_today += 1
+            if month_start <= assigned_at_utc < next_month_start:
+                active_month += 1
+            if (df is None or assigned_at_utc >= df) and (dt is None or assigned_at_utc < dt):
+                active_in_range += 1
         
         doctors_stats.append({
             "doctor_id": str(doctor.id),

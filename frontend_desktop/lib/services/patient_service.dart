@@ -209,11 +209,7 @@ class PatientService {
     try {
       final response = await _api.get(
         ApiConstants.receptionPatients,
-        queryParameters: {
-          'skip': skip,
-          'limit': limit,
-          'search': searchQuery,
-        },
+        queryParameters: {'skip': skip, 'limit': limit, 'search': searchQuery},
       );
 
       if (response.statusCode == 200) {
@@ -451,52 +447,65 @@ class PatientService {
   }
 
   // جلب بيانات المريض والأطباء المرتبطين به من QR code (نفس مبدأ الموبايل)
-  Future<Map<String, dynamic>?> getPatientByQrCodeWithDoctors(String qrCode) async {
+  Future<Map<String, dynamic>?> getPatientByQrCodeWithDoctors(
+    String qrCode,
+  ) async {
     try {
-      print('🔍 [Desktop PatientService] getPatientByQrCodeWithDoctors called with QR code: $qrCode');
+      print(
+        '🔍 [Desktop PatientService] getPatientByQrCodeWithDoctors called with QR code: $qrCode',
+      );
       final response = await _api.get(ApiConstants.qrScan(qrCode));
 
-      print('📡 [Desktop PatientService] QR scan response status: ${response.statusCode}');
-      print('📡 [Desktop PatientService] QR scan response data: ${response.data}');
+      print(
+        '📡 [Desktop PatientService] QR scan response status: ${response.statusCode}',
+      );
+      print(
+        '📡 [Desktop PatientService] QR scan response data: ${response.data}',
+      );
 
       if (response.statusCode == 200) {
         final data = response.data as Map<String, dynamic>;
-        print('📋 [Desktop PatientService] Response data type: ${data.runtimeType}');
-        print('📋 [Desktop PatientService] Response keys: ${data.keys.toList()}');
-        print('📋 [Desktop PatientService] Patient in response: ${data['patient']}');
-        print('📋 [Desktop PatientService] Doctors in response: ${data['doctors']}');
+        print(
+          '📋 [Desktop PatientService] Response data type: ${data.runtimeType}',
+        );
+        print(
+          '📋 [Desktop PatientService] Response keys: ${data.keys.toList()}',
+        );
+        print(
+          '📋 [Desktop PatientService] Patient in response: ${data['patient']}',
+        );
+        print(
+          '📋 [Desktop PatientService] Doctors in response: ${data['doctors']}',
+        );
 
         if (!data.containsKey('patient') || data['patient'] == null) {
-          print('⚠️ [Desktop PatientService] Patient is null or missing in response');
+          print(
+            '⚠️ [Desktop PatientService] Patient is null or missing in response',
+          );
           return null;
         }
 
         try {
-          final patient =
-              _mapPatientOutToModel(data['patient'] as Map<String, dynamic>);
+          final patient = _mapPatientOutToModel(
+            data['patient'] as Map<String, dynamic>,
+          );
           final doctorsList = data['doctors'];
           final doctors = (doctorsList != null && doctorsList is List)
               ? doctorsList
-                  .map(
-                    (json) => DoctorModel.fromJson(
-                      json as Map<String, dynamic>,
-                    ),
-                  )
-                  .toList()
+                    .map(
+                      (json) =>
+                          DoctorModel.fromJson(json as Map<String, dynamic>),
+                    )
+                    .toList()
               : <DoctorModel>[];
 
           print(
             '✅ [Desktop PatientService] Successfully parsed patient: ${patient.name} and ${doctors.length} doctors',
           );
 
-          return {
-            'patient': patient,
-            'doctors': doctors,
-          };
+          return {'patient': patient, 'doctors': doctors};
         } catch (e) {
-          print(
-            '❌ [Desktop PatientService] Error parsing patient data: $e',
-          );
+          print('❌ [Desktop PatientService] Error parsing patient data: $e');
           rethrow;
         }
       } else {
@@ -578,8 +587,28 @@ class PatientService {
       paymentMethods: json['payment_methods'] != null
           ? List<String>.from(json['payment_methods'])
           : (json['paymentMethods'] != null
-              ? List<String>.from(json['paymentMethods'])
-              : null),
+                ? List<String>.from(json['paymentMethods'])
+                : null),
+      activityStatus:
+          (json['activity_status'] ?? json['activityStatus'] ?? 'pending')
+              .toString(),
     );
+  }
+
+  Future<PatientModel> activatePatient(String patientId) async {
+    try {
+      final response = await _api.post(
+        ApiConstants.receptionActivatePatient(patientId),
+      );
+      if (response.statusCode == 200) {
+        return _mapPatientOutToModel(
+          (response.data as Map).cast<String, dynamic>(),
+        );
+      }
+      throw ApiException('فشل تنشيط المريض');
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('فشل تنشيط المريض: ${e.toString()}');
+    }
   }
 }

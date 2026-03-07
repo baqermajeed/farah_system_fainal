@@ -77,6 +77,7 @@ async def scan(code: str, current=Depends(require_roles([Role.ADMIN, Role.DOCTOR
             visit_type=getattr(patient, "visit_type", None),
             consultation_type=getattr(patient, "consultation_type", None),
             payment_methods=getattr(patient, "payment_methods", None),
+            activity_status=getattr(patient, "activity_status", "pending"),
             doctor_ids=[str(did) for did in patient.doctor_ids],
             doctor_profiles=build_doctor_profile_map(patient),
             qr_code_data=patient.qr_code_data,
