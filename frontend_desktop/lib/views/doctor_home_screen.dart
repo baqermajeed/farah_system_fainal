@@ -8868,7 +8868,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
     String? loadError;
     List<DoctorModel> doctors = [];
     String? selectedDoctorId;
-    String mode = 'shared'; // shared | move
+    String mode = 'move'; // shared | move
     // Map لحفظ إحصائيات التحويلات لكل طبيب: doctorId -> stats
     Map<String, Map<String, dynamic>> doctorStatsMap = {};
     Map<String, bool> isLoadingStatsMap = {}; // لتتبع حالة التحميل لكل طبيب
@@ -9145,14 +9145,13 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                         child: GridView.builder(
                           shrinkWrap: true,
                           physics: const AlwaysScrollableScrollPhysics(),
-                          gridDelegate:
-                              SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 4,
-                                crossAxisSpacing: 12.w,
-                                mainAxisSpacing: 6.h,
-                                // تثبيت ارتفاع كل بطاقة طبيب على 100.h
-                                mainAxisExtent: 110.h,
-                              ),
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 4,
+                            crossAxisSpacing: 12.w,
+                            mainAxisSpacing: 6.h,
+                            // رفع الارتفاع لمنع overflow بعد إضافة سطر pending
+                            mainAxisExtent: 140.h,
+                          ),
                           itemCount: doctors.length,
                           itemBuilder: (context, index) {
                             final doctor = doctors[index];
@@ -9188,7 +9187,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                   vertical: 4.h,
                                 ),
                                 child: Column(
-                                  mainAxisSize: MainAxisSize.min,
+                                  mainAxisSize: MainAxisSize.max,
                                   crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
                                     // الصورة والاسم في نفس الصف
@@ -9400,7 +9399,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                         fontWeight: FontWeight.w600,
                                       ),
                                       textAlign: TextAlign.right,
-                                      maxLines: 2,
+                                      maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ],
