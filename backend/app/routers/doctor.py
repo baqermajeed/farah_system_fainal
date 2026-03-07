@@ -324,6 +324,7 @@ async def get_all_doctors_transfer_stats(
     return await get_all_doctors_patient_transfer_stats(
         date_from=date_from,
         date_to=date_to,
+        manager_user_id=str(current.id),
     )
 
 

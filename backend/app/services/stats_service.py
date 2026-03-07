@@ -551,6 +551,7 @@ async def get_all_doctors_patient_transfer_stats(
     *,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
+    manager_user_id: Optional[str] = None,
 ) -> Dict:
     """
     إحصائيات المرضى المحولين لجميع الأطباء (للطبيب المدير):
@@ -558,7 +559,8 @@ async def get_all_doctors_patient_transfer_stats(
     - عدد المرضى النشطين يومياً وشهرياً لكل طبيب (activity_status == active)
     - عدد المرضى غير النشطين يومياً وشهرياً لكل طبيب
     
-    ملاحظة: التحويلات من AssignmentLog، وغير النشطين من InactivePatientLog، والنشطين من Patient.activity_status.
+    ملاحظة: عند تمرير manager_user_id تُحتسب التحويلات والحالات فقط
+    للمرضى الذين قام هذا المدير بتحويلهم للطبيب ضمن الفترة.
     """
     from beanie import PydanticObjectId as OID
     from beanie.operators import In
@@ -574,6 +576,13 @@ async def get_all_doctors_patient_transfer_stats(
         next_month_start = month_start.replace(month=month_start.month + 1)
     
     df, dt = parse_dates(date_from, date_to)
+
+    manager_oid: Optional[OID] = None
+    if manager_user_id:
+        try:
+            manager_oid = OID(manager_user_id)
+        except Exception:
+            manager_oid = None
     
     # جلب جميع الأطباء
     doctors = await Doctor.find({}).to_list()
@@ -589,67 +598,67 @@ async def get_all_doctors_patient_transfer_stats(
             continue
         
         did = doctor.id
-        
+
+        base_filters = [AssignmentLog.doctor_id == did]
+        if manager_oid:
+            base_filters.append(AssignmentLog.assigned_by_user_id == manager_oid)
+
         # حساب عدد التحويلات من AssignmentLog
         transfers_today = await AssignmentLog.find(
-            AssignmentLog.doctor_id == did,
+            *base_filters,
             AssignmentLog.assigned_at >= today_start,
             AssignmentLog.assigned_at < tomorrow_start,
         ).count()
-        
-        transfers_month = await AssignmentLog.find(
-            AssignmentLog.doctor_id == did,
+
+        transfers_month_logs = await AssignmentLog.find(
+            *base_filters,
             AssignmentLog.assigned_at >= month_start,
             AssignmentLog.assigned_at < next_month_start,
-        ).count()
-        
-        transfers_range_query = AssignmentLog.find(AssignmentLog.doctor_id == did)
+        ).to_list()
+        transfers_month = len(transfers_month_logs)
+
+        transfers_range_query = AssignmentLog.find(*base_filters)
         if df:
             transfers_range_query = transfers_range_query.find(AssignmentLog.assigned_at >= df)
         if dt:
             transfers_range_query = transfers_range_query.find(AssignmentLog.assigned_at < dt)
-        transfers_in_range = await transfers_range_query.count()
-        
-        # حساب عدد غير النشطين من InactivePatientLog (حسب original_assigned_at)
-        inactive_today = await InactivePatientLog.find(
-            InactivePatientLog.doctor_id == did,
-            InactivePatientLog.original_assigned_at >= today_start,
-            InactivePatientLog.original_assigned_at < tomorrow_start,
-        ).count()
-        
-        inactive_month = await InactivePatientLog.find(
-            InactivePatientLog.doctor_id == did,
-            InactivePatientLog.original_assigned_at >= month_start,
-            InactivePatientLog.original_assigned_at < next_month_start,
-        ).count()
-        
-        inactive_range_query = InactivePatientLog.find(InactivePatientLog.doctor_id == did)
-        if df:
-            inactive_range_query = inactive_range_query.find(InactivePatientLog.original_assigned_at >= df)
-        if dt:
-            inactive_range_query = inactive_range_query.find(InactivePatientLog.original_assigned_at < dt)
-        inactive_in_range = await inactive_range_query.count()
-        
-        # حساب النشطين وفق الآلية الجديدة (activity_status == active)
-        active_today = 0
-        active_month = 0
-        active_in_range = 0
-        active_patients = await Patient.find(
-            {"doctor_ids": {"$in": [did]}, "activity_status": "active"}
-        ).to_list()
-        doctor_key = str(did)
-        for p in active_patients:
-            profile = (p.doctor_profiles or {}).get(doctor_key)
-            assigned_at = getattr(profile, "assigned_at", None) if profile else None
-            if not assigned_at:
-                continue
-            assigned_at_utc = _to_utc(assigned_at)
-            if today_start <= assigned_at_utc < tomorrow_start:
-                active_today += 1
-            if month_start <= assigned_at_utc < next_month_start:
-                active_month += 1
-            if (df is None or assigned_at_utc >= df) and (dt is None or assigned_at_utc < dt):
-                active_in_range += 1
+        transfers_range_logs = await transfers_range_query.to_list()
+        transfers_in_range = len(transfers_range_logs)
+
+        def _count_statuses_from_patients(patients: List[Patient]) -> tuple[int, int, int]:
+            active_count = 0
+            pending_count = 0
+            inactive_count = 0
+            for p in patients:
+                status = (getattr(p, "activity_status", "pending") or "pending").lower()
+                if status == "active":
+                    active_count += 1
+                elif status == "inactive":
+                    inactive_count += 1
+                else:
+                    pending_count += 1
+            return active_count, pending_count, inactive_count
+
+        async def _status_counts_from_logs(logs: List[AssignmentLog]) -> tuple[int, int, int]:
+            patient_ids = list({log.patient_id for log in logs if getattr(log, "patient_id", None)})
+            if not patient_ids:
+                return 0, 0, 0
+            patients = await Patient.find(In(Patient.id, patient_ids)).to_list()
+            return _count_statuses_from_patients(patients)
+
+        active_today, pending_today, inactive_today = await _status_counts_from_logs(
+            await AssignmentLog.find(
+                *base_filters,
+                AssignmentLog.assigned_at >= today_start,
+                AssignmentLog.assigned_at < tomorrow_start,
+            ).to_list()
+        )
+        active_month, pending_month, inactive_month = await _status_counts_from_logs(
+            transfers_month_logs
+        )
+        active_in_range, pending_in_range, inactive_in_range = await _status_counts_from_logs(
+            transfers_range_logs
+        )
         
         doctors_stats.append({
             "doctor_id": str(doctor.id),
@@ -673,6 +682,15 @@ async def get_all_doctors_patient_transfer_stats(
                     "from": date_from,
                     "to": date_to,
                     "count": active_in_range,
+                },
+            },
+            "pending_patients": {
+                "today": pending_today,
+                "this_month": pending_month,
+                "range": {
+                    "from": date_from,
+                    "to": date_to,
+                    "count": pending_in_range,
                 },
             },
             "inactive_patients": {
