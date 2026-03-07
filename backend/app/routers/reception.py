@@ -357,6 +357,39 @@ async def activate_patient(patient_id: str):
     )
 
 
+@router.patch("/patients/{patient_id}/activity-status", response_model=PatientOut)
+async def update_patient_activity_status(
+    patient_id: str,
+    status: str = Body(..., embed=True),
+):
+    """تحديث حالة المريض من الاستقبال (pending | active | inactive)."""
+    p = await patient_service.update_patient_activity_status_by_reception(
+        patient_id=patient_id,
+        status=status,
+    )
+    u = await User.get(p.user_id)
+    return PatientOut(
+        id=str(p.id),
+        user_id=str(p.user_id),
+        name=u.name if u else None,
+        phone=u.phone if u else "",
+        gender=u.gender if u else None,
+        age=u.age if u else None,
+        city=u.city if u else None,
+        treatment_type=p.treatment_type,
+        visit_type=getattr(p, "visit_type", None),
+        consultation_type=getattr(p, "consultation_type", None),
+        payment_methods=getattr(p, "payment_methods", None),
+        activity_status=getattr(p, "activity_status", "pending"),
+        doctor_ids=[str(did) for did in p.doctor_ids],
+        doctor_profiles=build_doctor_profile_map(p),
+        qr_code_data=p.qr_code_data,
+        qr_image_path=p.qr_image_path,
+        imageUrl=u.imageUrl if u else None,
+        created_at=p.created_at.isoformat() if getattr(p, "created_at", None) else None,
+    )
+
+
 @router.post("/patients/{patient_id}/gallery", response_model=GalleryOut)
 async def upload_patient_gallery_image(
     patient_id: str,

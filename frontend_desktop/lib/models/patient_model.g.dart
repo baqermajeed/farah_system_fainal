@@ -31,13 +31,14 @@ class PatientModelAdapter extends TypeAdapter<PatientModel> {
       qrImagePath: fields[11] as String?,
       paymentMethods: (fields[12] as List?)?.cast<String>(),
       activityStatus: fields[13] == null ? 'pending' : fields[13] as String,
+      createdAt: fields[14] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, PatientModel obj) {
     writer
-      ..writeByte(14)
+      ..writeByte(15)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -65,7 +66,9 @@ class PatientModelAdapter extends TypeAdapter<PatientModel> {
       ..writeByte(12)
       ..write(obj.paymentMethods)
       ..writeByte(13)
-      ..write(obj.activityStatus);
+      ..write(obj.activityStatus)
+      ..writeByte(14)
+      ..write(obj.createdAt);
   }
 
   @override

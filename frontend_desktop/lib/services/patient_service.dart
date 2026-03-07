@@ -592,6 +592,8 @@ class PatientService {
       activityStatus:
           (json['activity_status'] ?? json['activityStatus'] ?? 'pending')
               .toString(),
+      createdAt:
+          json['created_at']?.toString() ?? json['createdAt']?.toString(),
     );
   }
 
@@ -609,6 +611,27 @@ class PatientService {
     } catch (e) {
       if (e is ApiException) rethrow;
       throw ApiException('فشل تنشيط المريض: ${e.toString()}');
+    }
+  }
+
+  Future<PatientModel> updatePatientActivityStatus({
+    required String patientId,
+    required String status,
+  }) async {
+    try {
+      final response = await _api.patch(
+        ApiConstants.receptionUpdatePatientActivityStatus(patientId),
+        data: {'status': status},
+      );
+      if (response.statusCode == 200) {
+        return _mapPatientOutToModel(
+          (response.data as Map).cast<String, dynamic>(),
+        );
+      }
+      throw ApiException('فشل تحديث حالة المريض');
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('فشل تحديث حالة المريض: ${e.toString()}');
     }
   }
 }

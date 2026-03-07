@@ -46,6 +46,9 @@ class PatientModel {
   @HiveField(13)
   final String activityStatus; // pending | active | inactive
 
+  @HiveField(14)
+  final String? createdAt; // ISO datetime from backend
+
   PatientModel({
     required this.id,
     required this.name,
@@ -61,6 +64,7 @@ class PatientModel {
     this.qrImagePath,
     this.paymentMethods,
     this.activityStatus = 'pending',
+    this.createdAt,
   });
 
   factory PatientModel.fromJson(Map<String, dynamic> json) {
@@ -91,6 +95,8 @@ class PatientModel {
       activityStatus:
           (json['activity_status'] ?? json['activityStatus'] ?? 'pending')
               .toString(),
+      createdAt:
+          json['created_at']?.toString() ?? json['createdAt']?.toString(),
     );
   }
 
@@ -110,6 +116,7 @@ class PatientModel {
       'qrImagePath': qrImagePath,
       'paymentMethods': paymentMethods,
       'activityStatus': activityStatus,
+      'createdAt': createdAt,
     };
   }
 }

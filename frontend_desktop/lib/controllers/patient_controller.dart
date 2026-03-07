@@ -597,6 +597,7 @@ class PatientController extends GetxController {
           qrImagePath: oldPatient.qrImagePath,
           paymentMethods: oldPatient.paymentMethods,
           activityStatus: oldPatient.activityStatus,
+          createdAt: oldPatient.createdAt,
         );
 
         patients[index] = optimisticPatient;
@@ -707,6 +708,7 @@ class PatientController extends GetxController {
           qrImagePath: oldPatient.qrImagePath,
           paymentMethods: methods,
           activityStatus: oldPatient.activityStatus,
+          createdAt: oldPatient.createdAt,
         );
 
         patients[index] = optimisticPatient;
@@ -805,6 +807,7 @@ class PatientController extends GetxController {
       qrImagePath: patient.qrImagePath,
       paymentMethods: patient.paymentMethods,
       activityStatus: patient.activityStatus,
+      createdAt: patient.createdAt,
     );
 
     patients[index] = updatedPatient;
@@ -845,6 +848,43 @@ class PatientController extends GetxController {
         NetworkUtils.showNetworkErrorDialog();
       } else {
         Get.snackbar('خطأ', 'فشل تنشيط المريض');
+      }
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
+  Future<void> updatePatientActivityStatus({
+    required String patientId,
+    required String status,
+  }) async {
+    try {
+      isLoading.value = true;
+      final updatedPatient = await _patientService.updatePatientActivityStatus(
+        patientId: patientId,
+        status: status,
+      );
+      final index = patients.indexWhere((p) => p.id == patientId);
+      if (index != -1) {
+        patients[index] = updatedPatient;
+      }
+      if (selectedPatient.value?.id == patientId) {
+        selectedPatient.value = updatedPatient;
+      }
+      try {
+        await _cacheService.savePatient(updatedPatient);
+      } catch (_) {}
+    } on ApiException catch (e) {
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', e.message);
+      }
+    } catch (e) {
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', 'فشل تحديث حالة المريض');
       }
     } finally {
       isLoading.value = false;

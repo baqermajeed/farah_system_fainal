@@ -919,6 +919,8 @@ class DoctorService {
       activityStatus:
           (json['activity_status'] ?? json['activityStatus'] ?? 'pending')
               .toString(),
+      createdAt:
+          json['created_at']?.toString() ?? json['createdAt']?.toString(),
     );
   }
 }

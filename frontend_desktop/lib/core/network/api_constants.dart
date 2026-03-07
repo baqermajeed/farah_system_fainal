@@ -87,6 +87,8 @@ class ApiConstants {
       '/reception/patients/$patientId/upload-image';
   static String receptionActivatePatient(String patientId) =>
       '/reception/patients/$patientId/activate';
+  static String receptionUpdatePatientActivityStatus(String patientId) =>
+      '/reception/patients/$patientId/activity-status';
   static String receptionPatientGallery(String patientId) =>
       '/reception/patients/$patientId/gallery';
   static const String receptionCallCenterAppointments =

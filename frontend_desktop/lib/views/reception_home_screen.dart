@@ -2154,11 +2154,13 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                       Align(
                         alignment: Alignment.centerRight,
                         child: Text(
-                          'الحالة : ${_patientStatusLabel(patient.activityStatus)}',
+                          'الحالة : ${_patientStatusLabel(_effectivePatientStatus(patient))}',
                           style: TextStyle(
                             fontSize: 13.sp,
                             fontWeight: FontWeight.w700,
-                            color: _patientStatusColor(patient.activityStatus),
+                            color: _patientStatusColor(
+                              _effectivePatientStatus(patient),
+                            ),
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -2287,6 +2289,157 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
     }
   }
 
+  DateTime? _parsePatientCreatedAt(PatientModel patient) {
+    final raw = patient.createdAt;
+    if (raw == null || raw.trim().isEmpty) return null;
+    try {
+      return DateTime.parse(raw).toUtc();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool _isPatientCreationDay(PatientModel patient) {
+    final createdAt = _parsePatientCreatedAt(patient);
+    if (createdAt == null) {
+      // fallback: إذا لم تتوفر قيمة created_at لا نسمح بإرجاع pending بعد الآن.
+      return false;
+    }
+    final now = DateTime.now().toUtc();
+    return createdAt.year == now.year &&
+        createdAt.month == now.month &&
+        createdAt.day == now.day;
+  }
+
+  String _effectivePatientStatus(PatientModel patient) {
+    final raw = patient.activityStatus.toLowerCase();
+    if (raw == 'pending' && !_isPatientCreationDay(patient)) {
+      return 'inactive';
+    }
+    return raw;
+  }
+
+  List<String> _statusOptionsForPatient(PatientModel patient) {
+    final status = patient.activityStatus.toLowerCase();
+    final isCreationDay = _isPatientCreationDay(patient);
+    if (isCreationDay) {
+      return const ['pending', 'active'];
+    }
+    // بعد انتهاء يوم الإنشاء: فقط active / inactive
+    if (status == 'pending') {
+      return const ['inactive', 'active'];
+    }
+    return const ['inactive', 'active'];
+  }
+
+  Future<void> _handlePatientStatusChange(
+    BuildContext context,
+    PatientModel patient,
+    String newStatus,
+  ) async {
+    final currentStatus = patient.activityStatus.toLowerCase();
+    if (newStatus == currentStatus) return;
+
+    // إذا كان المريض غير نشط ولا يملك أطباء، يجب تحويله لطبيب أولاً قبل التنشيط.
+    if (currentStatus == 'inactive' &&
+        newStatus == 'active' &&
+        patient.doctorIds.isEmpty) {
+      final shouldAssign = await showDialog<bool>(
+        context: context,
+        builder: (dialogCtx) {
+          return AlertDialog(
+            title: const Text('تنبيه'),
+            content: const Text(
+              'لا يمكن تحويل المريض إلى نشط لأنه غير مرتبط بأي طبيب. يجب تحويله إلى طبيب أولاً.',
+              textAlign: TextAlign.right,
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogCtx).pop(false),
+                child: const Text('إلغاء'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(dialogCtx).pop(true),
+                child: const Text('تحويل الآن'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (shouldAssign == true) {
+        _showSelectDoctorDialog(
+          context,
+          patient,
+          onAfterSaved: () async {
+            await _patientController.updatePatientActivityStatus(
+              patientId: patient.id,
+              status: 'active',
+            );
+          },
+        );
+      }
+      return;
+    }
+
+    await _patientController.updatePatientActivityStatus(
+      patientId: patient.id,
+      status: newStatus,
+    );
+  }
+
+  Widget _buildPatientStatusSwitch(BuildContext context, PatientModel patient) {
+    final options = _statusOptionsForPatient(patient);
+    String selected = _effectivePatientStatus(patient);
+    if (!options.contains(selected)) {
+      selected = options.first;
+    }
+
+    return Padding(
+      padding: EdgeInsets.only(left: 10.w, top: 6.h),
+      child: Container(
+        width: 120.w,
+        height: 34.h,
+        padding: EdgeInsets.symmetric(horizontal: 4.w),
+        decoration: BoxDecoration(
+          color: _patientStatusColor(selected).withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8.r),
+          border: Border.all(
+            color: _patientStatusColor(selected).withOpacity(0.5),
+          ),
+        ),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            value: selected,
+            isExpanded: true,
+            dropdownColor: Colors.white,
+            icon: Icon(Icons.swap_vert, size: 16.sp, color: AppColors.primary),
+            style: TextStyle(
+              fontSize: 11.sp,
+              fontWeight: FontWeight.w700,
+              color: _patientStatusColor(selected),
+            ),
+            items: options
+                .map(
+                  (status) => DropdownMenuItem<String>(
+                    value: status,
+                    child: Text(
+                      _patientStatusLabel(status),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) async {
+              if (value == null) return;
+              await _handlePatientStatusChange(context, patient, value);
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildPatientFile(PatientModel patient) {
     // التحقق من نوع المستخدم
     final userType = _authController.currentUser.value?.userType;
@@ -2383,6 +2536,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                                   ),
                                 ),
                               ),
+                              _buildPatientStatusSwitch(context, patient),
                             ],
                           ],
                         ),
@@ -2571,59 +2725,28 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                     ),
                     decoration: BoxDecoration(
                       color: _patientStatusColor(
-                        patient.activityStatus,
+                        _effectivePatientStatus(patient),
                       ).withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12.r),
                       border: Border.all(
                         color: _patientStatusColor(
-                          patient.activityStatus,
+                          _effectivePatientStatus(patient),
                         ).withOpacity(0.5),
                       ),
                     ),
                     child: Text(
-                      'حالة المريض: ${_patientStatusLabel(patient.activityStatus)}',
+                      'حالة المريض: ${_patientStatusLabel(_effectivePatientStatus(patient))}',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 14.sp,
                         fontWeight: FontWeight.w700,
-                        color: _patientStatusColor(patient.activityStatus),
+                        color: _patientStatusColor(
+                          _effectivePatientStatus(patient),
+                        ),
                       ),
                     ),
                   ),
                   SizedBox(height: 12.h),
-                  if (patient.activityStatus == 'pending')
-                    Container(
-                      width: double.infinity,
-                      height: 52.h,
-                      decoration: BoxDecoration(
-                        color: Colors.green,
-                        borderRadius: BorderRadius.circular(16.r),
-                      ),
-                      child: ElevatedButton(
-                        onPressed: () async {
-                          await _patientController.activatePatientByReception(
-                            patient.id,
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          shadowColor: Colors.transparent,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16.r),
-                          ),
-                        ),
-                        child: Text(
-                          'تنشيط المريض',
-                          style: TextStyle(
-                            fontSize: 16.sp,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                  if (patient.activityStatus == 'pending')
-                    SizedBox(height: 12.h),
                   Container(
                     width: double.infinity,
                     height: 56.h,
@@ -7229,7 +7352,11 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
     );
   }
 
-  void _showSelectDoctorDialog(BuildContext context, PatientModel patient) {
+  void _showSelectDoctorDialog(
+    BuildContext context,
+    PatientModel patient, {
+    Future<void> Function()? onAfterSaved,
+  }) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -7244,6 +7371,9 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
             // تحديث doctorIds للمريض الحالي في الواجهة بدون إعادة تحميل كاملة
             final newDoctorIds = _patientDoctors.map((d) => d.id).toList();
             _patientController.updatePatientDoctorIds(patient.id, newDoctorIds);
+            if (onAfterSaved != null) {
+              await onAfterSaved();
+            }
           },
         );
       },

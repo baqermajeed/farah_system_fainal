@@ -213,14 +213,87 @@ async def activate_patient_by_reception(*, patient_id: str) -> Patient:
     تفعيل المريض من موظف الاستقبال:
     pending -> active
     """
+    return await update_patient_activity_status_by_reception(
+        patient_id=patient_id,
+        status="active",
+    )
+
+
+async def update_patient_activity_status_by_reception(*, patient_id: str, status: str) -> Patient:
+    """
+    تحديث حالة المريض من واجهة الاستقبال:
+    - pending: مسموح فقط في يوم إنشاء المريض.
+    - active: إذا كان inactive ولا يوجد أي طبيب مرتبط -> مرفوض حتى يتم تحويله لطبيب أولاً.
+    - inactive: يحذف ارتباطات الأطباء ويضيف InactivePatientLog لكل طبيب مرتبط.
+    """
     patient = await Patient.get(OID(patient_id))
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
 
+    normalized = (status or "").strip().lower()
+    if normalized not in {"pending", "active", "inactive"}:
+        raise HTTPException(status_code=400, detail="Invalid status. Allowed: pending, active, inactive")
+
     now = datetime.now(timezone.utc)
-    patient.activity_status = "active"
-    patient.activated_at = now
-    patient.inactivated_at = None
+    created_at = _to_utc(getattr(patient, "created_at", now))
+    created_day_end = created_at.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+
+    if normalized == "pending":
+        # الحالة pending مخصصة ليوم الإنشاء فقط للمريض الجديد.
+        if now >= created_day_end:
+            raise HTTPException(
+                status_code=400,
+                detail="لا يمكن إرجاع المريض إلى قيد الانتظار بعد انتهاء يوم إنشائه",
+            )
+        patient.activity_status = "pending"
+        patient.activated_at = None
+        patient.inactivated_at = None
+        await patient.save()
+        return patient
+
+    if normalized == "active":
+        if not (patient.doctor_ids or []):
+            raise HTTPException(
+                status_code=400,
+                detail="لا يمكن تحويل الحالة إلى نشط بدون تحويل المريض إلى طبيب",
+            )
+        patient.activity_status = "active"
+        patient.activated_at = now
+        patient.inactivated_at = None
+        await patient.save()
+        return patient
+
+    # normalized == "inactive"
+    removed_doctors = list(patient.doctor_ids or [])
+    profiles = patient.doctor_profiles or {}
+
+    if removed_doctors:
+        from app.models import InactivePatientLog
+
+        for removed_doctor_id in removed_doctors:
+            try:
+                removed_doctor_key = str(removed_doctor_id)
+                removed_profile = profiles.get(removed_doctor_key)
+                original_assigned_at = (
+                    removed_profile.assigned_at
+                    if removed_profile and getattr(removed_profile, "assigned_at", None)
+                    else now
+                )
+                await InactivePatientLog(
+                    patient_id=patient.id,
+                    doctor_id=removed_doctor_id,
+                    removed_at=now,
+                    original_assigned_at=original_assigned_at,
+                ).insert()
+            except Exception as log_error:
+                print(
+                    f"⚠️ Warning: Failed to create InactivePatientLog for patient {patient.id}, doctor {removed_doctor_id}: {log_error}"
+                )
+
+    patient.activity_status = "inactive"
+    patient.inactivated_at = now
+    patient.doctor_ids = []
+    patient.doctor_profiles = {}
     await patient.save()
     return patient
 
