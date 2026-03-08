@@ -146,11 +146,12 @@ async def cleanup_inactive_new_patients_for_doctor(doctor_id: str) -> int:
         for patient in patients:
             profiles = patient.doctor_profiles or {}
             profile = profiles.get(doctor_key)
-            if not profile or not getattr(profile, "assigned_at", None):
-                # لا توجد معلومة تحويل، نتركه كما هو
-                continue
-
-            assigned_at = profile.assigned_at
+            # fallback: إذا لا يوجد assigned_at للطبيب، نعتمد created_at للمريض
+            assigned_at = (
+                profile.assigned_at
+                if profile and getattr(profile, "assigned_at", None)
+                else getattr(patient, "created_at", None)
+            )
             if not assigned_at:
                 continue
 
@@ -203,6 +204,89 @@ async def cleanup_inactive_new_patients_for_doctor(doctor_id: str) -> int:
         return removed_count
     except Exception as e:
         print(f"❌ Error in cleanup_inactive_new_patients_for_doctor: {e}")
+        import traceback
+        traceback.print_exc()
+        return 0
+
+
+async def cleanup_inactive_new_patients_global() -> int:
+    """
+    تنظيف عام: تحويل كل المرضى الجدد pending الذين انتهى يوم إضافتهم إلى inactive
+    وحذفهم من حسابات الأطباء مع تسجيل InactivePatientLog.
+    """
+    now = datetime.now(timezone.utc)
+    removed_count = 0
+
+    try:
+        patients = await Patient.find(
+            {
+                "visit_type": "مريض جديد",
+                "activity_status": "pending",
+                "doctor_ids.0": {"$exists": True},
+            }
+        ).to_list()
+
+        from app.models import InactivePatientLog
+
+        for patient in patients:
+            profiles = patient.doctor_profiles or {}
+            reference_dt = getattr(patient, "created_at", None)
+
+            # إذا توفرت assigned_at لأي طبيب، نأخذ الأقدم كبداية للحساب
+            assigned_values: List[datetime] = []
+            for profile in profiles.values():
+                if profile and getattr(profile, "assigned_at", None):
+                    assigned_values.append(_to_utc(profile.assigned_at))
+            if assigned_values:
+                reference_dt = min(assigned_values)
+
+            if not reference_dt:
+                continue
+
+            reference_utc = _to_utc(reference_dt)
+            day_start = reference_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+            day_end = day_start + timedelta(days=1)
+            if now < day_end:
+                continue
+
+            removed_doctors = list(patient.doctor_ids or [])
+            if not removed_doctors:
+                continue
+
+            for removed_doctor_id in removed_doctors:
+                try:
+                    removed_doctor_key = str(removed_doctor_id)
+                    removed_profile = profiles.get(removed_doctor_key)
+                    original_assigned_at = (
+                        removed_profile.assigned_at
+                        if removed_profile and getattr(removed_profile, "assigned_at", None)
+                        else reference_utc
+                    )
+                    await InactivePatientLog(
+                        patient_id=patient.id,
+                        doctor_id=removed_doctor_id,
+                        removed_at=now,
+                        original_assigned_at=original_assigned_at,
+                    ).insert()
+                except Exception as log_error:
+                    print(
+                        f"⚠️ Warning: Failed to create InactivePatientLog for patient {patient.id}, doctor {removed_doctor_id}: {log_error}"
+                    )
+
+            patient.doctor_ids = []
+            patient.doctor_profiles = {}
+            patient.activity_status = "inactive"
+            patient.inactivated_at = now
+            await patient.save()
+            removed_count += 1
+
+        if removed_count:
+            print(
+                f"✅ [cleanup_inactive_new_patients_global] Marked {removed_count} pending new patients as inactive"
+            )
+        return removed_count
+    except Exception as e:
+        print(f"❌ Error in cleanup_inactive_new_patients_global: {e}")
         import traceback
         traceback.print_exc()
         return 0

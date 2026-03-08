@@ -318,6 +318,11 @@ async def get_all_doctors_transfer_stats(
     يمكن تصفية النتائج حسب فترة محددة باستخدام date_from و date_to.
     """
     _ = await _require_doctor_manager(current)
+    # تأكد من تطبيق التحويل التلقائي pending -> inactive قبل احتساب الإحصائيات
+    try:
+        await patient_service.cleanup_inactive_new_patients_global()
+    except Exception as e:
+        logger.error(f"Error during cleanup_inactive_new_patients_global: {e}")
     
     from app.services.stats_service import get_all_doctors_patient_transfer_stats
     

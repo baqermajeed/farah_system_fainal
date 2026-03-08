@@ -49,6 +49,12 @@ async def list_patients(
     search: Optional[str] = Query(None, description="بحث في اسم المريض أو رقم الهاتف"),
 ):
     """يعرض جميع المرضى مع بياناتهم الأساسية مرتبة حسب الأحدث أولاً."""
+    # تطبيق التحويل التلقائي pending -> inactive قبل عرض القائمة
+    try:
+        await patient_service.cleanup_inactive_new_patients_global()
+    except Exception:
+        pass
+
     # جلب جميع المرضى مع المستخدمين المرتبطين بهم
     # نستخدم aggregation pipeline لترتيب حسب created_at من User (الأحدث أولاً)
     
