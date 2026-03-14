@@ -472,48 +472,24 @@ async def get_doctor_patient_transfer_stats(
         transfers_range_query = transfers_range_query.find(AssignmentLog.assigned_at < dt)
     transfers_in_range = await transfers_range_query.count()
     
-    # حساب عدد غير النشطين من InactivePatientLog (حسب original_assigned_at)
-    inactive_today = await InactivePatientLog.find(
-        InactivePatientLog.doctor_id == did,
-        InactivePatientLog.original_assigned_at >= today_start,
-        InactivePatientLog.original_assigned_at < tomorrow_start,
-    ).count()
-    
-    inactive_month = await InactivePatientLog.find(
-        InactivePatientLog.doctor_id == did,
-        InactivePatientLog.original_assigned_at >= month_start,
-        InactivePatientLog.original_assigned_at < next_month_start,
-    ).count()
-    
-    inactive_range_query = InactivePatientLog.find(InactivePatientLog.doctor_id == did)
-    if df:
-        inactive_range_query = inactive_range_query.find(InactivePatientLog.original_assigned_at >= df)
-    if dt:
-        inactive_range_query = inactive_range_query.find(InactivePatientLog.original_assigned_at < dt)
-    inactive_in_range = await inactive_range_query.count()
-    
-    # حساب النشطين وفق الآلية الجديدة:
-    # نعدّ فقط المرضى الحاليين المرتبطين بالطبيب وحالتهم active،
-    # ثم نصنفهم حسب assigned_at الخاص بهذا الطبيب.
-    active_today = 0
-    active_month = 0
-    active_in_range = 0
-    active_patients = await Patient.find(
-        {"doctor_ids": {"$in": [did]}, "activity_status": "active"}
-    ).to_list()
-    doctor_key = str(did)
-    for p in active_patients:
-        profile = (p.doctor_profiles or {}).get(doctor_key)
-        assigned_at = getattr(profile, "assigned_at", None) if profile else None
-        if not assigned_at:
-            continue
-        assigned_at_utc = _to_utc(assigned_at)
-        if today_start <= assigned_at_utc < tomorrow_start:
-            active_today += 1
-        if month_start <= assigned_at_utc < next_month_start:
-            active_month += 1
-        if (df is None or assigned_at_utc >= df) and (dt is None or assigned_at_utc < dt):
-            active_in_range += 1
+    # حساب الحالات من الحالة الحالية الفعلية للمرضى المرتبطين بالطبيب.
+    # هذا يضمن أن أي تحويل حالة (active/pending/inactive) ينعكس مباشرة في العدادات.
+    current_patients = await Patient.find({"doctor_ids": {"$in": [did]}}).to_list()
+    active_current = 0
+    pending_current = 0
+    inactive_current = 0
+    for p in current_patients:
+        status = (getattr(p, "activity_status", "pending") or "pending").lower()
+        if status == "active":
+            active_current += 1
+        elif status == "inactive":
+            inactive_current += 1
+        else:
+            pending_current += 1
+
+    active_today = active_month = active_in_range = active_current
+    inactive_today = inactive_month = inactive_in_range = inactive_current
+    pending_today = pending_month = pending_in_range = pending_current
     
     return {
         "doctor_id": doctor_id,
@@ -533,6 +509,15 @@ async def get_doctor_patient_transfer_stats(
                 "from": date_from,
                 "to": date_to,
                 "count": active_in_range,
+            },
+        },
+        "pending_patients": {
+            "today": pending_today,
+            "this_month": pending_month,
+            "range": {
+                "from": date_from,
+                "to": date_to,
+                "count": pending_in_range,
             },
         },
         "inactive_patients": {
@@ -639,26 +624,16 @@ async def get_all_doctors_patient_transfer_stats(
                     pending_count += 1
             return active_count, pending_count, inactive_count
 
-        async def _status_counts_from_logs(logs: List[AssignmentLog]) -> tuple[int, int, int]:
-            patient_ids = list({log.patient_id for log in logs if getattr(log, "patient_id", None)})
-            if not patient_ids:
-                return 0, 0, 0
-            patients = await Patient.find(In(Patient.id, patient_ids)).to_list()
+        async def _status_counts_from_current_patients() -> tuple[int, int, int]:
+            # نعتمد الحالة الحالية الفعلية لمرضى الطبيب حتى تنعكس
+            # أي تغييرات active/inactive مباشرة في العدادات.
+            patients = await Patient.find({"doctor_ids": {"$in": [did]}}).to_list()
             return _count_statuses_from_patients(patients)
 
-        active_today, pending_today, inactive_today = await _status_counts_from_logs(
-            await AssignmentLog.find(
-                *base_filters,
-                AssignmentLog.assigned_at >= today_start,
-                AssignmentLog.assigned_at < tomorrow_start,
-            ).to_list()
-        )
-        active_month, pending_month, inactive_month = await _status_counts_from_logs(
-            transfers_month_logs
-        )
-        active_in_range, pending_in_range, inactive_in_range = await _status_counts_from_logs(
-            transfers_range_logs
-        )
+        active_current, pending_current, inactive_current = await _status_counts_from_current_patients()
+        active_today = active_month = active_in_range = active_current
+        pending_today = pending_month = pending_in_range = pending_current
+        inactive_today = inactive_month = inactive_in_range = inactive_current
         
         doctors_stats.append({
             "doctor_id": str(doctor.id),
