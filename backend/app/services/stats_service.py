@@ -429,7 +429,7 @@ async def get_doctor_patient_transfer_stats(
     ملاحظة: التحويلات من AssignmentLog، وغير النشطين من InactivePatientLog، والنشطين من Patient.activity_status.
     """
     from beanie import PydanticObjectId as OID
-    from beanie.operators import And
+    from beanie.operators import In
     
     try:
         did = OID(doctor_id)
@@ -474,7 +474,7 @@ async def get_doctor_patient_transfer_stats(
     
     # حساب الحالات من الحالة الحالية الفعلية لمرضى الطبيب
     # لكن مع التصنيف الزمني حسب assigned_at الخاص بالطبيب نفسه.
-    # بهذا تبقى الأرقام زمنية (اليوم/الشهر/فترة) ومتناسقة مع سياق الشاشة.
+    # inactive يُحسب من InactivePatientLog لأن هذا النوع غالبًا يُزال من doctor_ids.
     active_today = pending_today = inactive_today = 0
     active_month = pending_month = inactive_month = 0
     active_in_range = pending_in_range = inactive_in_range = 0
@@ -524,6 +524,47 @@ async def get_doctor_patient_transfer_stats(
             to_month=month_start <= assigned_at_utc < next_month_start,
             to_range=(df is None or assigned_at_utc >= df) and (dt is None or assigned_at_utc < dt),
         )
+
+    # inactive من logs (مع مراعاة انتقال الحالة: إذا المريض صار active/pending لا يُحسب inactive)
+    inactive_logs = await InactivePatientLog.find(
+        InactivePatientLog.doctor_id == did
+    ).to_list()
+    inactive_today_ids = set()
+    inactive_month_ids = set()
+    inactive_range_ids = set()
+    for log in inactive_logs:
+        pid = getattr(log, "patient_id", None)
+        if not pid:
+            continue
+        original_assigned_at = _to_utc(
+            getattr(log, "original_assigned_at", None) or getattr(log, "removed_at", datetime.now(timezone.utc))
+        )
+        if today_start <= original_assigned_at < tomorrow_start:
+            inactive_today_ids.add(pid)
+        if month_start <= original_assigned_at < next_month_start:
+            inactive_month_ids.add(pid)
+        if (df is None or original_assigned_at >= df) and (dt is None or original_assigned_at < dt):
+            inactive_range_ids.add(pid)
+
+    all_inactive_ids = list(inactive_today_ids | inactive_month_ids | inactive_range_ids)
+    inactive_patients = (
+        await Patient.find(In(Patient.id, all_inactive_ids)).to_list()
+        if all_inactive_ids
+        else []
+    )
+    patient_status_map = {
+        p.id: (getattr(p, "activity_status", "pending") or "pending").lower()
+        for p in inactive_patients
+    }
+
+    def _is_currently_inactive(pid) -> bool:
+        status = patient_status_map.get(pid)
+        # إذا لم نجد المريض نعتبره غير نشط تاريخيًا حتى لا يختفي من الإحصائية.
+        return status is None or status == "inactive"
+
+    inactive_today = sum(1 for pid in inactive_today_ids if _is_currently_inactive(pid))
+    inactive_month = sum(1 for pid in inactive_month_ids if _is_currently_inactive(pid))
+    inactive_in_range = sum(1 for pid in inactive_range_ids if _is_currently_inactive(pid))
     
     return {
         "doctor_id": doctor_id,
@@ -674,12 +715,8 @@ async def get_all_doctors_patient_transfer_stats(
                     if in_range:
                         active_in_range += 1
                 elif status == "inactive":
-                    if in_today:
-                        inactive_today += 1
-                    if in_month:
-                        inactive_month += 1
-                    if in_range:
-                        inactive_in_range += 1
+                    # inactive لا نعتمده من doctor_ids لأنه غالباً أُزيل من حساب الطبيب.
+                    pass
                 else:
                     if in_today:
                         pending_today += 1
@@ -687,6 +724,47 @@ async def get_all_doctors_patient_transfer_stats(
                         pending_month += 1
                     if in_range:
                         pending_in_range += 1
+
+            # inactive من logs (مع مراعاة انتقال الحالة الحالية للمريض)
+            inactive_logs = await InactivePatientLog.find(
+                InactivePatientLog.doctor_id == did
+            ).to_list()
+            inactive_today_ids = set()
+            inactive_month_ids = set()
+            inactive_range_ids = set()
+            for log in inactive_logs:
+                pid = getattr(log, "patient_id", None)
+                if not pid:
+                    continue
+                original_assigned_at = _to_utc(
+                    getattr(log, "original_assigned_at", None)
+                    or getattr(log, "removed_at", datetime.now(timezone.utc))
+                )
+                if today_start <= original_assigned_at < tomorrow_start:
+                    inactive_today_ids.add(pid)
+                if month_start <= original_assigned_at < next_month_start:
+                    inactive_month_ids.add(pid)
+                if (df is None or original_assigned_at >= df) and (dt is None or original_assigned_at < dt):
+                    inactive_range_ids.add(pid)
+
+            all_inactive_ids = list(inactive_today_ids | inactive_month_ids | inactive_range_ids)
+            inactive_patients = (
+                await Patient.find(In(Patient.id, all_inactive_ids)).to_list()
+                if all_inactive_ids
+                else []
+            )
+            status_map = {
+                p.id: (getattr(p, "activity_status", "pending") or "pending").lower()
+                for p in inactive_patients
+            }
+
+            def _is_currently_inactive(pid) -> bool:
+                s = status_map.get(pid)
+                return s is None or s == "inactive"
+
+            inactive_today = sum(1 for pid in inactive_today_ids if _is_currently_inactive(pid))
+            inactive_month = sum(1 for pid in inactive_month_ids if _is_currently_inactive(pid))
+            inactive_in_range = sum(1 for pid in inactive_range_ids if _is_currently_inactive(pid))
 
             return (
                 active_today,
