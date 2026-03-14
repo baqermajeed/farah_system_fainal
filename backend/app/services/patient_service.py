@@ -458,6 +458,8 @@ async def assign_patient_doctors(
 ) -> Patient:
     """Receptionist/Admin can assign multiple doctors for a patient and نسجل التحويلات."""
     from app.models import AssignmentLog
+    from app.models import InactivePatientLog
+    from beanie.operators import In
 
     print(f"🔗 [assign_patient_doctors] patient_id: {patient_id}, doctor_ids: {doctor_ids}")
 
@@ -488,17 +490,35 @@ async def assign_patient_doctors(
 
     # سجل التحويلات عند التغيير
     # للأطباء الجدد (المضافين)
+    #
+    # ملاحظة مهمة:
+    # إذا كان المريض حالته inactive وتمت إعادته لنفس الطبيب الذي كان مرتبطاً به سابقاً
+    # (restore)، فلا نعتبر ذلك "تحويلاً جديداً" ولا ننشئ AssignmentLog.
+    # بذلك يبقى عداد التحويلات مستقلاً عن تغييرات الحالة.
     added_doctors = new_doctor_ids - prev_doctor_ids
     assignment_time = datetime.now(timezone.utc)
+    restored_doctors: set[OID] = set()
+    if added_doctors and (patient.activity_status or "").lower() == "inactive":
+        previous_inactive_logs = await InactivePatientLog.find(
+            InactivePatientLog.patient_id == patient.id,
+            In(InactivePatientLog.doctor_id, list(added_doctors)),
+        ).to_list()
+        restored_doctors = {log.doctor_id for log in previous_inactive_logs if getattr(log, "doctor_id", None)}
+
     for doctor_id in added_doctors:
-        print(f"📝 [assign_patient_doctors] Creating AssignmentLog for newly added doctor {doctor_id}")
-        await AssignmentLog(
-            patient_id=patient.id,
-            doctor_id=doctor_id,
-            previous_doctor_id=None,
-            assigned_by_user_id=OID(assigned_by_user_id) if assigned_by_user_id else None,
-            kind="assigned",
-        ).insert()
+        if doctor_id in restored_doctors:
+            print(
+                f"ℹ️ [assign_patient_doctors] Skip AssignmentLog for restored inactive patient {patient.id} to previous doctor {doctor_id}"
+            )
+        else:
+            print(f"📝 [assign_patient_doctors] Creating AssignmentLog for newly added doctor {doctor_id}")
+            await AssignmentLog(
+                patient_id=patient.id,
+                doctor_id=doctor_id,
+                previous_doctor_id=None,
+                assigned_by_user_id=OID(assigned_by_user_id) if assigned_by_user_id else None,
+                kind="assigned",
+            ).insert()
         _reset_doctor_profile_assignment(patient, str(doctor_id), assigned_at=assignment_time)
     
     # للأطباء المزالين: لا ننشئ InactivePatientLog هنا.
