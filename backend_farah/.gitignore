@@ -1,0 +1,16 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.env
+firebase-credentials.json
+
+# Flutter / Dart
+.dart_tool/
+build/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+firebase_admin.json

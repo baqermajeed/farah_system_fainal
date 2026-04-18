@@ -6,6 +6,64 @@ import 'package:frontend_desktop/services/api_service.dart';
 class CallCenterService {
   final _api = ApiService();
 
+  Future<List<CallCenterAppointmentModel>> _fetchBranchAppointmentsAll({
+    required String branch,
+    required String endpoint,
+    required String? search,
+    required String? dateFromIso,
+    required String? dateToIso,
+    String? baseUrlOverride,
+    int pageSize = 50,
+  }) async {
+    final all = <CallCenterAppointmentModel>[];
+    var skip = 0;
+
+    while (true) {
+      final response = await _api.get(
+        endpoint,
+        queryParameters: {
+          if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
+          if (dateFromIso != null) 'date_from': dateFromIso,
+          if (dateToIso != null) 'date_to': dateToIso,
+          'skip': skip,
+          'limit': pageSize,
+        },
+        baseUrlOverride: baseUrlOverride,
+      );
+
+      if (response.statusCode != 200) {
+        break;
+      }
+
+      final data = (response.data as List?) ?? const [];
+      if (data.isEmpty) {
+        break;
+      }
+
+      for (final e in data) {
+        try {
+          all.add(
+            CallCenterAppointmentModel.fromJson(
+              (e as Map).cast<String, dynamic>(),
+              branch: branch,
+            ),
+          );
+        } catch (_) {
+          // نتجاوز السجل غير الصالح بدل إيقاف تحميل كل القائمة.
+        }
+      }
+
+      // انتهت الصفحات.
+      if (data.length < pageSize) {
+        break;
+      }
+
+      skip += pageSize;
+    }
+
+    return all;
+  }
+
   /// مواعيد مركز الاتصالات (للموظف نفسه أو للأدمن) — من فرع النجف فقط.
   Future<List<CallCenterAppointmentModel>> getAppointments({
     String? search,
@@ -47,59 +105,42 @@ class CallCenterService {
     String? search,
     String? dateFromIso,
     String? dateToIso,
-    int skip = 0,
     int limit = 50,
   }) async {
-    final params = <String, dynamic>{
-      if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
-      if (dateFromIso != null) 'date_from': dateFromIso,
-      if (dateToIso != null) 'date_to': dateToIso,
-      'skip': skip,
-      'limit': limit,
-    };
-
     final List<CallCenterAppointmentModel> merged = [];
 
     // النجف
     try {
-      final responseNajaf = await _api.get(
-        ApiConstants.callCenterAppointments,
-        queryParameters: Map<String, dynamic>.from(params),
+      final najafItems = await _fetchBranchAppointmentsAll(
+        branch: ApiConstants.callCenterBranchFarahNajaf,
+        endpoint: ApiConstants.callCenterAppointments,
+        search: search,
+        dateFromIso: dateFromIso,
+        dateToIso: dateToIso,
+        pageSize: limit,
       );
-      if (responseNajaf.statusCode == 200) {
-        final data = (responseNajaf.data as List?) ?? const [];
-        for (final e in data) {
-          merged.add(CallCenterAppointmentModel.fromJson(
-            (e as Map).cast<String, dynamic>(),
-            branch: ApiConstants.callCenterBranchFarahNajaf,
-          ));
-        }
-      }
+      merged.addAll(najafItems);
     } catch (_) {
       // نتابع ونعرض ما تيسر من الكندي
     }
 
     // الكندي
     try {
-      final responseKendy = await _api.get(
-        ApiConstants.callCenterAppointments,
-        queryParameters: Map<String, dynamic>.from(params),
+      final kendyItems = await _fetchBranchAppointmentsAll(
+        branch: ApiConstants.callCenterBranchKendyBaghdad,
+        endpoint: ApiConstants.callCenterAppointments,
+        search: search,
+        dateFromIso: dateFromIso,
+        dateToIso: dateToIso,
         baseUrlOverride: ApiConstants.baseUrlKendy,
+        pageSize: limit,
       );
-      if (responseKendy.statusCode == 200) {
-        final data = (responseKendy.data as List?) ?? const [];
-        for (final e in data) {
-          merged.add(CallCenterAppointmentModel.fromJson(
-            (e as Map).cast<String, dynamic>(),
-            branch: ApiConstants.callCenterBranchKendyBaghdad,
-          ));
-        }
-      }
+      merged.addAll(kendyItems);
     } catch (_) {
       // نتابع
     }
 
-    merged.sort((a, b) => a.scheduledAt.compareTo(b.scheduledAt));
+    merged.sort((a, b) => b.scheduledAt.compareTo(a.scheduledAt));
     return merged;
   }
 

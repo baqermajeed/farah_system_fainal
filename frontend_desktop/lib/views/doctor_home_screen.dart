@@ -9266,9 +9266,9 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                         }
 
                                         // استدعاء الإحصائيات الشهرية من doctorStatsMap
-                                        final transfersThisMonth =
-                                            stats?['transfers']?['this_month'] ??
-                                            0;
+                                        // ملاحظة: transfers.this_month = عدد سجلات التحويل (قد يتضمن أكثر من عملية لنفس المريض)،
+                                        // بينما الصفوف الثلاثة = عدد مرضى حسب الحالة الحالية ضمن الشهر، لذلك لا يلزم تطابق المجموع.
+                                        // نعرض في السطر الأول مجموع الحالات الثلاث ليكون الإجمالي متسقاً مع ما تحته.
                                         final activePatientsThisMonth =
                                             stats?['active_patients']?['this_month'] ??
                                             0;
@@ -9278,11 +9278,15 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                         final inactivePatientsThisMonth =
                                             stats?['inactive_patients']?['this_month'] ??
                                             0;
+                                        final patientsTotalThisMonth =
+                                            activePatientsThisMonth +
+                                                pendingPatientsThisMonth +
+                                                inactivePatientsThisMonth;
 
                                         // طباعة للتشخيص
                                         if (stats != null) {
                                           print(
-                                            '📊 [DoctorHomeScreen] Displaying stats for doctor ${doctor.id}: transfers_month=$transfersThisMonth, active=$activePatientsThisMonth, pending=$pendingPatientsThisMonth, inactive=$inactivePatientsThisMonth',
+                                            '📊 [DoctorHomeScreen] Displaying stats for doctor ${doctor.id}: patients_total_month=$patientsTotalThisMonth, active=$activePatientsThisMonth, pending=$pendingPatientsThisMonth, inactive=$inactivePatientsThisMonth',
                                           );
                                           print(
                                             '📊 [DoctorHomeScreen] Full stats object: $stats',
@@ -9298,12 +9302,12 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                           crossAxisAlignment:
                                               CrossAxisAlignment.end,
                                           children: [
-                                            // عدد التحويلات الكلي هذا الشهر
+                                            // إجمالي المرضى هذا الشهر (مجموع النشط + قيد الانتظار + غير النشط)
                                             Row(
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
                                                 Text(
-                                                  '$transfersThisMonth',
+                                                  '$patientsTotalThisMonth',
                                                   style: TextStyle(
                                                     fontSize: 9.sp,
                                                     fontWeight: FontWeight.w700,

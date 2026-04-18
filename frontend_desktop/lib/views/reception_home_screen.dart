@@ -2289,47 +2289,16 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
     }
   }
 
-  DateTime? _parsePatientCreatedAt(PatientModel patient) {
-    final raw = patient.createdAt;
-    if (raw == null || raw.trim().isEmpty) return null;
-    try {
-      return DateTime.parse(raw).toUtc();
-    } catch (_) {
-      return null;
-    }
-  }
-
-  bool _isPatientCreationDay(PatientModel patient) {
-    final createdAt = _parsePatientCreatedAt(patient);
-    if (createdAt == null) {
-      // fallback: إذا لم تتوفر قيمة created_at لا نسمح بإرجاع pending بعد الآن.
-      return false;
-    }
-    final now = DateTime.now().toUtc();
-    return createdAt.year == now.year &&
-        createdAt.month == now.month &&
-        createdAt.day == now.day;
-  }
-
   String _effectivePatientStatus(PatientModel patient) {
     final raw = patient.activityStatus.toLowerCase();
-    if (raw == 'pending' && !_isPatientCreationDay(patient)) {
-      return 'inactive';
+    if (raw == 'active' || raw == 'inactive' || raw == 'pending') {
+      return raw;
     }
-    return raw;
+    return 'pending';
   }
 
   List<String> _statusOptionsForPatient(PatientModel patient) {
-    final status = patient.activityStatus.toLowerCase();
-    final isCreationDay = _isPatientCreationDay(patient);
-    if (isCreationDay) {
-      return const ['pending', 'active'];
-    }
-    // بعد انتهاء يوم الإنشاء: فقط active / inactive
-    if (status == 'pending') {
-      return const ['inactive', 'active'];
-    }
-    return const ['inactive', 'active'];
+    return const ['pending', 'active', 'inactive'];
   }
 
   Future<void> _handlePatientStatusChange(
