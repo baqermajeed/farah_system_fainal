@@ -1109,3 +1109,516 @@ async def get_dashboard_stats() -> Dict:
         },
         "patient_types": patient_type_summary,
     }
+
+
+def _normalize_filter_value(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    return cleaned if cleaned else None
+
+
+def _matches_patient_filters(
+    *,
+    patient: Patient,
+    user: Optional[User],
+    gender: Optional[str],
+    city: Optional[str],
+    visit_type: Optional[str],
+    consultation_type: Optional[str],
+    activity_status: Optional[str],
+) -> bool:
+    if gender is not None:
+        user_gender = (getattr(user, "gender", None) or "").strip().lower()
+        if user_gender != gender.lower():
+            return False
+
+    if city is not None:
+        user_city = (getattr(user, "city", None) or "").strip().lower()
+        if user_city != city.lower():
+            return False
+
+    if visit_type is not None:
+        if (getattr(patient, "visit_type", None) or "").strip() != visit_type:
+            return False
+
+    if consultation_type is not None:
+        if (getattr(patient, "consultation_type", None) or "").strip() != consultation_type:
+            return False
+
+    if activity_status is not None:
+        p_status = (getattr(patient, "activity_status", "pending") or "pending").strip().lower()
+        if p_status != activity_status.lower():
+            return False
+
+    return True
+
+
+def _status_bucket(status: str) -> str:
+    normalized = (status or "").strip().lower()
+    if normalized in {"completed"}:
+        return "completed"
+    if normalized in {"canceled", "cancelled"}:
+        return "cancelled"
+    if normalized in {"late"}:
+        return "late"
+    if normalized in {"scheduled", "pending"}:
+        return "pending"
+    return "other"
+
+
+async def get_doctor_patients_breakdown_stats(
+    *,
+    doctor_id: str,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    group: str = "day",
+    gender: Optional[str] = None,
+    city: Optional[str] = None,
+    visit_type: Optional[str] = None,
+    consultation_type: Optional[str] = None,
+    activity_status: Optional[str] = None,
+) -> Dict:
+    from beanie import PydanticObjectId as OID
+    from beanie.operators import In
+
+    try:
+        did = OID(doctor_id)
+    except Exception:
+        return {"detail": "Invalid doctor_id"}
+
+    doctor = await Doctor.get(did)
+    if not doctor:
+        return {"detail": "Doctor not found"}
+
+    doctor_user = await User.get(doctor.user_id)
+
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow_start = today_start + timedelta(days=1)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    next_month_start = (
+        month_start.replace(year=month_start.year + 1, month=1)
+        if month_start.month == 12
+        else month_start.replace(month=month_start.month + 1)
+    )
+
+    df, dt = parse_dates(date_from, date_to)
+    gender = _normalize_filter_value(gender)
+    city = _normalize_filter_value(city)
+    visit_type = _normalize_filter_value(visit_type)
+    consultation_type = _normalize_filter_value(consultation_type)
+    activity_status = _normalize_filter_value(activity_status)
+    group = group if group in {"day", "month", "year"} else "day"
+
+    # Assignment-based sets (historical-aware, includes patients removed later)
+    assignment_logs = await AssignmentLog.find(AssignmentLog.doctor_id == did).to_list()
+    today_ids: set[str] = set()
+    month_ids: set[str] = set()
+    range_ids: set[str] = set()
+    timeline_sets: dict[str, set[str]] = defaultdict(set)
+
+    for log in assignment_logs:
+        pid = str(log.patient_id)
+        assigned_at = _to_utc(log.assigned_at)
+        if today_start <= assigned_at < tomorrow_start:
+            today_ids.add(pid)
+        if month_start <= assigned_at < next_month_start:
+            month_ids.add(pid)
+        if (df is None or assigned_at >= df) and (dt is None or assigned_at < dt):
+            range_ids.add(pid)
+            period = format_date_group(assigned_at, group)
+            timeline_sets[period].add(pid)
+
+    # Current patients for current-status overview
+    current_patients = await Patient.find({"doctor_ids": {"$in": [did]}}).to_list()
+    current_ids: set[str] = {str(p.id) for p in current_patients}
+
+    all_needed_ids = today_ids | month_ids | range_ids | current_ids
+    oid_by_id: dict[str, OID] = {}
+    for sid in all_needed_ids:
+        try:
+            oid_by_id[sid] = OID(sid)
+        except Exception:
+            continue
+
+    historical_patients = (
+        await Patient.find(In(Patient.id, list(oid_by_id.values()))).to_list()
+        if oid_by_id
+        else []
+    )
+    patient_map: dict[str, Patient] = {str(p.id): p for p in historical_patients}
+    for p in current_patients:
+        patient_map[str(p.id)] = p
+
+    user_ids = list({p.user_id for p in patient_map.values() if getattr(p, "user_id", None)})
+    users = await User.find(In(User.id, user_ids)).to_list() if user_ids else []
+    user_map = {u.id: u for u in users}
+
+    def _build_period_breakdown(patient_ids: set[str]) -> dict:
+        visit_counts = {"new": 0, "old": 0, "unknown": 0}
+        consult_counts = {"paid": 0, "free": 0, "unknown": 0}
+        gender_counts = {"male": 0, "female": 0, "unknown": 0}
+        activity_counts = {"active": 0, "pending": 0, "inactive": 0, "unknown": 0}
+        city_counts: dict[str, int] = defaultdict(int)
+        total = 0
+
+        for pid in patient_ids:
+            patient = patient_map.get(pid)
+            if not patient:
+                continue
+            user = user_map.get(patient.user_id)
+            if not _matches_patient_filters(
+                patient=patient,
+                user=user,
+                gender=gender,
+                city=city,
+                visit_type=visit_type,
+                consultation_type=consultation_type,
+                activity_status=activity_status,
+            ):
+                continue
+
+            total += 1
+
+            vt = (getattr(patient, "visit_type", None) or "").strip()
+            if vt == "مريض جديد":
+                visit_counts["new"] += 1
+            elif vt == "مراجع قديم":
+                visit_counts["old"] += 1
+            else:
+                visit_counts["unknown"] += 1
+
+            ct = (getattr(patient, "consultation_type", None) or "").strip()
+            if ct == "معاينة مدفوعة":
+                consult_counts["paid"] += 1
+            elif ct == "معاينة مجانية":
+                consult_counts["free"] += 1
+            else:
+                consult_counts["unknown"] += 1
+
+            g = (getattr(user, "gender", None) or "").strip().lower()
+            if g == "male":
+                gender_counts["male"] += 1
+            elif g == "female":
+                gender_counts["female"] += 1
+            else:
+                gender_counts["unknown"] += 1
+
+            s = (getattr(patient, "activity_status", "pending") or "pending").strip().lower()
+            if s in {"active", "pending", "inactive"}:
+                activity_counts[s] += 1
+            else:
+                activity_counts["unknown"] += 1
+
+            city_name = (getattr(user, "city", None) or "").strip()
+            city_key = city_name if city_name else "غير محددة"
+            city_counts[city_key] += 1
+
+        sorted_cities = sorted(city_counts.items(), key=lambda item: item[1], reverse=True)
+        return {
+            "total": total,
+            "visit_type": visit_counts,
+            "consultation_type": consult_counts,
+            "gender": gender_counts,
+            "activity_status": activity_counts,
+            "cities": [{"city": name, "count": count} for name, count in sorted_cities],
+        }
+
+    today_stats = _build_period_breakdown(today_ids)
+    month_stats = _build_period_breakdown(month_ids)
+    range_stats = _build_period_breakdown(range_ids)
+    current_stats = _build_period_breakdown(current_ids)
+
+    timeline = []
+    for period, ids_set in sorted(timeline_sets.items()):
+        row = _build_period_breakdown(ids_set)
+        timeline.append(
+            {
+                "period": period,
+                "total": row["total"],
+                "active": row["activity_status"]["active"],
+                "pending": row["activity_status"]["pending"],
+                "inactive": row["activity_status"]["inactive"],
+            }
+        )
+
+    return {
+        "doctor": {
+            "doctor_id": str(doctor.id),
+            "user_id": str(doctor.user_id),
+            "name": doctor_user.name if doctor_user else None,
+            "phone": doctor_user.phone if doctor_user else None,
+            "imageUrl": doctor_user.imageUrl if doctor_user else None,
+            "is_manager": doctor.is_manager,
+        },
+        "group": group,
+        "range": {"from": date_from, "to": date_to},
+        "filters": {
+            "gender": gender,
+            "city": city,
+            "visit_type": visit_type,
+            "consultation_type": consultation_type,
+            "activity_status": activity_status,
+        },
+        "patients": {
+            "today": today_stats,
+            "this_month": month_stats,
+            "range": range_stats,
+            "current": current_stats,
+        },
+        "timeline": timeline,
+    }
+
+
+async def get_doctor_appointments_breakdown_stats(
+    *,
+    doctor_id: str,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    group: str = "day",
+    status: Optional[str] = None,
+) -> Dict:
+    from beanie import PydanticObjectId as OID
+    from beanie.operators import In
+
+    try:
+        did = OID(doctor_id)
+    except Exception:
+        return {"detail": "Invalid doctor_id"}
+
+    doctor = await Doctor.get(did)
+    if not doctor:
+        return {"detail": "Doctor not found"}
+    doctor_user = await User.get(doctor.user_id)
+
+    df, dt = parse_dates(date_from, date_to)
+    group = group if group in {"day", "month", "year"} else "day"
+    status = _normalize_filter_value(status)
+    status_filter = _status_bucket(status) if status else None
+
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow_start = today_start + timedelta(days=1)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    next_month_start = (
+        month_start.replace(year=month_start.year + 1, month=1)
+        if month_start.month == 12
+        else month_start.replace(month=month_start.month + 1)
+    )
+
+    appointments = await Appointment.find(Appointment.doctor_id == did).to_list()
+    today_apps: list[Appointment] = []
+    month_apps: list[Appointment] = []
+    range_apps: list[Appointment] = []
+    timeline_counts: dict[str, int] = defaultdict(int)
+
+    by_status_all = {"pending": 0, "completed": 0, "cancelled": 0, "late": 0, "other": 0}
+    by_status_today = {"pending": 0, "completed": 0, "cancelled": 0, "late": 0, "other": 0}
+    by_status_month = {"pending": 0, "completed": 0, "cancelled": 0, "late": 0, "other": 0}
+    by_status_range = {"pending": 0, "completed": 0, "cancelled": 0, "late": 0, "other": 0}
+
+    for app in appointments:
+        status_key = _status_bucket(getattr(app, "status", "pending"))
+        if status_filter and status_key != status_filter:
+            continue
+
+        by_status_all[status_key] += 1
+        app_time = _to_utc(app.scheduled_at)
+
+        if today_start <= app_time < tomorrow_start:
+            today_apps.append(app)
+            by_status_today[status_key] += 1
+
+        if month_start <= app_time < next_month_start:
+            month_apps.append(app)
+            by_status_month[status_key] += 1
+
+        if (df is None or app_time >= df) and (dt is None or app_time < dt):
+            range_apps.append(app)
+            by_status_range[status_key] += 1
+            period = format_date_group(app_time, group)
+            timeline_counts[period] += 1
+
+    # Patient names for today's appointment list
+    today_patient_ids = list({app.patient_id for app in today_apps})
+    patients_today = await Patient.find(In(Patient.id, today_patient_ids)).to_list() if today_patient_ids else []
+    patients_today_map = {p.id: p for p in patients_today}
+    today_user_ids = list({p.user_id for p in patients_today if getattr(p, "user_id", None)})
+    users_today = await User.find(In(User.id, today_user_ids)).to_list() if today_user_ids else []
+    users_today_map = {u.id: u for u in users_today}
+
+    today_list = []
+    for app in sorted(today_apps, key=lambda x: x.scheduled_at):
+        patient = patients_today_map.get(app.patient_id)
+        patient_user = users_today_map.get(patient.user_id) if patient else None
+        today_list.append(
+            {
+                "id": str(app.id),
+                "patient_id": str(app.patient_id),
+                "patient_name": patient_user.name if patient_user else None,
+                "scheduled_at": app.scheduled_at.isoformat(),
+                "status": getattr(app, "status", "pending"),
+                "stage_name": getattr(app, "stage_name", None),
+                "note": getattr(app, "note", None),
+            }
+        )
+
+    upcoming_now = 0
+    for app in appointments:
+        status_key = _status_bucket(getattr(app, "status", "pending"))
+        if status_filter and status_key != status_filter:
+            continue
+        if _to_utc(app.scheduled_at) > now and status_key == "pending":
+            upcoming_now += 1
+
+    return {
+        "doctor": {
+            "doctor_id": str(doctor.id),
+            "user_id": str(doctor.user_id),
+            "name": doctor_user.name if doctor_user else None,
+            "phone": doctor_user.phone if doctor_user else None,
+            "imageUrl": doctor_user.imageUrl if doctor_user else None,
+            "is_manager": doctor.is_manager,
+        },
+        "group": group,
+        "range": {"from": date_from, "to": date_to},
+        "filters": {"status": status},
+        "summary": {
+            "today": len(today_apps),
+            "this_month": len(month_apps),
+            "range_count": len(range_apps),
+            "upcoming_now": upcoming_now,
+            "all_time": sum(by_status_all.values()),
+        },
+        "by_status": {
+            "today": by_status_today,
+            "this_month": by_status_month,
+            "range": by_status_range,
+            "all_time": by_status_all,
+        },
+        "timeline": [{"period": period, "count": count} for period, count in sorted(timeline_counts.items())],
+        "today_list": today_list,
+    }
+
+
+async def get_doctors_comparison_stats(
+    *,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+) -> Dict:
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow_start = today_start + timedelta(days=1)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    next_month_start = (
+        month_start.replace(year=month_start.year + 1, month=1)
+        if month_start.month == 12
+        else month_start.replace(month=month_start.month + 1)
+    )
+    df, dt = parse_dates(date_from, date_to)
+
+    doctors = await Doctor.find({}).to_list()
+    user_ids = list({d.user_id for d in doctors if d.user_id})
+    from beanie.operators import In
+
+    users = await User.find(In(User.id, user_ids)).to_list() if user_ids else []
+    user_map = {u.id: u for u in users}
+
+    results = []
+    for doctor in doctors:
+        user = user_map.get(doctor.user_id)
+        did = doctor.id
+
+        current_patients = await Patient.find({"doctor_ids": {"$in": [did]}}).to_list()
+        total_patients = len(current_patients)
+        active_now = sum(
+            1
+            for p in current_patients
+            if (getattr(p, "activity_status", "pending") or "pending").lower() == "active"
+        )
+        pending_now = sum(
+            1
+            for p in current_patients
+            if (getattr(p, "activity_status", "pending") or "pending").lower() == "pending"
+        )
+        inactive_now = sum(
+            1
+            for p in current_patients
+            if (getattr(p, "activity_status", "pending") or "pending").lower() == "inactive"
+        )
+
+        transfers_today = await AssignmentLog.find(
+            AssignmentLog.doctor_id == did,
+            AssignmentLog.assigned_at >= today_start,
+            AssignmentLog.assigned_at < tomorrow_start,
+        ).count()
+        transfers_month = await AssignmentLog.find(
+            AssignmentLog.doctor_id == did,
+            AssignmentLog.assigned_at >= month_start,
+            AssignmentLog.assigned_at < next_month_start,
+        ).count()
+        transfers_range_q = AssignmentLog.find(AssignmentLog.doctor_id == did)
+        if df:
+            transfers_range_q = transfers_range_q.find(AssignmentLog.assigned_at >= df)
+        if dt:
+            transfers_range_q = transfers_range_q.find(AssignmentLog.assigned_at < dt)
+        transfers_range = await transfers_range_q.count()
+
+        apps_today = await Appointment.find(
+            Appointment.doctor_id == did,
+            Appointment.scheduled_at >= today_start,
+            Appointment.scheduled_at < tomorrow_start,
+        ).count()
+        apps_month = await Appointment.find(
+            Appointment.doctor_id == did,
+            Appointment.scheduled_at >= month_start,
+            Appointment.scheduled_at < next_month_start,
+        ).count()
+        apps_range_q = Appointment.find(Appointment.doctor_id == did)
+        if df:
+            apps_range_q = apps_range_q.find(Appointment.scheduled_at >= df)
+        if dt:
+            apps_range_q = apps_range_q.find(Appointment.scheduled_at < dt)
+        apps_range = await apps_range_q.count()
+        apps_completed = await Appointment.find(
+            Appointment.doctor_id == did,
+            Appointment.status == "completed",
+        ).count()
+
+        notes_count = await TreatmentNote.find(TreatmentNote.doctor_id == did).count()
+        results.append(
+            {
+                "doctor_id": str(doctor.id),
+                "user_id": str(doctor.user_id),
+                "name": user.name if user else None,
+                "phone": user.phone if user else None,
+                "imageUrl": user.imageUrl if user else None,
+                "is_manager": doctor.is_manager,
+                "patients": {
+                    "total_current": total_patients,
+                    "active_current": active_now,
+                    "pending_current": pending_now,
+                    "inactive_current": inactive_now,
+                },
+                "transfers": {
+                    "today": transfers_today,
+                    "this_month": transfers_month,
+                    "range": transfers_range,
+                },
+                "appointments": {
+                    "today": apps_today,
+                    "this_month": apps_month,
+                    "range": apps_range,
+                    "completed_all_time": apps_completed,
+                },
+                "treatment_notes": notes_count,
+            }
+        )
+
+    results.sort(key=lambda row: row["patients"]["total_current"], reverse=True)
+    return {
+        "range": {"from": date_from, "to": date_to},
+        "total_doctors": len(results),
+        "doctors": results,
+    }

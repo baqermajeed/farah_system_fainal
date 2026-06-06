@@ -14,6 +14,9 @@ from app.services.stats_service import (
     get_dashboard_stats,
     get_doctor_profile_stats,
     get_doctor_patient_transfer_stats,
+    get_doctor_patients_breakdown_stats,
+    get_doctor_appointments_breakdown_stats,
+    get_doctors_comparison_stats,
 )
 
 router = APIRouter(prefix="/stats", tags=["statistics"])
@@ -122,4 +125,60 @@ async def doctor_patient_transfer_stats(
         date_from=date_from,
         date_to=date_to,
     )
+
+
+@router.get("/doctors/{doctor_id}/patients-breakdown")
+async def doctor_patients_breakdown_stats(
+    doctor_id: str,
+    group: str = Query("day", description="نوع التجميع للمخطط الزمني: day, month, year"),
+    date_from: Optional[str] = Query(None, description="تاريخ البداية (ISO format)"),
+    date_to: Optional[str] = Query(None, description="تاريخ النهاية (ISO format)"),
+    gender: Optional[str] = Query(None, description="فلترة الجنس: male | female"),
+    city: Optional[str] = Query(None, description="فلترة المدينة"),
+    visit_type: Optional[str] = Query(None, description="فلترة نوع الزيارة: مريض جديد | مراجع قديم"),
+    consultation_type: Optional[str] = Query(None, description="فلترة نوع المعاينة: معاينة مدفوعة | معاينة مجانية"),
+    activity_status: Optional[str] = Query(None, description="فلترة حالة النشاط: pending | active | inactive"),
+    current=Depends(require_roles([Role.ADMIN, Role.DOCTOR])),
+):
+    """تفصيل شامل لمرضى الطبيب: يومي/شهري/فترة + تصنيفات النوع/الجنس/المدينة/الحالة."""
+    return await get_doctor_patients_breakdown_stats(
+        doctor_id=doctor_id,
+        date_from=date_from,
+        date_to=date_to,
+        group=group,
+        gender=gender,
+        city=city,
+        visit_type=visit_type,
+        consultation_type=consultation_type,
+        activity_status=activity_status,
+    )
+
+
+@router.get("/doctors/{doctor_id}/appointments-breakdown")
+async def doctor_appointments_breakdown_stats(
+    doctor_id: str,
+    group: str = Query("day", description="نوع التجميع للمخطط الزمني: day, month, year"),
+    date_from: Optional[str] = Query(None, description="تاريخ البداية (ISO format)"),
+    date_to: Optional[str] = Query(None, description="تاريخ النهاية (ISO format)"),
+    status: Optional[str] = Query(None, description="فلترة حالة الموعد: pending|scheduled|completed|cancelled|canceled|late"),
+    current=Depends(require_roles([Role.ADMIN, Role.DOCTOR])),
+):
+    """تفصيل مواعيد الطبيب: يوم/شهر/فترة + توزيع الحالات + قائمة مواعيد اليوم."""
+    return await get_doctor_appointments_breakdown_stats(
+        doctor_id=doctor_id,
+        date_from=date_from,
+        date_to=date_to,
+        group=group,
+        status=status,
+    )
+
+
+@router.get("/doctors/comparison")
+async def doctors_comparison_stats(
+    date_from: Optional[str] = Query(None, description="تاريخ البداية (ISO format)"),
+    date_to: Optional[str] = Query(None, description="تاريخ النهاية (ISO format)"),
+    current=Depends(require_roles([Role.ADMIN])),
+):
+    """مقارنة شاملة بين الأطباء: المرضى الحاليون، التحويلات، المواعيد، السجلات الطبية."""
+    return await get_doctors_comparison_stats(date_from=date_from, date_to=date_to)
 
