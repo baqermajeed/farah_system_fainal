@@ -1,7 +1,7 @@
-import { Button, Card, Col, DatePicker, Modal, Row, Spin, Switch, Tag, Tooltip, Typography, message } from 'antd';
+import { Button, Card, Col, DatePicker, Modal, Row, Select, Spin, Switch, Table, Tag, Tooltip, Typography, message } from 'antd';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   CalendarOutlined,
   CheckCircleOutlined,
@@ -14,12 +14,24 @@ import {
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
+  fetchDoctorAppointmentsBreakdown,
   fetchDoctorDetailsCards,
   fetchDoctorsStats,
   setDoctorManager,
 } from '../services/statsApi';
-import type { DoctorDetailsCardsResponse } from '../types/stats';
+import type { DoctorAppointmentsBreakdownResponse, DoctorDetailsCardsResponse } from '../types/stats';
 import { useAuth } from '../state/AuthContext';
+
+const IMPLANT_STAGES = [
+  'مرحلة زراعة الاسنان',
+  'مرحلة رفع خيط العملية',
+  'متابعة حالة المريض',
+  'المتابعة الثانية لحالة المريض',
+  'التقاط طبعة الاسنان',
+  'التركيب التجريبي الاول',
+  'التركيب التجريبي الثاني',
+  'التركيب النهائي الاخير',
+];
 
 export function DoctorDetailsPage() {
   const [searchParams] = useSearchParams();
@@ -30,8 +42,12 @@ export function DoctorDetailsPage() {
   const [dates, setDates] = useState<[Dayjs | null, Dayjs | null]>([dayjs().startOf('month'), dayjs()]);
   const [rangeModalOpen, setRangeModalOpen] = useState(false);
   const [draftRange, setDraftRange] = useState<[Dayjs | null, Dayjs | null]>([dayjs().startOf('month'), dayjs()]);
+  const [implantDay, setImplantDay] = useState<Dayjs>(dayjs());
+  const [implantStage, setImplantStage] = useState<string>(IMPLANT_STAGES[0]);
+  const [implantLoading, setImplantLoading] = useState(false);
 
   const [cardsData, setCardsData] = useState<DoctorDetailsCardsResponse | null>(null);
+  const [implantAppointments, setImplantAppointments] = useState<DoctorAppointmentsBreakdownResponse | null>(null);
 
   useEffect(() => {
     const loadDoctors = async () => {
@@ -75,6 +91,36 @@ export function DoctorDetailsPage() {
     };
   }, [doctorId, dates]);
 
+  useEffect(() => {
+    let isCancelled = false;
+    const loadImplantAppointments = async () => {
+      if (!doctorId) return;
+      try {
+        setImplantLoading(true);
+        const date_from = implantDay.startOf('day').toISOString();
+        const date_to = implantDay.endOf('day').toISOString();
+        const response = await fetchDoctorAppointmentsBreakdown(doctorId, {
+          group: 'day',
+          date_from,
+          date_to,
+          stage_name: implantStage,
+        });
+        if (isCancelled) return;
+        setImplantAppointments(response);
+      } catch (error) {
+        if (isCancelled) return;
+        console.error('Failed to load implant appointments', error);
+      } finally {
+        if (isCancelled) return;
+        setImplantLoading(false);
+      }
+    };
+    void loadImplantAppointments();
+    return () => {
+      isCancelled = true;
+    };
+  }, [doctorId, implantDay, implantStage]);
+
   const doctorInsights = {
     maleCount: Number(cardsData?.patient_insights.gender.male ?? 0),
     femaleCount: Number(cardsData?.patient_insights.gender.female ?? 0),
@@ -92,6 +138,53 @@ export function DoctorDetailsPage() {
     transfersMonthUnique: Number(cardsData?.metrics.transfers_month_unique ?? 0),
     transfersMonthOps: Number(cardsData?.metrics.transfers_month_ops ?? 0),
   };
+
+  const implantStatusCounts = implantAppointments?.by_status.range ?? {
+    pending: 0,
+    completed: 0,
+    cancelled: 0,
+    late: 0,
+    other: 0,
+  };
+
+  const implantRows = implantAppointments?.selected_list ?? implantAppointments?.today_list ?? [];
+
+  const implantColumns = useMemo(
+    () => [
+      {
+        title: 'اسم المريض',
+        dataIndex: 'patient_name',
+        render: (value: string | null) => value ?? 'بدون اسم',
+      },
+      {
+        title: 'الهاتف',
+        dataIndex: 'patient_phone',
+        render: (value: string | null) => value ?? '-',
+      },
+      {
+        title: 'الوقت',
+        dataIndex: 'scheduled_at',
+        render: (value: string) => dayjs(value).format('HH:mm'),
+      },
+      {
+        title: 'الحالة',
+        dataIndex: 'status',
+        render: (value: string) => {
+          const normalized = (value ?? '').toLowerCase();
+          if (normalized === 'completed') return <Tag color="green">مكتمل</Tag>;
+          if (normalized === 'late') return <Tag color="orange">متأخر</Tag>;
+          if (normalized === 'canceled' || normalized === 'cancelled') return <Tag color="red">ملغي</Tag>;
+          return <Tag color="blue">قيد الانتظار</Tag>;
+        },
+      },
+      {
+        title: 'المرحلة',
+        dataIndex: 'stage_name',
+        render: (value: string | null) => value ?? '-',
+      },
+    ],
+    [],
+  );
 
   const handleManagerToggle = async (checked: boolean) => {
     if (!doctorId || !cardsData) return;
@@ -280,6 +373,50 @@ export function DoctorDetailsPage() {
           />
         </Col>
       </Row>
+
+      <Card className="glass-card" style={{ marginTop: 12 }} title="مواعيد مرضى الزراعة حسب المرحلة">
+        <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
+          <Col xs={24} md={8}>
+            <DatePicker
+              value={implantDay}
+              onChange={(value) => setImplantDay(value ?? dayjs())}
+              style={{ width: '100%' }}
+            />
+          </Col>
+          <Col xs={24} md={16}>
+            <Select
+              value={implantStage}
+              onChange={setImplantStage}
+              options={IMPLANT_STAGES.map((stage) => ({ value: stage, label: stage }))}
+              style={{ width: '100%' }}
+            />
+          </Col>
+        </Row>
+
+        <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
+          <Col xs={24} md={12} xl={6}>
+            <StatContainer title="قيد الانتظار" value={implantStatusCounts.pending ?? 0} icon={<ClockCircleOutlined />} tone="warning" />
+          </Col>
+          <Col xs={24} md={12} xl={6}>
+            <StatContainer title="مكتملة" value={implantStatusCounts.completed ?? 0} icon={<CheckCircleOutlined />} tone="success" />
+          </Col>
+          <Col xs={24} md={12} xl={6}>
+            <StatContainer title="ملغية" value={implantStatusCounts.cancelled ?? 0} icon={<ClockCircleOutlined />} tone="danger" />
+          </Col>
+          <Col xs={24} md={12} xl={6}>
+            <StatContainer title="متأخرة" value={implantStatusCounts.late ?? 0} icon={<ClockCircleOutlined />} tone="info" />
+          </Col>
+        </Row>
+
+        <Table
+          rowKey="id"
+          loading={implantLoading}
+          dataSource={implantRows}
+          columns={implantColumns}
+          pagination={{ pageSize: 8 }}
+          locale={{ emptyText: 'لا توجد مواعيد لهذه المرحلة في هذا اليوم' }}
+        />
+      </Card>
 
       <Modal
         title="اختيار فترة زمنية"

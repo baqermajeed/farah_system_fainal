@@ -1610,6 +1610,7 @@ async def get_doctor_appointments_breakdown_stats(
     date_to: Optional[str] = None,
     group: str = "day",
     status: Optional[str] = None,
+    stage_name: Optional[str] = None,
 ) -> Dict:
     from beanie import PydanticObjectId as OID
     from beanie.operators import In
@@ -1627,6 +1628,7 @@ async def get_doctor_appointments_breakdown_stats(
     df, dt = parse_dates(date_from, date_to)
     group = group if group in {"day", "month", "year"} else "day"
     status = _normalize_filter_value(status)
+    stage_name = _normalize_filter_value(stage_name)
     status_filter = _status_bucket(status) if status else None
 
     now = datetime.now(timezone.utc)
@@ -1651,6 +1653,10 @@ async def get_doctor_appointments_breakdown_stats(
     by_status_range = {"pending": 0, "completed": 0, "cancelled": 0, "late": 0, "other": 0}
 
     for app in appointments:
+        app_stage_name = (getattr(app, "stage_name", None) or "").strip()
+        if stage_name and app_stage_name != stage_name:
+            continue
+
         status_key = _status_bucket(getattr(app, "status", "pending"))
         if status_filter and status_key != status_filter:
             continue
@@ -1672,23 +1678,28 @@ async def get_doctor_appointments_breakdown_stats(
             period = format_date_group(app_time, group)
             timeline_counts[period] += 1
 
-    # Patient names for today's appointment list
-    today_patient_ids = list({app.patient_id for app in today_apps})
-    patients_today = await Patient.find(In(Patient.id, today_patient_ids)).to_list() if today_patient_ids else []
-    patients_today_map = {p.id: p for p in patients_today}
-    today_user_ids = list({p.user_id for p in patients_today if getattr(p, "user_id", None)})
-    users_today = await User.find(In(User.id, today_user_ids)).to_list() if today_user_ids else []
-    users_today_map = {u.id: u for u in users_today}
+    selected_apps = range_apps if (df is not None or dt is not None) else today_apps
+    selected_patient_ids = list({app.patient_id for app in selected_apps})
+    patients_selected = (
+        await Patient.find(In(Patient.id, selected_patient_ids)).to_list()
+        if selected_patient_ids
+        else []
+    )
+    selected_patients_map = {p.id: p for p in patients_selected}
+    selected_user_ids = list({p.user_id for p in patients_selected if getattr(p, "user_id", None)})
+    users_selected = await User.find(In(User.id, selected_user_ids)).to_list() if selected_user_ids else []
+    selected_users_map = {u.id: u for u in users_selected}
 
-    today_list = []
-    for app in sorted(today_apps, key=lambda x: x.scheduled_at):
-        patient = patients_today_map.get(app.patient_id)
-        patient_user = users_today_map.get(patient.user_id) if patient else None
-        today_list.append(
+    selected_list = []
+    for app in sorted(selected_apps, key=lambda x: x.scheduled_at):
+        patient = selected_patients_map.get(app.patient_id)
+        patient_user = selected_users_map.get(patient.user_id) if patient else None
+        selected_list.append(
             {
                 "id": str(app.id),
                 "patient_id": str(app.patient_id),
                 "patient_name": patient_user.name if patient_user else None,
+                "patient_phone": patient_user.phone if patient_user else None,
                 "scheduled_at": app.scheduled_at.isoformat(),
                 "status": getattr(app, "status", "pending"),
                 "stage_name": getattr(app, "stage_name", None),
@@ -1715,11 +1726,12 @@ async def get_doctor_appointments_breakdown_stats(
         },
         "group": group,
         "range": {"from": date_from, "to": date_to},
-        "filters": {"status": status},
+        "filters": {"status": status, "stage_name": stage_name},
         "summary": {
             "today": len(today_apps),
             "this_month": len(month_apps),
             "range_count": len(range_apps),
+            "selected_count": len(selected_apps),
             "upcoming_now": upcoming_now,
             "all_time": sum(by_status_all.values()),
         },
@@ -1730,7 +1742,8 @@ async def get_doctor_appointments_breakdown_stats(
             "all_time": by_status_all,
         },
         "timeline": [{"period": period, "count": count} for period, count in sorted(timeline_counts.items())],
-        "today_list": today_list,
+        "today_list": selected_list,
+        "selected_list": selected_list,
     }
 
 

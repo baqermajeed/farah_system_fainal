@@ -236,10 +236,15 @@ export type BreakdownBlock = {
 
 export type DoctorAppointmentsBreakdownResponse = {
   doctor: DoctorBasic & { is_manager: boolean };
+  filters?: {
+    status?: string | null;
+    stage_name?: string | null;
+  };
   summary: {
     today: number;
     this_month: number;
     range_count: number;
+    selected_count?: number;
     upcoming_now: number;
     all_time: number;
   };
@@ -249,6 +254,17 @@ export type DoctorAppointmentsBreakdownResponse = {
     id: string;
     patient_id: string;
     patient_name: string | null;
+    patient_phone?: string | null;
+    scheduled_at: string;
+    status: string;
+    stage_name: string | null;
+    note: string | null;
+  }>;
+  selected_list?: Array<{
+    id: string;
+    patient_id: string;
+    patient_name: string | null;
+    patient_phone?: string | null;
     scheduled_at: string;
     status: string;
     stage_name: string | null;
