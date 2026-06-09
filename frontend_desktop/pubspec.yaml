@@ -58,6 +58,10 @@ dependencies:
   # File system
   path_provider: ^2.1.1
   path: ^1.8.0
+  desktop_multi_window: ^0.3.0
+  screen_retriever: ^0.2.0
+  window_manager: ^0.5.1
+  audioplayers: ^6.1.0
 
 dev_dependencies:
   flutter_test:
@@ -79,4 +83,5 @@ flutter:
   assets:
     - assets/images/
     - assets/splash/
+    - assets/audio/
 

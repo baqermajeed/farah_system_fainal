@@ -4,6 +4,7 @@ import type {
   ChatStatsResponse,
   DashboardStats,
   DoctorAppointmentsBreakdownResponse,
+  DoctorDetailsCardsResponse,
   DoctorPatientsBreakdownResponse,
   DoctorPatientTransfersResponse,
   DoctorProfileResponse,
@@ -61,6 +62,13 @@ export async function fetchDoctorsComparison(params: { date_from?: string; date_
 
 export async function fetchDoctorProfile(doctorId: string, params: { date_from?: string; date_to?: string }) {
   const { data } = await http.get<DoctorProfileResponse>(`/stats/doctors/${doctorId}/profile`, { params });
+  return data;
+}
+
+export async function fetchDoctorDetailsCards(doctorId: string, params: { date_from?: string; date_to?: string }) {
+  const { data } = await http.get<DoctorDetailsCardsResponse>(`/stats/doctors/${doctorId}/doctor-details-cards`, {
+    params,
+  });
   return data;
 }
 

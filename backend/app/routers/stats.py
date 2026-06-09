@@ -17,6 +17,7 @@ from app.services.stats_service import (
     get_doctor_patients_breakdown_stats,
     get_doctor_appointments_breakdown_stats,
     get_doctors_comparison_stats,
+    get_doctor_details_cards_stats,
 )
 
 router = APIRouter(prefix="/stats", tags=["statistics"])
@@ -70,6 +71,17 @@ async def doctor_profile_stats(
 ):
     """بروفايل الطبيب للمدير: مرضى/مواعيد/رسائل اليوم + تحويلات اليوم/الشهر/ضمن فترة."""
     return await get_doctor_profile_stats(doctor_id=doctor_id, date_from=date_from, date_to=date_to)
+
+
+@router.get("/doctors/{doctor_id}/doctor-details-cards")
+async def doctor_details_cards_stats(
+    doctor_id: str,
+    date_from: Optional[str] = Query(None, description="تاريخ البداية (ISO format)"),
+    date_to: Optional[str] = Query(None, description="تاريخ النهاية (ISO format)"),
+    current=Depends(require_roles([Role.ADMIN, Role.DOCTOR])),
+):
+    """Endpoint خفيف لكروت صفحة تفاصيل الطبيب."""
+    return await get_doctor_details_cards_stats(doctor_id=doctor_id, date_from=date_from, date_to=date_to)
 
 
 @router.get("/chat")

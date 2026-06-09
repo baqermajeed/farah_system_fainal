@@ -115,6 +115,23 @@ export type DoctorProfileResponse = {
     total_appointments: number;
     today_messages: number;
   };
+  patient_insights: {
+    gender: {
+      male: number;
+      female: number;
+      unknown: number;
+    };
+    age: {
+      top_bucket_label: string;
+      top_bucket_count: number;
+      unknown_count: number;
+    };
+    treatment: {
+      top_type: string;
+      top_count: number;
+      total_linked: number;
+    };
+  };
   messages: {
     total: number;
     today: number;
@@ -130,6 +147,43 @@ export type DoctorProfileResponse = {
     today: number;
     this_month: number;
     range: { from: string | null; to: string | null; count: number };
+  };
+};
+
+export type DoctorDetailsCardsResponse = {
+  doctor: DoctorBasic & { is_manager: boolean };
+  counts: {
+    total_patients: number;
+  };
+  patient_insights: {
+    gender: {
+      male: number;
+      female: number;
+      unknown: number;
+    };
+    age: {
+      top_bucket_label: string;
+      top_bucket_count: number;
+      unknown_count: number;
+    };
+    treatment: {
+      top_type: string;
+      top_count: number;
+      total_linked: number;
+    };
+  };
+  metrics: {
+    period_patients_count: number;
+    transfers_today: number;
+    transfers_month_unique: number;
+    transfers_month_ops: number;
+    active_count: number;
+    inactive_count: number;
+    pending_count: number;
+  };
+  range: {
+    from: string | null;
+    to: string | null;
   };
 };
 

@@ -26,6 +26,7 @@ import 'package:frontend_desktop/controllers/gallery_controller.dart';
 import 'package:frontend_desktop/controllers/appointment_controller.dart';
 import 'package:frontend_desktop/controllers/working_hours_controller.dart';
 import 'package:frontend_desktop/controllers/implant_stage_controller.dart';
+import 'package:frontend_desktop/views/queue_management_dialog.dart';
 import 'package:frontend_desktop/services/working_hours_service.dart';
 import 'package:frontend_desktop/models/patient_model.dart';
 import 'package:frontend_desktop/models/appointment_model.dart';
@@ -982,6 +983,29 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                       ),
                       child: Icon(
                         Icons.headset_mic_rounded,
+                        color: const Color(0xFF649FCC),
+                        size: 24.sp,
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(width: 15.w),
+                Tooltip(
+                  message: 'إدارة الطابور',
+                  child: GestureDetector(
+                    onTap: () => showQueueManagementDialog(context),
+                    child: Container(
+                      padding: EdgeInsets.all(6.w),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF649FCC).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8.r),
+                        border: Border.all(
+                          color: const Color(0xB3649FCC),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.format_list_numbered_rounded,
                         color: const Color(0xFF649FCC),
                         size: 24.sp,
                       ),

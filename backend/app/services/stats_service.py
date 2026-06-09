@@ -242,7 +242,69 @@ async def get_doctor_profile_stats(
     user = await User.get(doctor.user_id)
 
     # Patients assigned to this doctor
-    total_patients = await Patient.find(In(Patient.doctor_ids, [did])).count()
+    current_patients = await Patient.find(In(Patient.doctor_ids, [did])).to_list()
+    total_patients = len(current_patients)
+
+    user_ids = list({p.user_id for p in current_patients if getattr(p, "user_id", None)})
+    users = await User.find(In(User.id, user_ids)).to_list() if user_ids else []
+    user_map = {u.id: u for u in users}
+
+    def _normalize_gender(raw: Optional[str]) -> str:
+        value = (raw or "").strip().lower()
+        if value in {"male", "m", "man", "ذكر", "رجل"}:
+            return "male"
+        if value in {"female", "f", "woman", "انثى", "أنثى", "بنت", "امرأة", "امراة"}:
+            return "female"
+        return "unknown"
+
+    age_buckets = [
+        {"label": "0-19", "min": 0, "max": 19, "count": 0},
+        {"label": "20-29", "min": 20, "max": 29, "count": 0},
+        {"label": "30-39", "min": 30, "max": 39, "count": 0},
+        {"label": "40-50", "min": 40, "max": 50, "count": 0},
+        {"label": "51-60", "min": 51, "max": 60, "count": 0},
+        {"label": "60+", "min": 61, "max": 200, "count": 0},
+    ]
+    unknown_age_count = 0
+    gender_counts = {"male": 0, "female": 0, "unknown": 0}
+    treatment_counts: dict[str, int] = defaultdict(int)
+
+    doctor_key = str(did)
+    for patient in current_patients:
+        # gender
+        patient_user = user_map.get(patient.user_id)
+        normalized_gender = _normalize_gender(getattr(patient_user, "gender", None))
+        gender_counts[normalized_gender] += 1
+
+        # age
+        age_value = getattr(patient_user, "age", None)
+        if age_value is None:
+            unknown_age_count += 1
+        else:
+            bucket = next((item for item in age_buckets if item["min"] <= age_value <= item["max"]), None)
+            if bucket:
+                bucket["count"] += 1
+            else:
+                unknown_age_count += 1
+
+        # treatment (doctor profile treatment first, then generic patient treatment)
+        profile_map = getattr(patient, "doctor_profiles", None) or {}
+        profile = profile_map.get(doctor_key)
+        profile_treatment = (getattr(profile, "treatment_type", None) or "").strip() if profile else ""
+        patient_treatment = (getattr(patient, "treatment_type", None) or "").strip()
+        normalized_treatment = profile_treatment or patient_treatment or "غير محدد"
+        treatment_counts[normalized_treatment] += 1
+
+    top_age_row = max(
+        [*age_buckets, {"label": "غير محدد", "min": -1, "max": -1, "count": unknown_age_count}],
+        key=lambda item: item["count"],
+        default={"label": "غير متوفر", "min": -1, "max": -1, "count": 0},
+    )
+    top_treatment = max(
+        treatment_counts.items(),
+        key=lambda item: item[1],
+        default=("لا يوجد", 0),
+    )
 
     # Appointments
     total_appointments = await Appointment.find(Appointment.doctor_id == did).count()
@@ -355,6 +417,19 @@ async def get_doctor_profile_stats(
             "total_appointments": total_appointments,
             "today_messages": today_messages,
         },
+        "patient_insights": {
+            "gender": gender_counts,
+            "age": {
+                "top_bucket_label": top_age_row["label"],
+                "top_bucket_count": top_age_row["count"],
+                "unknown_count": unknown_age_count,
+            },
+            "treatment": {
+                "top_type": top_treatment[0],
+                "top_count": top_treatment[1],
+                "total_linked": total_patients,
+            },
+        },
         "messages": {
             "total": total_messages,
             "today": today_messages,
@@ -383,6 +458,163 @@ async def get_doctor_profile_stats(
                 "count": transfers_in_range,
             },
         },
+    }
+
+
+async def get_doctor_details_cards_stats(
+    *,
+    doctor_id: str,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+) -> Dict:
+    """
+    Endpoint خفيف مخصص لكروت DoctorDetails فقط.
+    يرجع الأرقام الجاهزة المطلوبة للواجهة بدون payloadات كبيرة.
+    """
+    from beanie import PydanticObjectId as OID
+    from beanie.operators import In
+
+    try:
+        did = OID(doctor_id)
+    except Exception:
+        return {"detail": "Invalid doctor_id"}
+
+    doctor = await Doctor.get(did)
+    if not doctor:
+        return {"detail": "Doctor not found"}
+
+    user = await User.get(doctor.user_id)
+
+    # Core patient data for current linked patients + insights.
+    current_patients = await Patient.find(In(Patient.doctor_ids, [did])).to_list()
+    total_patients = len(current_patients)
+    user_ids = list({p.user_id for p in current_patients if getattr(p, "user_id", None)})
+    users = await User.find(In(User.id, user_ids)).to_list() if user_ids else []
+    user_map = {u.id: u for u in users}
+
+    def _normalize_gender(raw: Optional[str]) -> str:
+        value = (raw or "").strip().lower()
+        if value in {"male", "m", "man", "ذكر", "رجل"}:
+            return "male"
+        if value in {"female", "f", "woman", "انثى", "أنثى", "بنت", "امرأة", "امراة"}:
+            return "female"
+        return "unknown"
+
+    age_buckets = [
+        {"label": "0-19", "min": 0, "max": 19, "count": 0},
+        {"label": "20-29", "min": 20, "max": 29, "count": 0},
+        {"label": "30-39", "min": 30, "max": 39, "count": 0},
+        {"label": "40-50", "min": 40, "max": 50, "count": 0},
+        {"label": "51-60", "min": 51, "max": 60, "count": 0},
+        {"label": "60+", "min": 61, "max": 200, "count": 0},
+    ]
+    unknown_age_count = 0
+    gender_counts = {"male": 0, "female": 0, "unknown": 0}
+    treatment_counts: dict[str, int] = defaultdict(int)
+
+    doctor_key = str(did)
+    for patient in current_patients:
+        patient_user = user_map.get(patient.user_id)
+        normalized_gender = _normalize_gender(getattr(patient_user, "gender", None))
+        gender_counts[normalized_gender] += 1
+
+        age_value = getattr(patient_user, "age", None)
+        if age_value is None:
+            unknown_age_count += 1
+        else:
+            bucket = next((item for item in age_buckets if item["min"] <= age_value <= item["max"]), None)
+            if bucket:
+                bucket["count"] += 1
+            else:
+                unknown_age_count += 1
+
+        profile_map = getattr(patient, "doctor_profiles", None) or {}
+        profile = profile_map.get(doctor_key)
+        profile_treatment = (getattr(profile, "treatment_type", None) or "").strip() if profile else ""
+        patient_treatment = (getattr(patient, "treatment_type", None) or "").strip()
+        normalized_treatment = profile_treatment or patient_treatment or "غير محدد"
+        treatment_counts[normalized_treatment] += 1
+
+    top_age_row = max(
+        [*age_buckets, {"label": "غير محدد", "min": -1, "max": -1, "count": unknown_age_count}],
+        key=lambda item: item["count"],
+        default={"label": "غير متوفر", "min": -1, "max": -1, "count": 0},
+    )
+    top_treatment = max(
+        treatment_counts.items(),
+        key=lambda item: item[1],
+        default=("لا يوجد", 0),
+    )
+
+    # Transfers metrics (operations + statuses) from existing transfer logic.
+    transfer_stats = await get_doctor_patient_transfer_stats(
+        doctor_id=doctor_id,
+        date_from=date_from,
+        date_to=date_to,
+    )
+    if transfer_stats.get("detail"):
+        return transfer_stats
+
+    # Unique transferred patients for this month and selected range.
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    next_month_start = (
+        month_start.replace(year=month_start.year + 1, month=1)
+        if month_start.month == 12
+        else month_start.replace(month=month_start.month + 1)
+    )
+    df, dt = parse_dates(date_from, date_to)
+
+    month_logs = await AssignmentLog.find(
+        AssignmentLog.doctor_id == did,
+        AssignmentLog.assigned_at >= month_start,
+        AssignmentLog.assigned_at < next_month_start,
+    ).to_list()
+    month_unique_ids = {str(log.patient_id) for log in month_logs if getattr(log, "patient_id", None)}
+
+    range_query = AssignmentLog.find(AssignmentLog.doctor_id == did)
+    if df:
+        range_query = range_query.find(AssignmentLog.assigned_at >= df)
+    if dt:
+        range_query = range_query.find(AssignmentLog.assigned_at < dt)
+    range_logs = await range_query.to_list()
+    range_unique_ids = {str(log.patient_id) for log in range_logs if getattr(log, "patient_id", None)}
+
+    return {
+        "doctor": {
+            "doctor_id": str(doctor.id),
+            "user_id": str(doctor.user_id),
+            "name": user.name if user else None,
+            "phone": user.phone if user else None,
+            "imageUrl": user.imageUrl if user else None,
+            "is_manager": doctor.is_manager,
+        },
+        "counts": {
+            "total_patients": total_patients,
+        },
+        "patient_insights": {
+            "gender": gender_counts,
+            "age": {
+                "top_bucket_label": top_age_row["label"],
+                "top_bucket_count": top_age_row["count"],
+                "unknown_count": unknown_age_count,
+            },
+            "treatment": {
+                "top_type": top_treatment[0],
+                "top_count": top_treatment[1],
+                "total_linked": total_patients,
+            },
+        },
+        "metrics": {
+            "period_patients_count": len(range_unique_ids),
+            "transfers_today": transfer_stats["transfers"]["today"],
+            "transfers_month_unique": len(month_unique_ids),
+            "transfers_month_ops": transfer_stats["transfers"]["this_month"],
+            "active_count": transfer_stats["active_patients"]["range"]["count"],
+            "inactive_count": transfer_stats["inactive_patients"]["range"]["count"],
+            "pending_count": transfer_stats["pending_patients"]["range"]["count"],
+        },
+        "range": {"from": date_from, "to": date_to},
     }
 
 

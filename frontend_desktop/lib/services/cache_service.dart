@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:hive_flutter/hive_flutter.dart';
@@ -9,6 +10,7 @@ import 'package:frontend_desktop/models/doctor_model.dart';
 import 'package:frontend_desktop/models/user_model.dart';
 import 'package:frontend_desktop/models/medical_record_model.dart';
 import 'package:frontend_desktop/models/gallery_image_model.dart';
+import 'package:frontend_desktop/models/queue_entry_model.dart';
 
 /// خدمة التخزين المحلي باستخدام Hive
 /// مطابق 100% لطريقة مشروع eversheen
@@ -19,6 +21,7 @@ class CacheService {
   static const String _doctorsBoxName = 'doctorsBox';
   static const String _medicalRecordsBoxName = 'medicalRecordsBox';
   static const String _galleryBoxName = 'galleryBox';
+  static const String _queueBoxName = 'queueBox';
 
   // Boxes
   late Box<UserModel> _userBox;
@@ -27,13 +30,29 @@ class CacheService {
   late Box<DoctorModel> _doctorsBox;
   late Box<MedicalRecordModel> _medicalRecordsBox;
   late Box<GalleryImageModel> _galleryBox;
+  late Box _queueBox;
 
   static final CacheService _instance = CacheService._internal();
   factory CacheService() => _instance;
   CacheService._internal();
+  Future<void>? _initFuture;
+  bool _isInitialized = false;
 
   /// تهيئة Hive وفتح الصناديق
   Future<void> init() async {
+    if (_isInitialized) return;
+    if (_initFuture != null) return _initFuture!;
+
+    _initFuture = _initImpl();
+    try {
+      await _initFuture!;
+      _isInitialized = true;
+    } finally {
+      _initFuture = null;
+    }
+  }
+
+  Future<void> _initImpl() async {
     final appSupportDir = await getApplicationSupportDirectory();
     final hiveDir = Directory(p.join(appSupportDir.path, 'hive'));
     if (!await hiveDir.exists()) {
@@ -63,12 +82,104 @@ class CacheService {
     }
 
     // فتح الصناديق
-    _userBox = await Hive.openBox<UserModel>(_userBoxName);
-    _patientsBox = await Hive.openBox<PatientModel>(_patientsBoxName);
-    _appointmentsBox = await Hive.openBox<AppointmentModel>(_appointmentsBoxName);
-    _doctorsBox = await Hive.openBox<DoctorModel>(_doctorsBoxName);
-    _medicalRecordsBox = await Hive.openBox<MedicalRecordModel>(_medicalRecordsBoxName);
-    _galleryBox = await Hive.openBox<GalleryImageModel>(_galleryBoxName);
+    _userBox = await _openBoxWithRetry<UserModel>(_userBoxName);
+    _patientsBox = await _openBoxWithRetry<PatientModel>(_patientsBoxName);
+    _appointmentsBox = await _openBoxWithRetry<AppointmentModel>(
+      _appointmentsBoxName,
+    );
+    _doctorsBox = await _openBoxWithRetry<DoctorModel>(_doctorsBoxName);
+    _medicalRecordsBox = await _openBoxWithRetry<MedicalRecordModel>(
+      _medicalRecordsBoxName,
+    );
+    _galleryBox = await _openBoxWithRetry<GalleryImageModel>(_galleryBoxName);
+    _queueBox = await _openBoxWithRetry<dynamic>(_queueBoxName);
+  }
+
+  Future<Box<T>> _openBoxWithRetry<T>(
+    String boxName, {
+    int attempts = 5,
+    Duration baseDelay = const Duration(milliseconds: 250),
+  }) async {
+    Object? lastError;
+    for (var i = 0; i < attempts; i++) {
+      try {
+        return await Hive.openBox<T>(boxName);
+      } catch (e) {
+        lastError = e;
+        final message = e.toString();
+        final isLockError = message.contains('lock failed') ||
+            message.contains('PathAccessException');
+        if (!isLockError || i == attempts - 1) {
+          rethrow;
+        }
+        await Future<void>.delayed(
+          Duration(milliseconds: baseDelay.inMilliseconds * (i + 1)),
+        );
+      }
+    }
+    throw lastError ?? Exception('Failed to open Hive box: $boxName');
+  }
+
+  // ==================== Queue Operations ====================
+
+  Future<void> saveQueueState({
+    required String dateKey,
+    required int nextNumber,
+    required List<QueueEntry> entries,
+  }) async {
+    try {
+      await _queueBox.put('state', {
+        'date': dateKey,
+        'nextNumber': nextNumber,
+        'entries': entries.map((e) => e.toJson()).toList(),
+      });
+    } catch (e) {
+      print('❌ [CacheService] Error saving queue: $e');
+    }
+  }
+
+  ({String date, int nextNumber, List<QueueEntry> entries})? loadQueueState() {
+    try {
+      final raw = _queueBox.get('state');
+      if (raw is! Map) return null;
+
+      final date = raw['date']?.toString() ?? '';
+      final nextNumber = raw['nextNumber'] is int
+          ? raw['nextNumber'] as int
+          : int.tryParse('${raw['nextNumber']}') ?? 1;
+      final entriesRaw = raw['entries'];
+
+      final entries = <QueueEntry>[];
+      if (entriesRaw is List) {
+        for (final item in entriesRaw) {
+          if (item is Map) {
+            entries.add(
+              QueueEntry.fromJson(Map<String, dynamic>.from(item)),
+            );
+          }
+        }
+      }
+
+      return (date: date, nextNumber: nextNumber, entries: entries);
+    } catch (e) {
+      print('❌ [CacheService] Error loading queue: $e');
+      return null;
+    }
+  }
+
+  Future<void> clearQueueState() async {
+    try {
+      await _queueBox.delete('state');
+    } catch (e) {
+      print('❌ [CacheService] Error clearing queue: $e');
+    }
+  }
+
+  Future<void> reloadQueueBox() async {
+    if (_queueBox.isOpen) {
+      await _queueBox.close();
+    }
+    _queueBox = await Hive.openBox(_queueBoxName);
   }
 
   // ==================== User Operations ====================
@@ -455,6 +566,7 @@ class CacheService {
     await _doctorsBox.close();
     await _medicalRecordsBox.close();
     await _galleryBox.close();
+    await _queueBox.close();
   }
 
   /// الحصول على حجم البيانات المخزنة

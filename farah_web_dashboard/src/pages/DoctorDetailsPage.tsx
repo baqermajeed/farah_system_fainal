@@ -14,19 +14,11 @@ import {
 import { useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
-  fetchAdminDoctorPatients,
-  fetchDoctorPatientsBreakdown,
-  fetchDoctorPatientTransfers,
-  fetchDoctorProfile,
+  fetchDoctorDetailsCards,
   fetchDoctorsStats,
   setDoctorManager,
 } from '../services/statsApi';
-import type {
-  DoctorPatientListItem,
-  DoctorPatientsBreakdownResponse,
-  DoctorPatientTransfersResponse,
-  DoctorProfileResponse,
-} from '../types/stats';
+import type { DoctorDetailsCardsResponse } from '../types/stats';
 import { useAuth } from '../state/AuthContext';
 
 export function DoctorDetailsPage() {
@@ -39,32 +31,14 @@ export function DoctorDetailsPage() {
   const [rangeModalOpen, setRangeModalOpen] = useState(false);
   const [draftRange, setDraftRange] = useState<[Dayjs | null, Dayjs | null]>([dayjs().startOf('month'), dayjs()]);
 
-  const [profile, setProfile] = useState<DoctorProfileResponse | null>(null);
-  const [transferStats, setTransferStats] = useState<DoctorPatientTransfersResponse | null>(null);
-  const [patientsBreakdown, setPatientsBreakdown] = useState<DoctorPatientsBreakdownResponse | null>(null);
-  const [doctorPatients, setDoctorPatients] = useState<DoctorPatientListItem[]>([]);
-  const [allLinkedPatients, setAllLinkedPatients] = useState<DoctorPatientListItem[]>([]);
-
-  const loadAllDoctorPatients = async (targetDoctorId: string): Promise<DoctorPatientListItem[]> => {
-    const pageSize = 100;
-    const all: DoctorPatientListItem[] = [];
-    for (let skip = 0; skip < 10000; skip += pageSize) {
-      const batch = await fetchAdminDoctorPatients(targetDoctorId, {
-        skip,
-        limit: pageSize,
-      }).catch(() => [] as DoctorPatientListItem[]);
-      if (!batch.length) break;
-      all.push(...batch);
-      if (batch.length < pageSize) break;
-    }
-    return all;
-  };
+  const [cardsData, setCardsData] = useState<DoctorDetailsCardsResponse | null>(null);
 
   useEffect(() => {
     const loadDoctors = async () => {
+      if (doctorId) return;
       try {
         const response = await fetchDoctorsStats();
-        if (!doctorId && response.doctors.length > 0) {
+        if (response.doctors.length > 0) {
           setDoctorId(response.doctors[0].doctor_id);
         }
       } catch (error) {
@@ -75,140 +49,59 @@ export function DoctorDetailsPage() {
   }, [doctorId]);
 
   useEffect(() => {
-    const loadLinkedPatients = async () => {
-      if (!doctorId) return;
-      const all = await loadAllDoctorPatients(doctorId);
-      setAllLinkedPatients(all);
-      setDoctorPatients(all);
-    };
-    void loadLinkedPatients();
-  }, [doctorId]);
-
-  useEffect(() => {
+    let isCancelled = false;
     const loadDoctorData = async () => {
       if (!doctorId) return;
       try {
         setLoading(true);
         const date_from = dates[0]?.toISOString();
         const date_to = dates[1]?.endOf('day').toISOString();
-        const [profileResp, transferResp, patientsBreakdownResp] = await Promise.all([
-          fetchDoctorProfile(doctorId, { date_from, date_to }),
-          fetchDoctorPatientTransfers(doctorId, { date_from, date_to }),
-          fetchDoctorPatientsBreakdown(doctorId, {
-            date_from,
-            date_to,
-            group: 'day',
-          }),
-        ]);
+        const cardsResp = await fetchDoctorDetailsCards(doctorId, { date_from, date_to });
 
-        setProfile(profileResp);
-        setTransferStats(transferResp);
-        setPatientsBreakdown(patientsBreakdownResp);
+        if (isCancelled) return;
+
+        setCardsData(cardsResp);
       } catch (error) {
+        if (isCancelled) return;
         console.error('Failed to load doctor profile data', error);
       } finally {
+        if (isCancelled) return;
         setLoading(false);
       }
     };
     void loadDoctorData();
+    return () => {
+      isCancelled = true;
+    };
   }, [doctorId, dates]);
 
-  const normalizeGender = (raw?: string | null): 'male' | 'female' | 'unknown' => {
-    const value = (raw ?? '').trim().toLowerCase();
-    if (!value) return 'unknown';
-    if (['male', 'm', 'man', 'ذكر', 'رجل'].includes(value)) return 'male';
-    if (['female', 'f', 'woman', 'انثى', 'أنثى', 'بنت', 'امرأة', 'امراة'].includes(value)) return 'female';
-    return 'unknown';
-  };
-
-  const currentGender = patientsBreakdown?.patients.current.gender ?? {};
-  const rangeGender = patientsBreakdown?.patients.range.gender ?? {};
-
-  const maleFromBreakdownCurrent = Number(currentGender.male ?? 0);
-  const femaleFromBreakdownCurrent = Number(currentGender.female ?? 0);
-
-  const maleFromBreakdownRange = Number(rangeGender.male ?? 0);
-  const femaleFromBreakdownRange = Number(rangeGender.female ?? 0);
-
-  const maleFromList = doctorPatients.filter((patient) => normalizeGender(patient.gender) === 'male').length;
-  const femaleFromList = doctorPatients.filter((patient) => normalizeGender(patient.gender) === 'female').length;
-
-  const hasCurrentBreakdown =
-    maleFromBreakdownCurrent > 0 || femaleFromBreakdownCurrent > 0;
-  const hasRangeBreakdown = maleFromBreakdownRange > 0 || femaleFromBreakdownRange > 0;
-
-  // لعرض "الفترة الحالية" بشكل متسق: range breakdown أولاً، ثم current، ثم fallback.
-  const maleCount = hasRangeBreakdown
-    ? maleFromBreakdownRange
-    : hasCurrentBreakdown
-      ? maleFromBreakdownCurrent
-      : maleFromList;
-  const femaleCount = hasRangeBreakdown
-    ? femaleFromBreakdownRange
-    : hasCurrentBreakdown
-      ? femaleFromBreakdownCurrent
-      : femaleFromList;
-
-  const ageBuckets = [
-    { label: '0-19', min: 0, max: 19, count: 0 },
-    { label: '20-29', min: 20, max: 29, count: 0 },
-    { label: '30-39', min: 30, max: 39, count: 0 },
-    { label: '40-50', min: 40, max: 50, count: 0 },
-    { label: '51-60', min: 51, max: 60, count: 0 },
-    { label: '60+', min: 61, max: 200, count: 0 },
-  ];
-  for (const patient of doctorPatients) {
-    const age = patient.age;
-    if (age == null) continue;
-    const bucket = ageBuckets.find((item) => age >= item.min && age <= item.max);
-    if (bucket) bucket.count += 1;
-  }
-  const maxAgeBucket = [...ageBuckets].sort((a, b) => b.count - a.count)[0];
-
-  const treatmentCount: Record<string, number> = {};
-  const resolveDoctorTreatmentType = (patient: DoctorPatientListItem): string => {
-    if (!doctorId) return (patient.treatment_type ?? '').trim();
-    const profile = patient.doctor_profiles?.[doctorId];
-    const profileTreatment = (profile?.treatment_type ?? '').trim();
-    if (profileTreatment) return profileTreatment;
-    return (patient.treatment_type ?? '').trim();
-  };
-  for (const patient of allLinkedPatients) {
-    const treatment = resolveDoctorTreatmentType(patient);
-    if (!treatment || treatment === 'غير محدد') continue;
-    treatmentCount[treatment] = (treatmentCount[treatment] ?? 0) + 1;
-  }
-  const topTreatmentEntry =
-    Object.entries(treatmentCount).sort((a, b) => b[1] - a[1])[0] ?? (['لا يوجد', 0] as [string, number]);
-  const treatedPatientsCount = Object.values(treatmentCount).reduce((sum, value) => sum + value, 0);
-
   const doctorInsights = {
-    maleCount,
-    femaleCount,
-    topAgeBucketLabel: maxAgeBucket?.label ?? 'غير متوفر',
-    topAgeBucketCount: maxAgeBucket?.count ?? 0,
-    topTreatment: topTreatmentEntry[0],
-    topTreatmentCount: topTreatmentEntry[1],
-    treatedPatientsCount,
-    linkedPatientsCount: allLinkedPatients.length,
-    periodPatientsCount: patientsBreakdown?.patients.range.total ?? doctorPatients.length,
-    activeCount: transferStats?.active_patients.range.count ?? 0,
-    inactiveCount: transferStats?.inactive_patients.range.count ?? 0,
-    pendingCount: transferStats?.pending_patients.range.count ?? 0,
-    transfersToday: transferStats?.transfers.today ?? 0,
-    transfersMonthUnique: patientsBreakdown?.patients.this_month.total ?? patientsBreakdown?.patients.range.total ?? 0,
-    transfersMonthOps: transferStats?.transfers.this_month ?? 0,
+    maleCount: Number(cardsData?.patient_insights.gender.male ?? 0),
+    femaleCount: Number(cardsData?.patient_insights.gender.female ?? 0),
+    topAgeBucketLabel: cardsData?.patient_insights.age.top_bucket_label ?? 'غير متوفر',
+    topAgeBucketCount: Number(cardsData?.patient_insights.age.top_bucket_count ?? 0),
+    topTreatment: cardsData?.patient_insights.treatment.top_type ?? 'لا يوجد',
+    topTreatmentCount: Number(cardsData?.patient_insights.treatment.top_count ?? 0),
+    treatedPatientsCount: Number(cardsData?.patient_insights.treatment.total_linked ?? 0),
+    linkedPatientsCount: Number(cardsData?.patient_insights.treatment.total_linked ?? 0),
+    periodPatientsCount: Number(cardsData?.metrics.period_patients_count ?? 0),
+    activeCount: Number(cardsData?.metrics.active_count ?? 0),
+    inactiveCount: Number(cardsData?.metrics.inactive_count ?? 0),
+    pendingCount: Number(cardsData?.metrics.pending_count ?? 0),
+    transfersToday: Number(cardsData?.metrics.transfers_today ?? 0),
+    transfersMonthUnique: Number(cardsData?.metrics.transfers_month_unique ?? 0),
+    transfersMonthOps: Number(cardsData?.metrics.transfers_month_ops ?? 0),
   };
 
   const handleManagerToggle = async (checked: boolean) => {
-    if (!doctorId || !profile) return;
+    if (!doctorId || !cardsData) return;
     try {
       setUpdatingManager(true);
       const response = await setDoctorManager(doctorId, checked);
-      setProfile({
-        ...profile,
+      setCardsData({
+        ...cardsData,
         doctor: {
-          ...profile.doctor,
+          ...cardsData.doctor,
           is_manager: response.is_manager,
         },
       });
@@ -236,20 +129,20 @@ export function DoctorDetailsPage() {
         className="doctor-hero"
       >
         <img
-          src={profile?.doctor.imageUrl ?? 'https://placehold.co/1000x360?text=Farah+Doctor'}
-          alt={profile?.doctor.name ?? 'doctor'}
+          src={cardsData?.doctor.imageUrl ?? 'https://placehold.co/1000x360?text=Farah+Doctor'}
+          alt={cardsData?.doctor.name ?? 'doctor'}
           className="doctor-hero-image"
         />
         <div className="doctor-hero-overlay">
           <div>
             <Typography.Title level={2} style={{ margin: 0, color: 'white' }}>
-              {profile?.doctor.name ?? 'الطبيب'}
+              {cardsData?.doctor.name ?? 'الطبيب'}
             </Typography.Title>
             <Typography.Text style={{ color: 'rgba(255,255,255,.85)' }}>
-              {profile?.doctor.phone ?? '-'}
+              {cardsData?.doctor.phone ?? '-'}
             </Typography.Text>
           </div>
-          {profile?.doctor.is_manager ? <Tag color="gold">طبيب مدير</Tag> : <Tag color="blue">طبيب</Tag>}
+          {cardsData?.doctor.is_manager ? <Tag color="gold">طبيب مدير</Tag> : <Tag color="blue">طبيب</Tag>}
         </div>
       </motion.div>
 
@@ -265,7 +158,7 @@ export function DoctorDetailsPage() {
             </div>
           </div>
           <Switch
-            checked={Boolean(profile?.doctor.is_manager)}
+            checked={Boolean(cardsData?.doctor.is_manager)}
             loading={updatingManager}
             disabled={role !== 'admin'}
             onChange={handleManagerToggle}
@@ -277,7 +170,7 @@ export function DoctorDetailsPage() {
         <Col xs={24} md={12} xl={6}>
           <StatContainer
             title="إجمالي المرضى"
-            value={profile?.counts.total_patients ?? 0}
+            value={cardsData?.counts.total_patients ?? 0}
             icon={<UserOutlined />}
             tone="primary"
           />
@@ -379,7 +272,9 @@ export function DoctorDetailsPage() {
           <StatContainer
             title="أكثر نوع علاج"
             value={doctorInsights.topTreatment}
-            subValue={`${doctorInsights.topTreatmentCount} من أصل ${doctorInsights.treatedPatientsCount} (المرتبطون: ${doctorInsights.linkedPatientsCount})`}
+            subValue={
+              `${doctorInsights.topTreatmentCount} من أصل ${doctorInsights.treatedPatientsCount} (المرتبطون: ${doctorInsights.linkedPatientsCount})`
+            }
             icon={<CheckCircleOutlined />}
             tone="success"
           />
