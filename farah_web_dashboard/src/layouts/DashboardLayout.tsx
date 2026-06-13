@@ -1,5 +1,5 @@
 import {
-  BarChartOutlined,
+  CustomerServiceOutlined,
   DashboardOutlined,
   MedicineBoxOutlined,
   LogoutOutlined,
@@ -18,7 +18,7 @@ export function DashboardLayout() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { mode, toggleTheme } = useThemeMode();
-  const { logout, role } = useAuth();
+  const { logout } = useAuth();
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -41,11 +41,6 @@ export function DashboardLayout() {
               label: <Link to="/overview">نظرة عامة</Link>,
             },
             {
-              key: '/system-analytics',
-              icon: <BarChartOutlined />,
-              label: <Link to="/system-analytics">إحصائيات النظام</Link>,
-            },
-            {
               key: '/doctors',
               icon: <MedicineBoxOutlined />,
               label: <Link to="/doctors">قائمة الأطباء</Link>,
@@ -54,6 +49,11 @@ export function DashboardLayout() {
               key: '/doctors-comparison',
               icon: <TeamOutlined />,
               label: <Link to="/doctors-comparison">مقارنة الأطباء</Link>,
+            },
+            {
+              key: '/call-center',
+              icon: <CustomerServiceOutlined />,
+              label: <Link to="/call-center">موظفي الكول سنتر</Link>,
             },
           ]}
         />
@@ -79,9 +79,6 @@ export function DashboardLayout() {
               تسجيل الخروج
             </Button>
           </Space>
-          <Typography.Text>
-            الدور الحالي: <b>{role ?? 'غير معروف'}</b>
-          </Typography.Text>
         </Header>
 
         <Content style={{ padding: 24 }}>

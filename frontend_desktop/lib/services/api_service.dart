@@ -4,6 +4,7 @@ import 'package:dio/dio.dart'
     as dio
     show Response, FormData, MultipartFile, Options;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:frontend_desktop/core/logging/app_logger.dart';
 import 'package:frontend_desktop/core/network/api_constants.dart';
 import 'package:frontend_desktop/core/network/api_exception.dart';
 
@@ -15,6 +16,8 @@ class ApiService {
   final _storage = const FlutterSecureStorage();
   bool _isRefreshing = false;
   final List<_PendingRequest> _pendingRequests = [];
+  static const int _maxGetRetries = 2;
+  static const Duration _baseGetRetryDelay = Duration(milliseconds: 400);
 
   ApiService._internal() {
     _dio = Dio(
@@ -74,9 +77,9 @@ class ApiService {
             
             // محاولة تجديد الـ token
             _isRefreshing = true;
-            final refreshed = await _refreshAccessToken();
+            final refreshResult = await _refreshAccessToken();
             
-            if (refreshed) {
+            if (refreshResult == _RefreshResult.success) {
               // نجح التجديد - إعادة المحاولة للطلبات المعلقة
               _isRefreshing = false;
               await _retryPendingRequests();
@@ -89,11 +92,24 @@ class ApiService {
               }
               final response = await _dio.fetch(opts);
               return handler.resolve(response);
-            } else {
-              // فشل التجديد - مسح tokens وlogout
+            } else if (refreshResult == _RefreshResult.invalidToken) {
+              // فشل حقيقي في التجديد (refresh token منتهي/غير صالح)
               _isRefreshing = false;
+              _rejectPendingRequests(
+                UnauthorizedException('انتهت الجلسة. يرجى تسجيل الدخول مرة أخرى.'),
+              );
               _pendingRequests.clear();
               await _handleUnauthorized();
+              return handler.next(error);
+            } else {
+              // فشل بسبب الشبكة/الخادم المؤقت: لا نمسح الجلسة
+              _isRefreshing = false;
+              _rejectPendingRequests(
+                NetworkException(
+                  'تعذر تجديد الجلسة بسبب ضعف الاتصال. حاول مرة أخرى عند تحسن الإنترنت.',
+                ),
+              );
+              _pendingRequests.clear();
               return handler.next(error);
             }
           }
@@ -161,15 +177,26 @@ class ApiService {
     _pendingRequests.clear();
   }
 
+  void _rejectPendingRequests(Object error) {
+    for (final pending in _pendingRequests) {
+      pending.handler.reject(
+        DioException(
+          requestOptions: pending.requestOptions,
+          error: error,
+        ),
+      );
+    }
+  }
+
   // تجديد Access Token باستخدام Refresh Token
-  Future<bool> _refreshAccessToken() async {
+  Future<_RefreshResult> _refreshAccessToken() async {
     try {
       print('🔄 ========== API REFRESH TOKEN ==========');
       final refreshToken = await getRefreshToken();
       
       if (refreshToken == null || refreshToken.isEmpty) {
         print('❌ No refresh token found');
-        return false;
+        return _RefreshResult.invalidToken;
       }
       
       final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.authRefresh}');
@@ -203,17 +230,59 @@ class ApiService {
         if (accessToken != null && newRefreshToken != null) {
           await saveTokens(accessToken, newRefreshToken);
           print('✅ New tokens saved successfully');
-          return true;
+          return _RefreshResult.success;
         }
-        return false;
+        return _RefreshResult.networkError;
       }
       
       print('❌ REFRESH TOKEN FAILED: ${response.data}');
-      return false;
+      return _RefreshResult.networkError;
+    } on DioException catch (e) {
+      print('❌ REFRESH TOKEN DIO ERROR: ${e.type} - ${e.response?.statusCode}');
+      final statusCode = e.response?.statusCode;
+      if (statusCode == 401 || statusCode == 403) {
+        return _RefreshResult.invalidToken;
+      }
+      return _RefreshResult.networkError;
     } catch (e) {
       print('❌ REFRESH TOKEN ERROR: $e');
-      return false;
+      return _RefreshResult.networkError;
     }
+  }
+
+  bool _isRetriableGetError(DioException error) {
+    if (error.type == DioExceptionType.connectionError ||
+        error.type == DioExceptionType.connectionTimeout ||
+        error.type == DioExceptionType.receiveTimeout ||
+        error.type == DioExceptionType.sendTimeout) {
+      return true;
+    }
+    final status = error.response?.statusCode ?? 0;
+    return status == 408 || status == 429 || status >= 500;
+  }
+
+  Future<dio.Response> _performGetWithRetry(
+    Future<dio.Response> Function() action, {
+    required String endpoint,
+  }) async {
+    for (var attempt = 0; attempt <= _maxGetRetries; attempt++) {
+      try {
+        return await action();
+      } on DioException catch (e) {
+        final isLastAttempt = attempt >= _maxGetRetries;
+        if (!_isRetriableGetError(e) || isLastAttempt) {
+          rethrow;
+        }
+        final delayMs = _baseGetRetryDelay.inMilliseconds * (attempt + 1);
+        AppLogger.warning(
+          'Retrying GET request',
+          scope: 'ApiService',
+          error: 'endpoint=$endpoint attempt=${attempt + 1} delayMs=$delayMs',
+        );
+        await Future.delayed(Duration(milliseconds: delayMs));
+      }
+    }
+    throw NetworkException('فشل جلب البيانات بعد عدة محاولات');
   }
 
   // GET Request
@@ -244,16 +313,19 @@ class ApiService {
           'Accept': 'application/json',
           if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
         };
-        final response = await _dio.fetch(
-          RequestOptions(
-            method: 'GET',
-            path: uri.toString(),
-            headers: headers,
-            sendTimeout: options?.sendTimeout ??
-                const Duration(milliseconds: ApiConstants.connectionTimeout),
-            receiveTimeout: options?.receiveTimeout ??
-                const Duration(milliseconds: ApiConstants.receiveTimeout),
+        final response = await _performGetWithRetry(
+          () => _dio.fetch(
+            RequestOptions(
+              method: 'GET',
+              path: uri.toString(),
+              headers: headers,
+              sendTimeout: options?.sendTimeout ??
+                  const Duration(milliseconds: ApiConstants.connectionTimeout),
+              receiveTimeout: options?.receiveTimeout ??
+                  const Duration(milliseconds: ApiConstants.receiveTimeout),
+            ),
           ),
+          endpoint: uri.toString(),
         );
         return response;
       } on DioException catch (e) {
@@ -263,10 +335,13 @@ class ApiService {
       }
     }
     try {
-      final response = await _dio.get(
-        endpoint,
-        queryParameters: queryParameters,
-        options: options,
+      final response = await _performGetWithRetry(
+        () => _dio.get(
+          endpoint,
+          queryParameters: queryParameters,
+          options: options,
+        ),
+        endpoint: endpoint,
       );
       return response;
     } on DioException catch (e) {
@@ -617,4 +692,10 @@ class _PendingRequest {
     required this.requestOptions,
     required this.handler,
   });
+}
+
+enum _RefreshResult {
+  success,
+  invalidToken,
+  networkError,
 }

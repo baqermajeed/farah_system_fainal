@@ -11,11 +11,22 @@ class NetworkUtils {
     try {
       final uri = Uri.parse(ApiConstants.baseUrl);
       final host = uri.host.isNotEmpty ? uri.host : 'google.com';
+      final port = uri.hasPort
+          ? uri.port
+          : (uri.scheme.toLowerCase() == 'http' ? 80 : 443);
 
       final result = await InternetAddress.lookup(host)
           .timeout(const Duration(seconds: 3));
 
-      return result.isNotEmpty && result.first.rawAddress.isNotEmpty;
+      if (result.isEmpty || result.first.rawAddress.isEmpty) return false;
+
+      final socket = await Socket.connect(
+        host,
+        port,
+        timeout: const Duration(seconds: 2),
+      );
+      await socket.close();
+      return true;
     } catch (_) {
       return false;
     }
@@ -24,10 +35,16 @@ class NetworkUtils {
   /// يحدد إن كان الخطأ ناتج عن الشبكة / الاتصال بالسيرفر.
   static bool isNetworkError(Object error) {
     if (error is NetworkException) return true;
-    final message = error is ApiException ? error.message : error.toString();
+    final message = (error is ApiException ? error.message : error.toString())
+        .toLowerCase();
     return message.contains('الاتصال') ||
         message.contains('الإنترنت') ||
-        message.contains('السيرفر');
+        message.contains('السيرفر') ||
+        message.contains('network') ||
+        message.contains('connection') ||
+        message.contains('timeout') ||
+        message.contains('socket') ||
+        message.contains('failed host lookup');
   }
 
   /// يعرض دايلوج موحّد للتحذير من مشاكل الاتصال بالشبكة / السيرفر.

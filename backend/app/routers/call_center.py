@@ -6,7 +6,7 @@ from beanie import PydanticObjectId as OID
 from app.constants import Role
 from app.security import require_roles, get_current_user
 from app.schemas import CallCenterAppointmentCreate, CallCenterAppointmentOut, CallCenterAppointmentUpdate
-from app.models import CallCenterAppointment, User
+from app.models import CallCenterAppointment
 from app.services.stats_service import parse_dates
 
 
@@ -234,17 +234,17 @@ async def call_center_appointments_stats(
         range_query = range_query.find(CallCenterAppointment.created_at < dt)
     range_count = await range_query.count()
 
-    accepted = 0
-    if uid:
-        creator = await User.get(uid)
-        if creator:
-            accepted = getattr(creator, "call_center_accepted_count", 0) or 0
+    accepted_count = await base.find(CallCenterAppointment.status == "accepted").count()
+    total_count = await base.count()
+    not_accepted_count = max(0, total_count - accepted_count)
 
     return {
         "user_id": str(uid) if uid else None,
+        "total": total_count,
         "today": today,
         "this_month": this_month,
         "range": {"from": date_from, "to": date_to, "count": range_count},
-        "accepted": accepted,
+        "accepted": accepted_count,
+        "not_accepted": not_accepted_count,
     }
 

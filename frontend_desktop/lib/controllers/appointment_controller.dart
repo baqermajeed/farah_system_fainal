@@ -3,17 +3,18 @@ import 'dart:async';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:frontend_desktop/models/appointment_model.dart';
-import 'package:frontend_desktop/services/patient_service.dart';
 import 'package:frontend_desktop/services/doctor_service.dart';
 import 'package:frontend_desktop/services/cache_service.dart';
+import 'package:frontend_desktop/repositories/appointment_repository.dart';
 import 'package:frontend_desktop/core/network/api_exception.dart';
+import 'package:frontend_desktop/core/logging/app_logger.dart';
 import 'package:frontend_desktop/core/utils/network_utils.dart';
 import 'package:frontend_desktop/controllers/auth_controller.dart';
 
 class AppointmentController extends GetxController {
-  final _patientService = PatientService();
   final _doctorService = DoctorService();
   final _cacheService = CacheService();
+  final _appointmentRepository = AppointmentRepository();
 
   final RxList<AppointmentModel> appointments = <AppointmentModel>[].obs;
   final RxList<AppointmentModel> primaryAppointments = <AppointmentModel>[].obs;
@@ -40,6 +41,48 @@ class AppointmentController extends GetxController {
   // Prevent request storms when ensure-loading from build() repeatedly
   final Set<String> _inFlightPatientAppointments = <String>{};
   final Set<String> _loadedOncePatientAppointments = <String>{};
+  Worker? _reconnectWorker;
+
+  @override
+  void onInit() {
+    super.onInit();
+    _bindReconnectAutoReload();
+  }
+
+  @override
+  void onClose() {
+    _reconnectWorker?.dispose();
+    super.onClose();
+  }
+
+  void _bindReconnectAutoReload() {
+    if (!Get.isRegistered<AuthController>()) return;
+    final authController = Get.find<AuthController>();
+    _reconnectWorker = ever<int>(authController.reconnectVersion, (_) {
+      unawaited(_reloadAfterReconnect());
+    });
+  }
+
+  Future<void> _reloadAfterReconnect() async {
+    try {
+      final userType = Get.find<AuthController>().currentUser.value?.userType;
+      if (userType == 'doctor' || userType == 'receptionist') {
+        await loadDoctorAppointments(isInitial: true, isRefresh: true);
+      } else {
+        await loadPatientAppointments();
+      }
+      AppLogger.info(
+        'Data refreshed after reconnect',
+        scope: 'AppointmentController',
+      );
+    } catch (e) {
+      AppLogger.warning(
+        'Reconnect refresh failed',
+        scope: 'AppointmentController',
+        error: e,
+      );
+    }
+  }
 
   AppointmentModel _withScheduledAt(
     AppointmentModel appointment,
@@ -139,7 +182,11 @@ class AppointmentController extends GetxController {
         print(
           '📅 [AppointmentController] Loading appointments for receptionist',
         );
-        final list = await _doctorService.getAllAppointmentsForReception();
+        final list = await _appointmentRepository.fetchStaffAppointments(
+          userType: userTypeForRequest,
+          skip: 0,
+          limit: 50,
+        );
         appointments.value = list;
         primaryAppointments.clear();
         secondaryAppointments.clear();
@@ -149,7 +196,7 @@ class AppointmentController extends GetxController {
       } else {
         // المريض: يجلب مواعيده الخاصة من /patient/appointments
         print('📅 [AppointmentController] Loading appointments for patient');
-        final result = await _patientService.getMyAppointments();
+        final result = await _appointmentRepository.fetchCurrentUserAppointments();
         primaryAppointments.value = result['primary'] ?? [];
         secondaryAppointments.value = result['secondary'] ?? [];
 
@@ -267,43 +314,22 @@ class AppointmentController extends GetxController {
       List<AppointmentModel> appointmentsList;
       final skip = (currentPage - 1) * pageLimit;
 
-      if (userType == 'receptionist') {
-        // موظف الاستقبال: يجلب جميع المواعيد من جميع الأطباء
-        print(
-          '📅 [AppointmentController] Loading all appointments for receptionist',
-        );
-        appointmentsList = await _doctorService.getAllAppointmentsForReception(
-          day: calculatedDay ?? day,
-          dateFrom: calculatedDateFrom,
-          dateTo: calculatedDateTo,
-          status: calculatedStatus ?? status,
-          skip: skip,
-          limit: pageLimit,
-        );
-      } else {
-        // الطبيب: يجلب مواعيده الخاصة
-        print('📅 [AppointmentController] Loading appointments for doctor');
-        appointmentsList = await _doctorService.getMyAppointments(
-          day: calculatedDay ?? day,
-          dateFrom: calculatedDateFrom,
-          dateTo: calculatedDateTo,
-          status: calculatedStatus ?? status,
-          skip: skip,
-          limit: pageLimit,
-        );
-      }
+      appointmentsList = await _appointmentRepository.fetchStaffAppointments(
+        userType: userType,
+        day: calculatedDay ?? day,
+        dateFrom: calculatedDateFrom,
+        dateTo: calculatedDateTo,
+        status: calculatedStatus ?? status,
+        skip: skip,
+        limit: pageLimit,
+      );
       
-      // ترتيب المواعيد حسب التاريخ (من الأقدم للأحدث) - Backend يرتبها بالفعل، لكن للتأكد
-      appointmentsList.sort((a, b) => a.date.compareTo(b.date));
-
       if (isRefresh || isInitial) {
-        // ⭐ استبدال القائمة بالبيانات الجديدة من API
+        // ⭐ الاستبدال المباشر: نثق بترتيب وترشيح الباكند
         appointments.assignAll(appointmentsList);
       } else {
-        // إضافة المواعيد الجديدة فقط (تجنب التكرار)
-        final existingIds = appointments.map((a) => a.id).toSet();
-        final newAppointments = appointmentsList.where((a) => !existingIds.contains(a.id)).toList();
-        appointments.addAll(newAppointments);
+        // الإضافة المباشرة مع pagination من الباكند
+        appointments.addAll(appointmentsList);
       }
 
       // تحديث حالة Pagination - بناءً على عدد المواعيد الجديدة فقط
@@ -385,8 +411,8 @@ class AppointmentController extends GetxController {
         isLoading.value = false;
       }
       
-      final appointmentsList = await _doctorService.getPatientAppointments(
-        patientId,
+      final appointmentsList = await _appointmentRepository.fetchPatientAppointments(
+        patientId: patientId,
       );
 
       // نفس مبدأ frontend: فلترة فقط حسب patientId (الـ backend يحدد الصلاحيات)

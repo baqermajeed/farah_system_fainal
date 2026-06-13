@@ -3,6 +3,47 @@ export type TokenResponse = {
   refresh_token: string;
 };
 
+export type StaffUser = {
+  id: string;
+  name: string | null;
+  phone: string;
+  gender?: string | null;
+  age?: number | null;
+  city?: string | null;
+  imageUrl?: string | null;
+  role: string;
+  doctor_manager?: boolean | null;
+};
+
+export type CallCenterStaffAppointmentStats = {
+  user_id: string | null;
+  total: number;
+  today: number;
+  this_month: number;
+  range: {
+    from: string | null;
+    to: string | null;
+    count: number;
+  };
+  accepted: number;
+  not_accepted: number;
+};
+
+export type CallCenterAppointmentListItem = {
+  id: string;
+  patient_name: string;
+  patient_phone: string;
+  scheduled_at: string;
+  governorate: string;
+  platform: string;
+  note: string;
+  created_by_user_id: string;
+  created_by_username: string;
+  created_at: string;
+  status: string;
+  accepted_at?: string | null;
+};
+
 export type DashboardStats = {
   overview: {
     total_patients: number;
@@ -28,6 +69,12 @@ export type DashboardStats = {
       consultation_type: Record<string, number>;
     };
   };
+};
+
+export type OverviewStatsResponse = {
+  group: string;
+  range: { from: string | null; to: string | null };
+  new_patients: Array<{ period: string; count: number }>;
 };
 
 export type DoctorComparison = {

@@ -95,7 +95,7 @@ body[data-theme='light'] .glass-card {
 
 .top-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   padding-inline: 24px !important;
   border-bottom: 1px solid rgba(127, 127, 127, 0.2) !important;
@@ -167,27 +167,79 @@ body[data-theme='light'] .glass-card {
 }
 
 .doctor-hero {
-  position: relative;
   border-radius: 24px;
+  padding: 16px 18px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.78));
+  box-shadow: 0 12px 28px rgba(20, 30, 45, 0.12);
+}
+
+body[data-theme='dark'] .doctor-hero {
+  background: linear-gradient(165deg, rgba(16, 27, 38, 0.92), rgba(22, 34, 49, 0.75));
+  border-color: rgba(71, 85, 105, 0.45);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.34);
+}
+
+.doctor-hero-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.doctor-hero-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+}
+
+.doctor-hero-name.ant-typography {
+  margin: 0 !important;
+  font-size: 34px !important;
+  line-height: 1.1 !important;
+}
+
+.doctor-hero-phone {
+  font-size: 17px;
+  font-weight: 600;
+  color: #475569 !important;
+}
+
+.doctor-hero-role {
+  font-size: 15px;
+  color: #64748b !important;
+}
+
+.doctor-hero-media {
+  width: 200px;
+  height: 140px;
+  flex: 0 0 200px;
+  border-radius: 16px;
   overflow: hidden;
-  min-height: 260px;
-  box-shadow: 0 16px 35px rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  background: rgba(255, 255, 255, 0.7);
 }
 
 .doctor-hero-image {
   width: 100%;
-  height: 260px;
+  height: 100%;
   object-fit: cover;
 }
 
-.doctor-hero-overlay {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(0, 0, 0, 0.24), rgba(0, 0, 0, 0.66));
-  display: flex;
-  justify-content: space-between;
-  align-items: end;
-  padding: 22px;
+@media (max-width: 992px) {
+  .doctor-hero-content {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .doctor-hero-media {
+    width: 100%;
+    height: 180px;
+    flex-basis: auto;
+  }
 }
 
 .stats-panel {
@@ -231,6 +283,15 @@ body[data-theme='light'] .glass-card {
 
 .stats-tiles-grid {
   margin-bottom: 12px;
+}
+
+.stats-tiles-grid > .ant-col {
+  display: flex;
+}
+
+.stats-tiles-grid .stat-container {
+  width: 100%;
+  height: 100%;
 }
 
 .stat-container {

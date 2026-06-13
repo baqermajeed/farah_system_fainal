@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:get/get.dart';
 import 'package:frontend_desktop/models/user_model.dart';
 import 'package:frontend_desktop/services/auth_service.dart';
@@ -13,11 +15,22 @@ class AuthController extends GetxController {
   final RxnString patientProfileId = RxnString(null);
   final RxBool isLoading = false.obs;
   final RxString otpCode = ''.obs;
+  final RxBool isOnline = true.obs;
+  final RxInt reconnectVersion = 0.obs;
+  Timer? _connectivityTimer;
+  bool _isSessionSyncInProgress = false;
 
   @override
   void onInit() {
     super.onInit();
-    _loadPersistedSession();
+    unawaited(_loadPersistedSession());
+    _startConnectivityMonitor();
+  }
+
+  @override
+  void onClose() {
+    _connectivityTimer?.cancel();
+    super.onClose();
   }
 
   Future<void> _loadPersistedSession() async {
@@ -49,19 +62,36 @@ class AuthController extends GetxController {
             '✅ [AuthController] User loaded from session: ${user.name} (${user.userType})',
           );
         } else {
+          if (_isNetworkFailureResponse(res)) {
+            print(
+              '🌐 [AuthController] Network issue while restoring session. Keeping cached session.',
+            );
+            return;
+          }
+
+          if (_isUnauthorizedResponse(res)) {
+            print(
+              '⚠️ [AuthController] Session is unauthorized. Clearing local session.',
+            );
+            await _clearSessionLocal();
+            return;
+          }
+
           print(
-            '⚠️ [AuthController] Failed to load user info, clearing session',
+            '⚠️ [AuthController] Failed to load user info from API, keeping existing session',
           );
-          await _authService.logout();
-          await _cacheService.deleteUser();
-          currentUser.value = null;
         }
       } else {
+        if (currentUser.value != null) {
+          await _clearSessionLocal();
+        }
         print('ℹ️ [AuthController] No saved session found');
       }
     } catch (e) {
       print('❌ [AuthController] Error loading persisted session: $e');
-      currentUser.value = null;
+      if (!NetworkUtils.isNetworkError(e)) {
+        currentUser.value = null;
+      }
     }
   }
 
@@ -113,15 +143,44 @@ class AuthController extends GetxController {
             Get.offAllNamed(AppRoutes.userSelection);
           }
         } else {
-          // التوكن منتهي أو غير صالح (مثل 401) — مسح الجلسة والانتقال لاختيار المستخدم
+          if (_isNetworkFailureResponse(res)) {
+            print(
+              '🌐 [AuthController] Network failure while checking user. Keeping session active.',
+            );
+            if (navigate) {
+              final existing = currentUser.value;
+              if (existing != null) {
+                _navigateByUserType(existing);
+              } else {
+                Get.offAllNamed(AppRoutes.userSelection);
+              }
+            }
+            return;
+          }
+
+          if (_isUnauthorizedResponse(res)) {
+            // التوكن منتهي أو غير صالح (401) — مسح الجلسة والانتقال لاختيار المستخدم
+            print(
+              '⚠️ [AuthController] Unauthorized session, clearing local session',
+            );
+            await _clearSessionLocal();
+            if (navigate) {
+              Get.offAllNamed(AppRoutes.userSelection);
+            }
+            return;
+          }
+
+          // أخطاء غير مصنفة (مثل 5xx): لا نطرد المستخدم
           print(
-            '⚠️ [AuthController] Failed to load user info, clearing session',
+            '⚠️ [AuthController] Failed to load user info (non-auth error), keeping session',
           );
-          await _authService.logout();
-          await _cacheService.deleteUser();
-          currentUser.value = null;
           if (navigate) {
-            Get.offAllNamed(AppRoutes.userSelection);
+            final existing = currentUser.value;
+            if (existing != null) {
+              _navigateByUserType(existing);
+            } else {
+              Get.offAllNamed(AppRoutes.userSelection);
+            }
           }
         }
       } else {
@@ -132,6 +191,18 @@ class AuthController extends GetxController {
       }
     } catch (e) {
       print('❌ [AuthController] Error checking logged in user: $e');
+      if (NetworkUtils.isNetworkError(e)) {
+        if (navigate) {
+          final existing = currentUser.value;
+          if (existing != null) {
+            _navigateByUserType(existing);
+          } else {
+            Get.offAllNamed(AppRoutes.userSelection);
+          }
+        }
+        return;
+      }
+
       currentUser.value = null;
       if (navigate) {
         Get.offAllNamed(AppRoutes.userSelection);
@@ -266,6 +337,72 @@ class AuthController extends GetxController {
       } else {
         Get.snackbar('خطأ', 'حدث خطأ أثناء تسجيل الخروج');
       }
+    }
+  }
+
+  bool _isUnauthorizedResponse(Map<String, dynamic> response) {
+    final statusCode = response['statusCode'];
+    return statusCode == 401;
+  }
+
+  bool _isNetworkFailureResponse(Map<String, dynamic> response) {
+    final isNetworkError = response['isNetworkError'];
+    if (isNetworkError == true) return true;
+    final error = response['error'];
+    if (error == null) return false;
+    return NetworkUtils.isNetworkError(error);
+  }
+
+  void _navigateByUserType(UserModel user) {
+    final userType = user.userType.toLowerCase();
+    if (userType == 'doctor') {
+      Get.offAllNamed(AppRoutes.doctorHome);
+    } else if (userType == 'receptionist') {
+      Get.offAllNamed(AppRoutes.receptionHome);
+    } else if (userType == 'call_center') {
+      Get.offAllNamed(AppRoutes.callCenterHome);
+    } else {
+      Get.offAllNamed(AppRoutes.userSelection);
+    }
+  }
+
+  Future<void> _clearSessionLocal() async {
+    await _authService.logout();
+    await _cacheService.deleteUser();
+    currentUser.value = null;
+    patientProfileId.value = null;
+  }
+
+  void _startConnectivityMonitor() {
+    // Probe quickly on startup, then keep polling in the background.
+    unawaited(_probeConnectivityAndSync());
+    _connectivityTimer = Timer.periodic(
+      const Duration(seconds: 8),
+      (_) => unawaited(_probeConnectivityAndSync()),
+    );
+  }
+
+  Future<void> _probeConnectivityAndSync() async {
+    final connected = await NetworkUtils.hasInternetConnection();
+    final wasOnline = isOnline.value;
+    isOnline.value = connected;
+
+    if (connected && !wasOnline) {
+      print('🌐 [AuthController] Internet restored. Syncing session...');
+      reconnectVersion.value++;
+      await _syncSessionAfterReconnect();
+    } else if (!connected && wasOnline) {
+      print('⚠️ [AuthController] Internet connection lost.');
+    }
+  }
+
+  Future<void> _syncSessionAfterReconnect() async {
+    if (_isSessionSyncInProgress) return;
+    _isSessionSyncInProgress = true;
+    try {
+      await checkLoggedInUser(navigate: false);
+    } finally {
+      _isSessionSyncInProgress = false;
     }
   }
 }

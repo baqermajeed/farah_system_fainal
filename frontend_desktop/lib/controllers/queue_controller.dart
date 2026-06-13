@@ -34,8 +34,10 @@ class QueueController extends GetxController {
   }
 
   QueueEntry? get currentEntry {
-    for (final entry in entries) {
-      if (entry.status == QueueEntryStatus.called) return entry;
+    for (var i = entries.length - 1; i >= 0; i--) {
+      if (entries[i].status == QueueEntryStatus.called) {
+        return entries[i];
+      }
     }
     return null;
   }
@@ -226,12 +228,6 @@ class QueueController extends GetxController {
     if (waiting.isEmpty) {
       _showValidationError('لا يوجد مرضى في الانتظار');
       return false;
-    }
-
-    for (var i = 0; i < entries.length; i++) {
-      if (entries[i].status == QueueEntryStatus.called) {
-        entries[i] = entries[i].copyWith(status: QueueEntryStatus.done);
-      }
     }
 
     final next = waiting.first;

@@ -37,6 +37,7 @@ export function DoctorDetailsPage() {
   const [searchParams] = useSearchParams();
   const { role } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [cardsRefreshing, setCardsRefreshing] = useState(false);
   const [updatingManager, setUpdatingManager] = useState(false);
   const [doctorId, setDoctorId] = useState<string | undefined>(() => searchParams.get('doctorId') ?? undefined);
   const [dates, setDates] = useState<[Dayjs | null, Dayjs | null]>([dayjs().startOf('month'), dayjs()]);
@@ -48,6 +49,7 @@ export function DoctorDetailsPage() {
 
   const [cardsData, setCardsData] = useState<DoctorDetailsCardsResponse | null>(null);
   const [implantAppointments, setImplantAppointments] = useState<DoctorAppointmentsBreakdownResponse | null>(null);
+  const isManagerDoctor = Boolean(cardsData?.doctor.is_manager);
 
   useEffect(() => {
     const loadDoctors = async () => {
@@ -69,7 +71,12 @@ export function DoctorDetailsPage() {
     const loadDoctorData = async () => {
       if (!doctorId) return;
       try {
-        setLoading(true);
+        const isInitialLoad = cardsData === null;
+        if (isInitialLoad) {
+          setLoading(true);
+        } else {
+          setCardsRefreshing(true);
+        }
         const date_from = dates[0]?.toISOString();
         const date_to = dates[1]?.endOf('day').toISOString();
         const cardsResp = await fetchDoctorDetailsCards(doctorId, { date_from, date_to });
@@ -83,6 +90,7 @@ export function DoctorDetailsPage() {
       } finally {
         if (isCancelled) return;
         setLoading(false);
+        setCardsRefreshing(false);
       }
     };
     void loadDoctorData();
@@ -94,7 +102,10 @@ export function DoctorDetailsPage() {
   useEffect(() => {
     let isCancelled = false;
     const loadImplantAppointments = async () => {
-      if (!doctorId) return;
+      if (!doctorId || !isManagerDoctor) {
+        setImplantAppointments(null);
+        return;
+      }
       try {
         setImplantLoading(true);
         const date_from = implantDay.startOf('day').toISOString();
@@ -119,7 +130,7 @@ export function DoctorDetailsPage() {
     return () => {
       isCancelled = true;
     };
-  }, [doctorId, implantDay, implantStage]);
+  }, [doctorId, implantDay, implantStage, isManagerDoctor]);
 
   const doctorInsights = {
     maleCount: Number(cardsData?.patient_insights.gender.male ?? 0),
@@ -137,14 +148,6 @@ export function DoctorDetailsPage() {
     transfersToday: Number(cardsData?.metrics.transfers_today ?? 0),
     transfersMonthUnique: Number(cardsData?.metrics.transfers_month_unique ?? 0),
     transfersMonthOps: Number(cardsData?.metrics.transfers_month_ops ?? 0),
-  };
-
-  const implantStatusCounts = implantAppointments?.by_status.range ?? {
-    pending: 0,
-    completed: 0,
-    cancelled: 0,
-    late: 0,
-    other: 0,
   };
 
   const implantRows = implantAppointments?.selected_list ?? implantAppointments?.today_list ?? [];
@@ -165,17 +168,6 @@ export function DoctorDetailsPage() {
         title: 'الوقت',
         dataIndex: 'scheduled_at',
         render: (value: string) => dayjs(value).format('HH:mm'),
-      },
-      {
-        title: 'الحالة',
-        dataIndex: 'status',
-        render: (value: string) => {
-          const normalized = (value ?? '').toLowerCase();
-          if (normalized === 'completed') return <Tag color="green">مكتمل</Tag>;
-          if (normalized === 'late') return <Tag color="orange">متأخر</Tag>;
-          if (normalized === 'canceled' || normalized === 'cancelled') return <Tag color="red">ملغي</Tag>;
-          return <Tag color="blue">قيد الانتظار</Tag>;
-        },
       },
       {
         title: 'المرحلة',
@@ -211,7 +203,7 @@ export function DoctorDetailsPage() {
     setRangeModalOpen(false);
   };
 
-  if (!doctorId || loading) return <Spin size="large" />;
+  if (!doctorId || (loading && !cardsData)) return <Spin size="large" />;
 
   return (
     <div className="page-wrap">
@@ -221,21 +213,28 @@ export function DoctorDetailsPage() {
         transition={{ duration: 0.45 }}
         className="doctor-hero"
       >
-        <img
-          src={cardsData?.doctor.imageUrl ?? 'https://placehold.co/1000x360?text=Farah+Doctor'}
-          alt={cardsData?.doctor.name ?? 'doctor'}
-          className="doctor-hero-image"
-        />
-        <div className="doctor-hero-overlay">
-          <div>
-            <Typography.Title level={2} style={{ margin: 0, color: 'white' }}>
+        <div className="doctor-hero-content">
+          <div className="doctor-hero-media">
+            <img
+              src={cardsData?.doctor.imageUrl ?? 'https://placehold.co/1000x360?text=Farah+Doctor'}
+              alt={cardsData?.doctor.name ?? 'doctor'}
+              className="doctor-hero-image"
+            />
+          </div>
+          <div className="doctor-hero-details">
+            <Typography.Title level={2} className="doctor-hero-name">
               {cardsData?.doctor.name ?? 'الطبيب'}
             </Typography.Title>
-            <Typography.Text style={{ color: 'rgba(255,255,255,.85)' }}>
+            <Typography.Text className="doctor-hero-phone">
               {cardsData?.doctor.phone ?? '-'}
             </Typography.Text>
+            <Typography.Text className="doctor-hero-role">
+              نوع الطبيب: {cardsData?.doctor.is_manager ? 'طبيب مدير' : 'طبيب'}
+            </Typography.Text>
+            <div>
+              {cardsData?.doctor.is_manager ? <Tag color="gold">طبيب مدير</Tag> : <Tag color="blue">طبيب</Tag>}
+            </div>
           </div>
-          {cardsData?.doctor.is_manager ? <Tag color="gold">طبيب مدير</Tag> : <Tag color="blue">طبيب</Tag>}
         </div>
       </motion.div>
 
@@ -259,7 +258,7 @@ export function DoctorDetailsPage() {
         </div>
       </Card>
 
-      <Row gutter={[12, 12]} className="stats-tiles-grid">
+      <Row gutter={[12, 12]} className="stats-tiles-grid" align="stretch">
         <Col xs={24} md={12} xl={6}>
           <StatContainer
             title="إجمالي المرضى"
@@ -304,11 +303,17 @@ export function DoctorDetailsPage() {
             }}
           />
         </Col>
-        <Col xs={24} xl={12}>
+        <Col xs={24} xl={12} style={{ display: 'flex' }}>
           <GroupedStatContainer
             title="حالة المرضى"
             icon={<TeamOutlined />}
             tone="info"
+            actionIcon={<CalendarOutlined />}
+            actionTooltip="تحديد الفترة الزمنية"
+            onActionClick={() => {
+              setDraftRange(dates);
+              setRangeModalOpen(true);
+            }}
             items={[
               {
                 label: 'مرضى نشطين',
@@ -331,7 +336,7 @@ export function DoctorDetailsPage() {
             ]}
           />
         </Col>
-        <Col xs={24} xl={12}>
+        <Col xs={24} xl={12} style={{ display: 'flex' }}>
           <GroupedStatContainer
             title="توزيع الجنس"
             icon={<TeamOutlined />}
@@ -374,49 +379,42 @@ export function DoctorDetailsPage() {
         </Col>
       </Row>
 
-      <Card className="glass-card" style={{ marginTop: 12 }} title="مواعيد مرضى الزراعة حسب المرحلة">
-        <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
-          <Col xs={24} md={8}>
-            <DatePicker
-              value={implantDay}
-              onChange={(value) => setImplantDay(value ?? dayjs())}
-              style={{ width: '100%' }}
-            />
-          </Col>
-          <Col xs={24} md={16}>
-            <Select
-              value={implantStage}
-              onChange={setImplantStage}
-              options={IMPLANT_STAGES.map((stage) => ({ value: stage, label: stage }))}
-              style={{ width: '100%' }}
-            />
-          </Col>
-        </Row>
+      {cardsRefreshing ? (
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 6 }}>
+          <Spin size="small" />
+        </div>
+      ) : null}
 
-        <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
-          <Col xs={24} md={12} xl={6}>
-            <StatContainer title="قيد الانتظار" value={implantStatusCounts.pending ?? 0} icon={<ClockCircleOutlined />} tone="warning" />
-          </Col>
-          <Col xs={24} md={12} xl={6}>
-            <StatContainer title="مكتملة" value={implantStatusCounts.completed ?? 0} icon={<CheckCircleOutlined />} tone="success" />
-          </Col>
-          <Col xs={24} md={12} xl={6}>
-            <StatContainer title="ملغية" value={implantStatusCounts.cancelled ?? 0} icon={<ClockCircleOutlined />} tone="danger" />
-          </Col>
-          <Col xs={24} md={12} xl={6}>
-            <StatContainer title="متأخرة" value={implantStatusCounts.late ?? 0} icon={<ClockCircleOutlined />} tone="info" />
-          </Col>
-        </Row>
+      {isManagerDoctor ? (
+        <Card className="glass-card" style={{ marginTop: 12 }} title="مواعيد مرضى الزراعة حسب المرحلة">
+          <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
+            <Col xs={24} md={8}>
+              <DatePicker
+                value={implantDay}
+                onChange={(value) => setImplantDay(value ?? dayjs())}
+                style={{ width: '100%' }}
+              />
+            </Col>
+            <Col xs={24} md={16}>
+              <Select
+                value={implantStage}
+                onChange={setImplantStage}
+                options={IMPLANT_STAGES.map((stage) => ({ value: stage, label: stage }))}
+                style={{ width: '100%' }}
+              />
+            </Col>
+          </Row>
 
-        <Table
-          rowKey="id"
-          loading={implantLoading}
-          dataSource={implantRows}
-          columns={implantColumns}
-          pagination={{ pageSize: 8 }}
-          locale={{ emptyText: 'لا توجد مواعيد لهذه المرحلة في هذا اليوم' }}
-        />
-      </Card>
+          <Table
+            rowKey="id"
+            loading={implantLoading}
+            dataSource={implantRows}
+            columns={implantColumns}
+            pagination={false}
+            locale={{ emptyText: 'لا توجد مواعيد لهذه المرحلة في هذا اليوم' }}
+          />
+        </Card>
+      ) : null}
 
       <Modal
         title="اختيار فترة زمنية"
@@ -463,6 +461,7 @@ function StatContainer({
       whileHover={{ y: -5, rotateX: 2 }}
       transition={{ type: 'spring', stiffness: 200, damping: 15 }}
       className={`stat-container stat-${tone}`}
+      style={{ width: '100%', height: '100%' }}
     >
       <div className="stat-head-row">
         <div className="stat-icon-wrap">{icon}</div>
@@ -493,9 +492,20 @@ type GroupedStatContainerProps = {
   icon: React.ReactNode;
   tone: 'primary' | 'success' | 'warning' | 'danger' | 'secondary' | 'info';
   items: GroupedStatItem[];
+  actionIcon?: React.ReactNode;
+  actionTooltip?: string;
+  onActionClick?: () => void;
 };
 
-function GroupedStatContainer({ title, icon, tone, items }: GroupedStatContainerProps) {
+function GroupedStatContainer({
+  title,
+  icon,
+  tone,
+  items,
+  actionIcon,
+  actionTooltip,
+  onActionClick,
+}: GroupedStatContainerProps) {
   return (
     <motion.div
       whileHover={{ y: -5, rotateX: 2 }}
@@ -503,8 +513,15 @@ function GroupedStatContainer({ title, icon, tone, items }: GroupedStatContainer
       className={`stat-container stat-${tone}`}
     >
       <div className="stat-group-header">
-        <div className="stat-icon-wrap">{icon}</div>
-        <Typography.Text className="stat-title">{title}</Typography.Text>
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+          <div className="stat-icon-wrap">{icon}</div>
+          <Typography.Text className="stat-title">{title}</Typography.Text>
+        </div>
+        {actionIcon && onActionClick ? (
+          <Tooltip title={actionTooltip ?? ''}>
+            <Button type="text" className="stat-action-btn" icon={actionIcon} onClick={onActionClick} />
+          </Tooltip>
+        ) : null}
       </div>
       <div className="stat-group-items">
         {items.map((item) => (

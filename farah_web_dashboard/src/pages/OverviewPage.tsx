@@ -1,18 +1,58 @@
-import { Card, Col, Row, Spin, Typography } from 'antd';
-import { useEffect, useMemo, useState } from 'react';
+import { Card, Col, DatePicker, Modal, Row, Spin, Typography } from 'antd';
+import type { Dayjs } from 'dayjs';
+import dayjs from 'dayjs';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, BarChart, Bar } from 'recharts';
+import { CalendarOutlined } from '@ant-design/icons';
 import { KpiCard } from '../components/KpiCard';
 import { AuroraBackground } from '../components/AuroraBackground';
 import { Doctor3DCard } from '../components/Doctor3DCard';
-import { fetchDashboardStats, fetchDoctorsStats } from '../services/statsApi';
+import { fetchDashboardStats, fetchDoctorsStats, fetchOverviewStats } from '../services/statsApi';
 import type { DashboardStats, DoctorStatsListResponse } from '../types/stats';
 
 export function OverviewPage() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DashboardStats | null>(null);
   const [topDoctors, setTopDoctors] = useState<DoctorStatsListResponse['doctors']>([]);
+  const [periodRange, setPeriodRange] = useState<[Dayjs | null, Dayjs | null]>([dayjs().startOf('month'), dayjs()]);
+  const [periodRangeModalOpen, setPeriodRangeModalOpen] = useState(false);
+  const [draftPeriodRange, setDraftPeriodRange] = useState<[Dayjs | null, Dayjs | null]>([
+    dayjs().startOf('month'),
+    dayjs(),
+  ]);
+  const [rangeNewPatients, setRangeNewPatients] = useState(0);
+  const [rangeLoading, setRangeLoading] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    let isCancelled = false;
+    const loadRangeNewPatients = async () => {
+      const date_from = periodRange[0]?.toISOString();
+      const date_to = periodRange[1]?.endOf('day').toISOString();
+      if (!date_from || !date_to) {
+        setRangeNewPatients(0);
+        return;
+      }
+      try {
+        setRangeLoading(true);
+        const overview = await fetchOverviewStats({ group: 'day', date_from, date_to });
+        if (isCancelled) return;
+        const total = overview.new_patients.reduce((sum, item) => sum + Number(item.count ?? 0), 0);
+        setRangeNewPatients(total);
+      } catch (error) {
+        if (isCancelled) return;
+        console.error('Failed to load range new patients', error);
+        setRangeNewPatients(0);
+      } finally {
+        if (isCancelled) return;
+        setRangeLoading(false);
+      }
+    };
+    void loadRangeNewPatients();
+    return () => {
+      isCancelled = true;
+    };
+  }, [periodRange]);
 
   useEffect(() => {
     const load = async () => {
@@ -36,29 +76,6 @@ export function OverviewPage() {
     void load();
   }, []);
 
-  const pieData = useMemo(
-    () =>
-      data
-        ? Object.entries(data.appointments_by_status).map(([name, value]) => ({
-            name,
-            value,
-          }))
-        : [],
-    [data],
-  );
-
-  const patientTypeBars = useMemo(() => {
-    if (!data) return [];
-    const visit = data.patient_types.all.visit_type;
-    const consult = data.patient_types.all.consultation_type;
-    return [
-      { name: 'مريض جديد', value: visit.new ?? 0 },
-      { name: 'مراجع قديم', value: visit.old ?? 0 },
-      { name: 'معاينة مدفوعة', value: consult.paid ?? 0 },
-      { name: 'معاينة مجانية', value: consult.free ?? 0 },
-    ];
-  }, [data]);
-
   if (loading) {
     return <Spin size="large" />;
   }
@@ -66,6 +83,11 @@ export function OverviewPage() {
   if (!data) {
     return <Typography.Text>تعذر جلب البيانات.</Typography.Text>;
   }
+
+  const applyPeriodRangeSelection = () => {
+    setPeriodRange(draftPeriodRange);
+    setPeriodRangeModalOpen(false);
+  };
 
   return (
     <div className="page-wrap">
@@ -83,52 +105,25 @@ export function OverviewPage() {
           <KpiCard title="إجمالي الأطباء" value={data.overview.total_doctors} />
         </Col>
         <Col xs={24} md={12} xl={6}>
-          <KpiCard title="إجمالي المواعيد" value={data.overview.total_appointments} />
-        </Col>
-        <Col xs={24} md={12} xl={6}>
-          <KpiCard title="المواعيد القادمة" value={data.overview.upcoming_appointments} />
-        </Col>
-        <Col xs={24} md={12} xl={6}>
           <KpiCard title="مرضى جدد اليوم" value={data.today.new_patients} />
         </Col>
         <Col xs={24} md={12} xl={6}>
-          <KpiCard title="مواعيد اليوم" value={data.today.appointments} />
+          <KpiCard title="كل المرضى الجدد" value={data.patient_types.all.visit_type.new ?? 0} />
         </Col>
         <Col xs={24} md={12} xl={6}>
-          <KpiCard title="رسائل اليوم" value={data.today.chat_messages} />
+          <KpiCard title="المرضى الجدد هذا الشهر" value={data.this_month.new_patients} />
         </Col>
         <Col xs={24} md={12} xl={6}>
-          <KpiCard title="أجهزة نشطة" value={data.notifications.active_devices} />
-        </Col>
-      </Row>
-
-      <Row gutter={[16, 16]} style={{ marginTop: 8 }}>
-        <Col xs={24} xl={10}>
-          <Card title="توزيع حالة المواعيد" className="glass-card">
-            <div style={{ height: 300 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={pieData} dataKey="value" nameKey="name" outerRadius={95} />
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
-        </Col>
-        <Col xs={24} xl={14}>
-          <Card title="أنواع المرضى والمعاينات" className="glass-card">
-            <div style={{ height: 300 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={patientTypeBars}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="value" fill="#00A79D" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
+          <KpiCard
+            title="مرضى جدد حسب فترة معينة"
+            value={rangeLoading ? '...' : rangeNewPatients}
+            actionIcon={<CalendarOutlined />}
+            actionTooltip="تحديد الفترة الزمنية"
+            onActionClick={() => {
+              setDraftPeriodRange(periodRange);
+              setPeriodRangeModalOpen(true);
+            }}
+          />
         </Col>
       </Row>
 
@@ -149,6 +144,22 @@ export function OverviewPage() {
           ))}
         </Row>
       </Card>
+
+      <Modal
+        title="اختيار فترة زمنية"
+        open={periodRangeModalOpen}
+        onCancel={() => setPeriodRangeModalOpen(false)}
+        onOk={applyPeriodRangeSelection}
+        okText="تطبيق"
+        cancelText="إلغاء"
+      >
+        <DatePicker.RangePicker
+          value={draftPeriodRange}
+          onChange={(value) => setDraftPeriodRange([value?.[0] ?? null, value?.[1] ?? null])}
+          style={{ width: '100%' }}
+          allowEmpty={[false, false]}
+        />
+      </Modal>
     </div>
   );
 }

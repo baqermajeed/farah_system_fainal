@@ -186,7 +186,14 @@ class AuthService {
       }
       throw ApiException('فشل جلب بيانات المستخدم');
     } catch (e) {
-      if (e is ApiException) return {'ok': false, 'error': e.message};
+      if (e is ApiException) {
+        return {
+          'ok': false,
+          'error': e.message,
+          'statusCode': e.statusCode,
+          'isNetworkError': e is NetworkException,
+        };
+      }
       return {'ok': false, 'error': 'فشل الاتصال: $e'};
     }
   }

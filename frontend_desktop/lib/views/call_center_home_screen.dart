@@ -928,14 +928,29 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) {
+        final media = MediaQuery.of(ctx);
+        final screenSize = media.size;
+        final isCompact = screenSize.width < 640;
+        final horizontalInset = isCompact ? 10.w : 24.w;
+        final verticalInset = isCompact ? 8.h : 20.h;
+        final availableHeight =
+            screenSize.height - media.viewInsets.vertical - (verticalInset * 2);
+        final dialogMaxWidth = (screenSize.width * 0.95).clamp(320.0, 760.0).toDouble();
+        final dialogMaxHeight = availableHeight.clamp(320.0, 920.0).toDouble();
+
         return Dialog(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(24.r),
           ),
           elevation: 10,
-          insetPadding: EdgeInsets.all(24.r),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: 500.w),
+          insetPadding: EdgeInsets.symmetric(
+            horizontal: horizontalInset,
+            vertical: verticalInset,
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: SizedBox(
+            width: dialogMaxWidth,
+            height: dialogMaxHeight,
             child: StatefulBuilder(
               builder: (context, setState) {
                 String dateLabel = 'اختر التاريخ';
@@ -956,342 +971,470 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                 }
 
                 return Container(
-                  padding: EdgeInsets.all(32.r),
+                  padding: EdgeInsets.all(isCompact ? 14.r : 24.r),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(24.r),
                   ),
                   child: Form(
                     key: formKey,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text(
-                          'إضافة موعد جديد',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 22.sp,
-                            fontWeight: FontWeight.bold,
-                            color: const Color(0xFF2C3E50),
-                          ),
-                        ),
-                        SizedBox(height: 32.h),
-
-                        // Name Field
-                        TextFormField(
-                          controller: nameController,
-                          textAlign: TextAlign.right,
-                          decoration: InputDecoration(
-                            labelText: 'اسم المريض',
-                            prefixIcon: const Icon(Icons.person_outline),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12.r),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final useVerticalActions = constraints.maxWidth < 460;
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              'إضافة موعد جديد',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: isCompact ? 19.sp : 22.sp,
+                                fontWeight: FontWeight.bold,
+                                color: const Color(0xFF2C3E50),
+                              ),
                             ),
-                            filled: true,
-                            fillColor: Colors.grey[50],
-                          ),
-                          validator: (v) =>
-                              (v == null || v.trim().isEmpty) ? 'مطلوب' : null,
-                        ),
-                        SizedBox(height: 16.h),
-
-                        // Phone Field (11 رقم، يبدأ بـ 07، أرقام فقط)
-                        TextFormField(
-                          controller: phoneController,
-                          keyboardType: TextInputType.phone,
-                          textAlign: TextAlign.right,
-                          maxLength: 11,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                            LengthLimitingTextInputFormatter(11),
-                          ],
-                          decoration: InputDecoration(
-                            labelText: 'رقم الهاتف (07xxxxxxxxx)',
-                            hintText: '07xxxxxxxxx',
-                            prefixIcon: const Icon(Icons.phone_outlined),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12.r),
-                            ),
-                            filled: true,
-                            fillColor: Colors.grey[50],
-                            counterText: '',
-                          ),
-                          validator: _validatePhone,
-                        ),
-                        SizedBox(height: 16.h),
-
-                        // المحافظة (محافظات العراق)
-                        DropdownButtonFormField<String>(
-                          value: selectedGovernorate,
-                          decoration: InputDecoration(
-                            labelText: 'المحافظة',
-                            prefixIcon: const Icon(Icons.location_city_outlined),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12.r),
-                            ),
-                            filled: true,
-                            fillColor: Colors.grey[50],
-                          ),
-                          hint: const Text('اختر المحافظة'),
-                          items: _iraqGovernorates
-                              .map((g) => DropdownMenuItem(
-                                    value: g,
-                                    child: Text(g),
-                                  ))
-                              .toList(),
-                          onChanged: (v) => setState(() => selectedGovernorate = v),
-                        ),
-                        SizedBox(height: 16.h),
-
-                        // المنصة (مصدر الحجز)
-                        DropdownButtonFormField<String>(
-                          value: selectedPlatform,
-                          decoration: InputDecoration(
-                            labelText: 'المنصة',
-                            prefixIcon: const Icon(Icons.devices_other_outlined),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12.r),
-                            ),
-                            filled: true,
-                            fillColor: Colors.grey[50],
-                          ),
-                          hint: const Text('اختر المنصة'),
-                          items: _bookingPlatforms
-                              .map((p) => DropdownMenuItem(
-                                    value: p,
-                                    child: Text(p),
-                                  ))
-                              .toList(),
-                          onChanged: (v) => setState(() => selectedPlatform = v),
-                        ),
-                        SizedBox(height: 16.h),
-
-                        // الفرع (مطلوب): فرح النجف → backend، الكندي بغداد → backend_kendy
-                        DropdownButtonFormField<String>(
-                          value: selectedBranch,
-                          decoration: InputDecoration(
-                            labelText: 'الفرع',
-                            prefixIcon: const Icon(Icons.business_outlined),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12.r),
-                            ),
-                            filled: true,
-                            fillColor: Colors.grey[50],
-                          ),
-                          hint: const Text('اختر الفرع'),
-                          items: _callCenterBranches
-                              .map((e) => DropdownMenuItem(
-                                    value: e.key,
-                                    child: Text(e.value),
-                                  ))
-                              .toList(),
-                          onChanged: (v) => setState(() => selectedBranch = v),
-                          validator: (v) =>
-                              v == null || v.isEmpty ? 'يرجى اختيار الفرع' : null,
-                        ),
-                        SizedBox(height: 16.h),
-
-                        // ملاحظة (اختيارية)
-                        TextFormField(
-                          controller: noteController,
-                          textAlign: TextAlign.right,
-                          maxLines: 2,
-                          decoration: InputDecoration(
-                            labelText: 'ملاحظة (اختيارية)',
-                            hintText: 'ملاحظة من موظف الاتصالات عند إضافة الموعد',
-                            prefixIcon: const Icon(Icons.note_outlined),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12.r),
-                            ),
-                            filled: true,
-                            fillColor: Colors.grey[50],
-                          ),
-                        ),
-                        SizedBox(height: 24.h),
-
-                        // التاريخ والوقت — زر واحد يفتح ورقة واحدة للاختيار السريع
-                        InkWell(
-                          onTap: () async {
-                            await _showDateTimeSheet(
-                              context: context,
-                              initialDate: selectedDate,
-                              initialTime: selectedTime,
-                              onPicked: (date, time) {
-                                setState(() {
-                                  selectedDate = date;
-                                  selectedTime = time;
-                                });
-                              },
-                            );
-                          },
-                          borderRadius: BorderRadius.circular(12.r),
-                          child: Container(
-                            padding: EdgeInsets.symmetric(
-                                vertical: 18.h, horizontal: 16.w),
-                            decoration: BoxDecoration(
-                              border:
-                                  Border.all(color: Colors.grey[300]!),
-                              borderRadius: BorderRadius.circular(12.r),
-                              color: (selectedDate != null &&
-                                      selectedTime != null)
-                                  ? AppColors.primary.withValues(alpha: 0.06)
-                                  : null,
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.calendar_month_rounded,
-                                  color: AppColors.primary,
-                                  size: 28.sp,
-                                ),
-                                SizedBox(width: 12.w),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        'التاريخ والوقت',
-                                        style: TextStyle(
-                                          fontSize: 12.sp,
-                                          color: Colors.grey[600],
+                            SizedBox(height: isCompact ? 16.h : 22.h),
+                            Expanded(
+                              child: SingleChildScrollView(
+                                padding: EdgeInsets.only(bottom: 8.h),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    TextFormField(
+                                      controller: nameController,
+                                      textAlign: TextAlign.right,
+                                      decoration: InputDecoration(
+                                        labelText: 'اسم المريض',
+                                        prefixIcon: const Icon(Icons.person_outline),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12.r),
                                         ),
+                                        filled: true,
+                                        fillColor: Colors.grey[50],
                                       ),
-                                      SizedBox(height: 4.h),
-                                      Text(
-                                        (selectedDate != null &&
-                                                selectedTime != null)
-                                            ? '$dateLabel  •  $timeLabel'
-                                            : 'اضغط لاختيار التاريخ والوقت',
-                                        style: TextStyle(
-                                          fontSize: 15.sp,
-                                          fontWeight: (selectedDate != null &&
-                                                  selectedTime != null)
-                                              ? FontWeight.bold
-                                              : FontWeight.normal,
+                                      validator: (v) => (v == null || v.trim().isEmpty)
+                                          ? 'مطلوب'
+                                          : null,
+                                    ),
+                                    SizedBox(height: 12.h),
+                                    TextFormField(
+                                      controller: phoneController,
+                                      keyboardType: TextInputType.phone,
+                                      textAlign: TextAlign.right,
+                                      maxLength: 11,
+                                      inputFormatters: [
+                                        FilteringTextInputFormatter.digitsOnly,
+                                        LengthLimitingTextInputFormatter(11),
+                                      ],
+                                      decoration: InputDecoration(
+                                        labelText: 'رقم الهاتف (07xxxxxxxxx)',
+                                        hintText: '07xxxxxxxxx',
+                                        prefixIcon: const Icon(Icons.phone_outlined),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12.r),
+                                        ),
+                                        filled: true,
+                                        fillColor: Colors.grey[50],
+                                        counterText: '',
+                                      ),
+                                      validator: _validatePhone,
+                                    ),
+                                    SizedBox(height: 12.h),
+                                    DropdownButtonFormField<String>(
+                                      value: selectedGovernorate,
+                                      decoration: InputDecoration(
+                                        labelText: 'المحافظة',
+                                        prefixIcon:
+                                            const Icon(Icons.location_city_outlined),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12.r),
+                                        ),
+                                        filled: true,
+                                        fillColor: Colors.grey[50],
+                                      ),
+                                      hint: const Text('اختر المحافظة'),
+                                      items: _iraqGovernorates
+                                          .map((g) => DropdownMenuItem(
+                                                value: g,
+                                                child: Text(g),
+                                              ))
+                                          .toList(),
+                                      onChanged: (v) =>
+                                          setState(() => selectedGovernorate = v),
+                                    ),
+                                    SizedBox(height: 12.h),
+                                    DropdownButtonFormField<String>(
+                                      value: selectedPlatform,
+                                      decoration: InputDecoration(
+                                        labelText: 'المنصة',
+                                        prefixIcon:
+                                            const Icon(Icons.devices_other_outlined),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12.r),
+                                        ),
+                                        filled: true,
+                                        fillColor: Colors.grey[50],
+                                      ),
+                                      hint: const Text('اختر المنصة'),
+                                      items: _bookingPlatforms
+                                          .map((p) => DropdownMenuItem(
+                                                value: p,
+                                                child: Text(p),
+                                              ))
+                                          .toList(),
+                                      onChanged: (v) =>
+                                          setState(() => selectedPlatform = v),
+                                    ),
+                                    SizedBox(height: 12.h),
+                                    DropdownButtonFormField<String>(
+                                      value: selectedBranch,
+                                      decoration: InputDecoration(
+                                        labelText: 'الفرع',
+                                        prefixIcon: const Icon(Icons.business_outlined),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12.r),
+                                        ),
+                                        filled: true,
+                                        fillColor: Colors.grey[50],
+                                      ),
+                                      hint: const Text('اختر الفرع'),
+                                      items: _callCenterBranches
+                                          .map((e) => DropdownMenuItem(
+                                                value: e.key,
+                                                child: Text(e.value),
+                                              ))
+                                          .toList(),
+                                      onChanged: (v) =>
+                                          setState(() => selectedBranch = v),
+                                      validator: (v) => v == null || v.isEmpty
+                                          ? 'يرجى اختيار الفرع'
+                                          : null,
+                                    ),
+                                    SizedBox(height: 12.h),
+                                    TextFormField(
+                                      controller: noteController,
+                                      textAlign: TextAlign.right,
+                                      maxLines: 2,
+                                      decoration: InputDecoration(
+                                        labelText: 'ملاحظة (اختيارية)',
+                                        hintText:
+                                            'ملاحظة من موظف الاتصالات عند إضافة الموعد',
+                                        prefixIcon: const Icon(Icons.note_outlined),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(12.r),
+                                        ),
+                                        filled: true,
+                                        fillColor: Colors.grey[50],
+                                      ),
+                                    ),
+                                    SizedBox(height: 16.h),
+                                    InkWell(
+                                      onTap: () async {
+                                        await _showDateTimeSheet(
+                                          context: context,
+                                          initialDate: selectedDate,
+                                          initialTime: selectedTime,
+                                          onPicked: (date, time) {
+                                            setState(() {
+                                              selectedDate = date;
+                                              selectedTime = time;
+                                            });
+                                          },
+                                        );
+                                      },
+                                      borderRadius: BorderRadius.circular(12.r),
+                                      child: Container(
+                                        padding: EdgeInsets.symmetric(
+                                          vertical: 16.h,
+                                          horizontal: 14.w,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          border: Border.all(color: Colors.grey[300]!),
+                                          borderRadius: BorderRadius.circular(12.r),
                                           color: (selectedDate != null &&
                                                   selectedTime != null)
-                                              ? const Color(0xFF334155)
-                                              : Colors.grey,
+                                              ? AppColors.primary.withValues(alpha: 0.06)
+                                              : null,
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              Icons.calendar_month_rounded,
+                                              color: AppColors.primary,
+                                              size: 24.sp,
+                                            ),
+                                            SizedBox(width: 10.w),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Text(
+                                                    'التاريخ والوقت',
+                                                    style: TextStyle(
+                                                      fontSize: 12.sp,
+                                                      color: Colors.grey[600],
+                                                    ),
+                                                  ),
+                                                  SizedBox(height: 4.h),
+                                                  Text(
+                                                    (selectedDate != null &&
+                                                            selectedTime != null)
+                                                        ? '$dateLabel  •  $timeLabel'
+                                                        : 'اضغط لاختيار التاريخ والوقت',
+                                                    style: TextStyle(
+                                                      fontSize: 14.sp,
+                                                      fontWeight:
+                                                          (selectedDate != null &&
+                                                                  selectedTime != null)
+                                                              ? FontWeight.bold
+                                                              : FontWeight.normal,
+                                                      color: (selectedDate != null &&
+                                                              selectedTime != null)
+                                                          ? const Color(0xFF334155)
+                                                          : Colors.grey,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            Icon(
+                                              Icons.arrow_forward_ios_rounded,
+                                              size: 13.sp,
+                                              color: Colors.grey[400],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: 12.h),
+                            useVerticalActions
+                                ? Column(
+                                    children: [
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: ElevatedButton(
+                                          onPressed: () async {
+                                            if (!formKey.currentState!.validate()) return;
+                                            if (selectedBranch == null ||
+                                                selectedBranch!.isEmpty) {
+                                              Get.snackbar(
+                                                'تنبيه',
+                                                'يرجى اختيار الفرع',
+                                                snackPosition: SnackPosition.TOP,
+                                                backgroundColor: AppColors.error,
+                                                colorText: AppColors.white,
+                                                margin: EdgeInsets.all(20.r),
+                                              );
+                                              return;
+                                            }
+                                            if (selectedDate == null ||
+                                                selectedTime == null) {
+                                              Get.snackbar(
+                                                'تنبيه',
+                                                'يرجى اختيار التاريخ والوقت',
+                                                snackPosition: SnackPosition.TOP,
+                                                backgroundColor: AppColors.error,
+                                                colorText: AppColors.white,
+                                                margin: EdgeInsets.all(20.r),
+                                              );
+                                              return;
+                                            }
+                                            final scheduledAt = DateTime(
+                                              selectedDate!.year,
+                                              selectedDate!.month,
+                                              selectedDate!.day,
+                                              selectedTime!.hour,
+                                              selectedTime!.minute,
+                                            );
+                                            await _appointmentsController
+                                                .createAppointment(
+                                              patientName: nameController.text.trim(),
+                                              patientPhone: phoneController.text.trim(),
+                                              scheduledAt: scheduledAt,
+                                              branch: selectedBranch!,
+                                              governorate: selectedGovernorate ?? '',
+                                              platform: selectedPlatform ?? '',
+                                              note: noteController.text.trim(),
+                                            );
+                                            if (mounted) {
+                                              Navigator.of(ctx).pop();
+                                              Get.snackbar(
+                                                'تم',
+                                                'تمت إضافة الموعد بنجاح',
+                                                snackPosition:
+                                                    SnackPosition.BOTTOM,
+                                                backgroundColor:
+                                                    AppColors.success,
+                                                colorText: AppColors.white,
+                                                margin: EdgeInsets.all(20.r),
+                                              );
+                                            }
+                                          },
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: AppColors.primary,
+                                            foregroundColor: Colors.white,
+                                            padding: EdgeInsets.symmetric(
+                                                vertical: 14.h),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12.r),
+                                            ),
+                                            elevation: 0,
+                                          ),
+                                          child: Text(
+                                            'حفظ الموعد',
+                                            style: TextStyle(
+                                              fontSize: 16.sp,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      SizedBox(height: 8.h),
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: TextButton(
+                                          onPressed: () =>
+                                              Navigator.of(ctx).pop(),
+                                          style: TextButton.styleFrom(
+                                            padding: EdgeInsets.symmetric(
+                                                vertical: 14.h),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12.r),
+                                              side: BorderSide(
+                                                color: Colors.grey[300]!,
+                                              ),
+                                            ),
+                                          ),
+                                          child: Text(
+                                            'إلغاء',
+                                            style: TextStyle(
+                                              fontSize: 16.sp,
+                                              color: Colors.grey[600],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                : Row(
+                                    children: [
+                                      Expanded(
+                                        child: ElevatedButton(
+                                          onPressed: () async {
+                                            if (!formKey.currentState!.validate()) return;
+                                            if (selectedBranch == null ||
+                                                selectedBranch!.isEmpty) {
+                                              Get.snackbar(
+                                                'تنبيه',
+                                                'يرجى اختيار الفرع',
+                                                snackPosition: SnackPosition.TOP,
+                                                backgroundColor: AppColors.error,
+                                                colorText: AppColors.white,
+                                                margin: EdgeInsets.all(20.r),
+                                              );
+                                              return;
+                                            }
+                                            if (selectedDate == null ||
+                                                selectedTime == null) {
+                                              Get.snackbar(
+                                                'تنبيه',
+                                                'يرجى اختيار التاريخ والوقت',
+                                                snackPosition: SnackPosition.TOP,
+                                                backgroundColor: AppColors.error,
+                                                colorText: AppColors.white,
+                                                margin: EdgeInsets.all(20.r),
+                                              );
+                                              return;
+                                            }
+                                            final scheduledAt = DateTime(
+                                              selectedDate!.year,
+                                              selectedDate!.month,
+                                              selectedDate!.day,
+                                              selectedTime!.hour,
+                                              selectedTime!.minute,
+                                            );
+                                            await _appointmentsController
+                                                .createAppointment(
+                                              patientName: nameController.text.trim(),
+                                              patientPhone: phoneController.text.trim(),
+                                              scheduledAt: scheduledAt,
+                                              branch: selectedBranch!,
+                                              governorate: selectedGovernorate ?? '',
+                                              platform: selectedPlatform ?? '',
+                                              note: noteController.text.trim(),
+                                            );
+                                            if (mounted) {
+                                              Navigator.of(ctx).pop();
+                                              Get.snackbar(
+                                                'تم',
+                                                'تمت إضافة الموعد بنجاح',
+                                                snackPosition:
+                                                    SnackPosition.BOTTOM,
+                                                backgroundColor:
+                                                    AppColors.success,
+                                                colorText: AppColors.white,
+                                                margin: EdgeInsets.all(20.r),
+                                              );
+                                            }
+                                          },
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: AppColors.primary,
+                                            foregroundColor: Colors.white,
+                                            padding: EdgeInsets.symmetric(
+                                                vertical: 16.h),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12.r),
+                                            ),
+                                            elevation: 0,
+                                          ),
+                                          child: Text(
+                                            'حفظ الموعد',
+                                            style: TextStyle(
+                                              fontSize: 16.sp,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      SizedBox(width: 12.w),
+                                      Expanded(
+                                        child: TextButton(
+                                          onPressed: () =>
+                                              Navigator.of(ctx).pop(),
+                                          style: TextButton.styleFrom(
+                                            padding: EdgeInsets.symmetric(
+                                                vertical: 16.h),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12.r),
+                                              side: BorderSide(
+                                                color: Colors.grey[300]!,
+                                              ),
+                                            ),
+                                          ),
+                                          child: Text(
+                                            'إلغاء',
+                                            style: TextStyle(
+                                              fontSize: 16.sp,
+                                              color: Colors.grey[600],
+                                            ),
+                                          ),
                                         ),
                                       ),
                                     ],
                                   ),
-                                ),
-                                Icon(
-                                  Icons.arrow_forward_ios_rounded,
-                                  size: 14.sp,
-                                  color: Colors.grey[400],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        SizedBox(height: 32.h),
-
-                        // Actions
-                        Row(
-                          children: [
-                            Expanded(
-                              child: ElevatedButton(
-                                onPressed: () async {
-                                  if (!formKey.currentState!.validate()) return;
-                                  if (selectedBranch == null ||
-                                      selectedBranch!.isEmpty) {
-                                    Get.snackbar(
-                                      'تنبيه',
-                                      'يرجى اختيار الفرع',
-                                      snackPosition: SnackPosition.TOP,
-                                      backgroundColor: AppColors.error,
-                                      colorText: AppColors.white,
-                                      margin: EdgeInsets.all(20.r),
-                                    );
-                                    return;
-                                  }
-                                  if (selectedDate == null ||
-                                      selectedTime == null) {
-                                    Get.snackbar(
-                                      'تنبيه',
-                                      'يرجى اختيار التاريخ والوقت',
-                                      snackPosition: SnackPosition.TOP,
-                                      backgroundColor: AppColors.error,
-                                      colorText: AppColors.white,
-                                      margin: EdgeInsets.all(20.r),
-                                    );
-                                    return;
-                                  }
-                                  final scheduledAt = DateTime(
-                                    selectedDate!.year,
-                                    selectedDate!.month,
-                                    selectedDate!.day,
-                                    selectedTime!.hour,
-                                    selectedTime!.minute,
-                                  );
-                                  await _appointmentsController
-                                      .createAppointment(
-                                    patientName: nameController.text.trim(),
-                                    patientPhone: phoneController.text.trim(),
-                                    scheduledAt: scheduledAt,
-                                    branch: selectedBranch!,
-                                    governorate: selectedGovernorate ?? '',
-                                    platform: selectedPlatform ?? '',
-                                    note: noteController.text.trim(),
-                                  );
-                                  if (mounted) {
-                                    Navigator.of(ctx).pop();
-                                    Get.snackbar(
-                                      'تم',
-                                      'تمت إضافة الموعد بنجاح',
-                                      snackPosition: SnackPosition.BOTTOM,
-                                      backgroundColor: AppColors.success,
-                                      colorText: AppColors.white,
-                                      margin: EdgeInsets.all(20.r),
-                                    );
-                                  }
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppColors.primary,
-                                  foregroundColor: Colors.white,
-                                  padding:
-                                      EdgeInsets.symmetric(vertical: 16.h),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12.r),
-                                  ),
-                                  elevation: 0,
-                                ),
-                                child: Text(
-                                  'حفظ الموعد',
-                                  style: TextStyle(
-                                      fontSize: 16.sp,
-                                      fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                            ),
-                            SizedBox(width: 16.w),
-                            Expanded(
-                              child: TextButton(
-                                onPressed: () => Navigator.of(ctx).pop(),
-                                style: TextButton.styleFrom(
-                                  padding:
-                                      EdgeInsets.symmetric(vertical: 16.h),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12.r),
-                                    side: BorderSide(color: Colors.grey[300]!),
-                                  ),
-                                ),
-                                child: Text(
-                                  'إلغاء',
-                                  style: TextStyle(
-                                      fontSize: 16.sp,
-                                      color: Colors.grey[600]),
-                                ),
-                              ),
-                            ),
                           ],
-                        ),
-                      ],
+                        );
+                      },
                     ),
                   ),
                 );

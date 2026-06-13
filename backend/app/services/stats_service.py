@@ -300,8 +300,13 @@ async def get_doctor_profile_stats(
         key=lambda item: item["count"],
         default={"label": "غير متوفر", "min": -1, "max": -1, "count": 0},
     )
+    specific_treatment_counts = [
+        (name, count)
+        for name, count in treatment_counts.items()
+        if (name or "").strip() and name != "غير محدد"
+    ]
     top_treatment = max(
-        treatment_counts.items(),
+        specific_treatment_counts,
         key=lambda item: item[1],
         default=("لا يوجد", 0),
     )
@@ -540,8 +545,13 @@ async def get_doctor_details_cards_stats(
         key=lambda item: item["count"],
         default={"label": "غير متوفر", "min": -1, "max": -1, "count": 0},
     )
+    specific_treatment_counts = [
+        (name, count)
+        for name, count in treatment_counts.items()
+        if (name or "").strip() and name != "غير محدد"
+    ]
     top_treatment = max(
-        treatment_counts.items(),
+        specific_treatment_counts,
         key=lambda item: item[1],
         default=("لا يوجد", 0),
     )
@@ -557,6 +567,8 @@ async def get_doctor_details_cards_stats(
 
     # Unique transferred patients for this month and selected range.
     now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow_start = today_start + timedelta(days=1)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     next_month_start = (
         month_start.replace(year=month_start.year + 1, month=1)
@@ -565,12 +577,17 @@ async def get_doctor_details_cards_stats(
     )
     df, dt = parse_dates(date_from, date_to)
 
+    today_logs = await AssignmentLog.find(
+        AssignmentLog.doctor_id == did,
+        AssignmentLog.assigned_at >= today_start,
+        AssignmentLog.assigned_at < tomorrow_start,
+    ).to_list()
+
     month_logs = await AssignmentLog.find(
         AssignmentLog.doctor_id == did,
         AssignmentLog.assigned_at >= month_start,
         AssignmentLog.assigned_at < next_month_start,
     ).to_list()
-    month_unique_ids = {str(log.patient_id) for log in month_logs if getattr(log, "patient_id", None)}
 
     range_query = AssignmentLog.find(AssignmentLog.doctor_id == did)
     if df:
@@ -578,7 +595,48 @@ async def get_doctor_details_cards_stats(
     if dt:
         range_query = range_query.find(AssignmentLog.assigned_at < dt)
     range_logs = await range_query.to_list()
-    range_unique_ids = {str(log.patient_id) for log in range_logs if getattr(log, "patient_id", None)}
+
+    # These three cards should count only "new patients" (visit_type == "مريض جديد").
+    all_transferred_ids = {
+        str(log.patient_id)
+        for log in (today_logs + month_logs + range_logs)
+        if getattr(log, "patient_id", None)
+    }
+    transfer_oids: list[OID] = []
+    for sid in all_transferred_ids:
+        try:
+            transfer_oids.append(OID(sid))
+        except Exception:
+            continue
+
+    new_patient_ids: set[str] = set()
+    if transfer_oids:
+        new_patients = await Patient.find(
+            In(Patient.id, transfer_oids),
+            Patient.visit_type == "مريض جديد",
+        ).to_list()
+        new_patient_ids = {str(p.id) for p in new_patients}
+
+    month_new_unique_ids = {
+        str(log.patient_id)
+        for log in month_logs
+        if getattr(log, "patient_id", None) and str(log.patient_id) in new_patient_ids
+    }
+    range_new_unique_ids = {
+        str(log.patient_id)
+        for log in range_logs
+        if getattr(log, "patient_id", None) and str(log.patient_id) in new_patient_ids
+    }
+    today_new_ops = sum(
+        1
+        for log in today_logs
+        if getattr(log, "patient_id", None) and str(log.patient_id) in new_patient_ids
+    )
+    month_new_ops = sum(
+        1
+        for log in month_logs
+        if getattr(log, "patient_id", None) and str(log.patient_id) in new_patient_ids
+    )
 
     return {
         "doctor": {
@@ -606,10 +664,10 @@ async def get_doctor_details_cards_stats(
             },
         },
         "metrics": {
-            "period_patients_count": len(range_unique_ids),
-            "transfers_today": transfer_stats["transfers"]["today"],
-            "transfers_month_unique": len(month_unique_ids),
-            "transfers_month_ops": transfer_stats["transfers"]["this_month"],
+            "period_patients_count": len(range_new_unique_ids),
+            "transfers_today": today_new_ops,
+            "transfers_month_unique": len(month_new_unique_ids),
+            "transfers_month_ops": month_new_ops,
             "active_count": transfer_stats["active_patients"]["range"]["count"],
             "inactive_count": transfer_stats["inactive_patients"]["range"]["count"],
             "pending_count": transfer_stats["pending_patients"]["range"]["count"],
