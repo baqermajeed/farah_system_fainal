@@ -23,7 +23,7 @@ export function DashboardLayout() {
   const { mode, toggleTheme } = useThemeMode();
   const { logout } = useAuth();
   const screens = useBreakpoint();
-  const isMobile = !screens.lg;
+  const isMobile = !screens.md;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -55,6 +55,11 @@ export function DashboardLayout() {
     },
   ];
 
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
   const sidebarContent = (
     <>
       <div className="logo-wrap">
@@ -75,6 +80,20 @@ export function DashboardLayout() {
         }}
         items={menuItems}
       />
+      {isMobile && (
+        <div className="mobile-drawer-actions">
+          <Button
+            block
+            icon={mode === 'dark' ? <SunOutlined /> : <MoonOutlined />}
+            onClick={toggleTheme}
+          >
+            {mode === 'dark' ? 'الوضع الفاتح' : 'الوضع الداكن'}
+          </Button>
+          <Button danger block icon={<LogoutOutlined />} onClick={handleLogout}>
+            تسجيل الخروج
+          </Button>
+        </div>
+      )}
     </>
   );
 
@@ -83,8 +102,9 @@ export function DashboardLayout() {
       {isMobile ? (
         <Drawer
           placement="right"
-          width={280}
+          width={300}
           title="القائمة"
+          className="mobile-nav-drawer"
           open={mobileMenuOpen}
           onClose={() => setMobileMenuOpen(false)}
           styles={{ body: { padding: 0 } }}
@@ -107,24 +127,21 @@ export function DashboardLayout() {
                 aria-label="فتح القائمة"
               />
             )}
-            <Space wrap>
-              <Button
-                icon={mode === 'dark' ? <SunOutlined /> : <MoonOutlined />}
-                onClick={toggleTheme}
-              >
-                {mode === 'dark' ? 'الوضع الفاتح' : 'الوضع الداكن'}
-              </Button>
-              <Button
-                danger
-                icon={<LogoutOutlined />}
-                onClick={() => {
-                  logout();
-                  navigate('/login');
-                }}
-              >
-                تسجيل الخروج
-              </Button>
-            </Space>
+            {isMobile ? (
+              <Typography.Text className="mobile-header-title">Farah CRM</Typography.Text>
+            ) : (
+              <Space wrap>
+                <Button
+                  icon={mode === 'dark' ? <SunOutlined /> : <MoonOutlined />}
+                  onClick={toggleTheme}
+                >
+                  {mode === 'dark' ? 'الوضع الفاتح' : 'الوضع الداكن'}
+                </Button>
+                <Button danger icon={<LogoutOutlined />} onClick={handleLogout}>
+                  تسجيل الخروج
+                </Button>
+              </Space>
+            )}
           </div>
         </Header>
 

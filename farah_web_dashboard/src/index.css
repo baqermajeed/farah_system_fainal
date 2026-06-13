@@ -111,6 +111,18 @@ body[data-theme='light'] .glass-card {
   gap: 12px;
 }
 
+.mobile-header-title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.mobile-drawer-actions {
+  padding: 10px 12px 14px;
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid rgba(127, 127, 127, 0.2);
+}
+
 .dashboard-content {
   padding: 24px;
 }
@@ -497,5 +509,32 @@ body[data-theme='dark'] .stat-group-item {
 
   .stat-value.ant-typography {
     font-size: 30px !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .top-header {
+    min-height: 62px !important;
+    padding-block: 8px;
+  }
+
+  .top-header-inner {
+    gap: 8px;
+  }
+
+  .mobile-header-title {
+    font-size: 16px;
+  }
+
+  .dashboard-content {
+    padding: 10px 8px;
+  }
+
+  .page-wrap > .ant-typography {
+    margin-bottom: 6px !important;
+  }
+
+  .mobile-nav-drawer .ant-drawer-content-wrapper {
+    width: min(82vw, 320px) !important;
   }
 }
