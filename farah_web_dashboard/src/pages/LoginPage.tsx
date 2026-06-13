@@ -2,7 +2,6 @@ import { LockOutlined, UserOutlined } from '@ant-design/icons';
 import { Alert, Button, Card, Form, Input, Space, Typography, message } from 'antd';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { appConfig } from '../config/appConfig';
 import { loginStaff } from '../services/statsApi';
 import { useAuth } from '../state/AuthContext';
 
@@ -41,7 +40,7 @@ export function LoginPage() {
             لوحة تحكم مركز فرح
           </Typography.Title>
           <Typography.Text type="secondary">
-            تسجيل دخول الطاقم الإداري والطبي - {appConfig.apiBaseUrl}
+            تسجيل دخول الطاقم الإداري والطبي
           </Typography.Text>
         </Space>
 

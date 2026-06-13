@@ -95,12 +95,24 @@ body[data-theme='light'] .glass-card {
 
 .top-header {
   display: flex;
-  justify-content: flex-end;
+  justify-content: center;
   align-items: center;
   padding-inline: 24px !important;
   border-bottom: 1px solid rgba(127, 127, 127, 0.2) !important;
   background: linear-gradient(145deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.06)) !important;
   backdrop-filter: blur(16px);
+}
+
+.top-header-inner {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+}
+
+.dashboard-content {
+  padding: 24px;
 }
 
 .login-page {
@@ -451,9 +463,39 @@ body[data-theme='dark'] .stat-group-item {
 @media (max-width: 992px) {
   .top-header {
     gap: 10px;
-    flex-wrap: wrap;
     min-height: 80px !important;
     height: auto !important;
     padding-block: 10px;
+    padding-inline: 12px !important;
+  }
+
+  .top-header-inner {
+    justify-content: space-between;
+  }
+
+  .top-header-inner .ant-space {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .dashboard-content {
+    padding: 12px;
+  }
+
+  .login-page {
+    padding: 10px;
+  }
+
+  .login-card {
+    max-width: 100%;
+    border-radius: 14px;
+  }
+
+  .doctor-hero-name.ant-typography {
+    font-size: 26px !important;
+  }
+
+  .stat-value.ant-typography {
+    font-size: 30px !important;
   }
 }
