@@ -28,6 +28,8 @@ import 'package:frontend_desktop/controllers/medical_record_controller.dart';
 import 'package:frontend_desktop/controllers/gallery_controller.dart';
 import 'package:frontend_desktop/controllers/appointment_controller.dart';
 import 'package:frontend_desktop/controllers/working_hours_controller.dart';
+import 'package:frontend_desktop/controllers/presence_controller.dart';
+import 'package:frontend_desktop/widgets/doctor_online_indicator.dart';
 import 'package:frontend_desktop/controllers/implant_stage_controller.dart';
 import 'package:frontend_desktop/services/working_hours_service.dart';
 import 'package:frontend_desktop/services/doctor_service.dart';
@@ -8942,6 +8944,9 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
               Future(() async {
                 try {
                   final list = await doctorService.getAllDoctorsForManager();
+                  if (Get.isRegistered<PresenceController>()) {
+                    Get.find<PresenceController>().seedFromDoctors(list);
+                  }
                   setDialogState(() {
                     doctors = list;
                     isLoadingDoctors = false;
@@ -9210,6 +9215,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
+                                        SizedBox(width: 4.w),
+                                        DoctorOnlineIndicator(userId: doctor.userId),
                                         SizedBox(width: 4.w),
                                         // صورة الطبيب
                                         CircleAvatar(

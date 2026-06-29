@@ -24,6 +24,7 @@ import 'package:frontend_desktop/views/appointments_screen.dart';
 import 'package:frontend_desktop/views/queue_display_screen.dart';
 import 'package:frontend_desktop/controllers/auth_controller.dart';
 import 'package:frontend_desktop/controllers/queue_controller.dart';
+import 'package:frontend_desktop/controllers/presence_controller.dart';
 import 'package:frontend_desktop/services/cache_service.dart';
 import 'package:frontend_desktop/services/queue_announcement_service.dart';
 import 'package:frontend_desktop/services/queue_window_service.dart';
@@ -86,6 +87,7 @@ Future<void> _bootstrapMainApp() async {
   await Hive.openBox('metaData');
   await QueueAnnouncementService.instance.init();
 
+  Get.put(PresenceController());
   Get.put(AuthController());
   Get.put(QueueController());
 

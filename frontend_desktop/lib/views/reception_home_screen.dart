@@ -26,6 +26,8 @@ import 'package:frontend_desktop/controllers/gallery_controller.dart';
 import 'package:frontend_desktop/controllers/appointment_controller.dart';
 import 'package:frontend_desktop/controllers/working_hours_controller.dart';
 import 'package:frontend_desktop/controllers/implant_stage_controller.dart';
+import 'package:frontend_desktop/controllers/presence_controller.dart';
+import 'package:frontend_desktop/widgets/doctor_online_indicator.dart';
 import 'package:frontend_desktop/views/queue_management_dialog.dart';
 import 'package:frontend_desktop/services/working_hours_service.dart';
 import 'package:frontend_desktop/models/patient_model.dart';
@@ -9374,6 +9376,9 @@ class _SelectDoctorDialogState extends State<_SelectDoctorDialog> {
 
     try {
       final doctors = await widget.patientService.getAllDoctors();
+      if (Get.isRegistered<PresenceController>()) {
+        Get.find<PresenceController>().seedFromDoctors(doctors);
+      }
       setState(() {
         _doctors = doctors;
         _isLoading = false;
@@ -9584,18 +9589,28 @@ class _SelectDoctorDialogState extends State<_SelectDoctorDialog> {
                                     size: 24.sp,
                                   ),
                                   SizedBox(width: 12.w),
-                                  // Doctor name
+                                  // Doctor name + online indicator
                                   Expanded(
-                                    child: Text(
-                                      doctor.name ?? 'طبيب',
-                                      style: TextStyle(
-                                        fontSize: 14.sp,
-                                        fontWeight: FontWeight.w500,
-                                        color: isSelected
-                                            ? AppColors.primary
-                                            : AppColors.textPrimary,
-                                      ),
-                                      textAlign: TextAlign.right,
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.end,
+                                      children: [
+                                        Flexible(
+                                          child: Text(
+                                            doctor.name ?? 'طبيب',
+                                            style: TextStyle(
+                                              fontSize: 14.sp,
+                                              fontWeight: FontWeight.w500,
+                                              color: isSelected
+                                                  ? AppColors.primary
+                                                  : AppColors.textPrimary,
+                                            ),
+                                            textAlign: TextAlign.right,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        SizedBox(width: 6.w),
+                                        DoctorOnlineIndicator(userId: doctor.userId),
+                                      ],
                                     ),
                                   ),
                                 ],

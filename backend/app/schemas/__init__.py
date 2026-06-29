@@ -119,6 +119,7 @@ class DoctorOut(BaseModel):
     name: Optional[str] = None
     phone: str
     imageUrl: Optional[str] = None
+    is_online: bool = False
 
     class Config:
         from_attributes = True

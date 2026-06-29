@@ -7,6 +7,7 @@ import 'package:frontend_desktop/services/patient_service.dart';
 import 'package:frontend_desktop/services/cache_service.dart';
 import 'package:frontend_desktop/core/routes/app_routes.dart';
 import 'package:frontend_desktop/core/utils/network_utils.dart';
+import 'package:frontend_desktop/controllers/presence_controller.dart';
 
 class AuthController extends GetxController {
   final _authService = AuthService();
@@ -25,6 +26,12 @@ class AuthController extends GetxController {
     super.onInit();
     unawaited(_loadPersistedSession());
     _startConnectivityMonitor();
+    ever<int>(reconnectVersion, (_) {
+      final user = currentUser.value;
+      if (user != null) {
+        unawaited(_syncPresence(user));
+      }
+    });
   }
 
   @override
@@ -61,6 +68,7 @@ class AuthController extends GetxController {
           print(
             '✅ [AuthController] User loaded from session: ${user.name} (${user.userType})',
           );
+          await _syncPresence(user);
         } else {
           if (_isNetworkFailureResponse(res)) {
             print(
@@ -130,6 +138,7 @@ class AuthController extends GetxController {
           print(
             '✅ [AuthController] User loaded: ${user.name} (${user.userType})',
           );
+          await _syncPresence(user);
 
           if (!navigate) return;
 
@@ -263,6 +272,7 @@ class AuthController extends GetxController {
           await _cacheService.saveUser(user);
           
           await _syncPatientProfileId();
+          await _syncPresence(user);
 
           String targetRoute;
           switch (actualType) {
@@ -321,6 +331,9 @@ class AuthController extends GetxController {
 
   Future<void> logout() async {
     try {
+      if (Get.isRegistered<PresenceController>()) {
+        Get.find<PresenceController>().disconnect();
+      }
       await _authService.logout();
       
       // حذف من Cache - بنفس طريقة eversheen
@@ -367,6 +380,9 @@ class AuthController extends GetxController {
   }
 
   Future<void> _clearSessionLocal() async {
+    if (Get.isRegistered<PresenceController>()) {
+      Get.find<PresenceController>().disconnect();
+    }
     await _authService.logout();
     await _cacheService.deleteUser();
     currentUser.value = null;
@@ -404,5 +420,10 @@ class AuthController extends GetxController {
     } finally {
       _isSessionSyncInProgress = false;
     }
+  }
+
+  Future<void> _syncPresence(UserModel user) async {
+    if (!Get.isRegistered<PresenceController>()) return;
+    await Get.find<PresenceController>().connectForUser(user);
   }
 }

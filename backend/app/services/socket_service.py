@@ -30,6 +30,20 @@ socket_rooms: Dict[str, Set[str]] = {}
 socket_users: Dict[str, dict] = {}
 
 
+def is_user_online(user_id: str) -> bool:
+    """Return True if the user has at least one active Socket.IO connection."""
+    sockets = active_connections.get(user_id)
+    return bool(sockets)
+
+
+async def _broadcast_doctor_presence(user_id: str, is_online: bool) -> None:
+    """Notify all connected clients when a doctor goes online/offline."""
+    await sio.emit(
+        "presence_changed",
+        {"user_id": user_id, "is_online": is_online},
+    )
+
+
 @sio.on('connect')
 async def connect(sid: str, environ: dict, auth: dict):
     """Handle socket connection with authentication."""
@@ -72,6 +86,8 @@ async def connect(sid: str, environ: dict, auth: dict):
         
         # Track active connection
         user_id_key = str(user.id)
+        role = payload.get("role")
+        was_online = is_user_online(user_id_key)
         if user_id_key not in active_connections:
             active_connections[user_id_key] = set()
         active_connections[user_id_key].add(sid)
@@ -81,6 +97,8 @@ async def connect(sid: str, environ: dict, auth: dict):
         await sio.enter_room(sid, f"user_{user_id_key}")
         
         print(f"✅ User connected: {user_id_key} ({user.name}) - Socket: {sid}")
+        if role == Role.DOCTOR.value and not was_online:
+            await _broadcast_doctor_presence(user_id_key, True)
         return True
     except Exception as e:
         print(f"❌ Connection error for {sid}: {e}")
@@ -94,11 +112,14 @@ async def disconnect(sid: str):
     # Get user data
     user_data = socket_users.pop(sid, None)
     user_id = user_data.get('user_id') if user_data else None
+    role = user_data.get('role') if user_data else None
     
     # Remove from active connections
+    still_online = False
     if user_id and user_id in active_connections:
         active_connections[user_id].discard(sid)
-        if not active_connections[user_id]:
+        still_online = bool(active_connections[user_id])
+        if not still_online:
             active_connections.pop(user_id, None)
     
     # Remove socket rooms
@@ -106,6 +127,8 @@ async def disconnect(sid: str):
     
     if user_id:
         print(f"❌ User disconnected: {user_id} - Socket: {sid}")
+        if role == Role.DOCTOR.value and not still_online:
+            await _broadcast_doctor_presence(user_id, False)
     else:
         print(f"❌ Socket disconnected: {sid}")
 

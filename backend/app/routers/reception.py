@@ -177,6 +177,8 @@ async def get_doctor_available_slots_for_reception(doctor_id: str, date: str):
 async def list_doctors():
     """جلب قائمة جميع الأطباء المتاحين."""
     from app.models import Doctor
+    from app.services.socket_service import is_user_online
+
     doctors = await Doctor.find({}).to_list()
     out: List[DoctorOut] = []
     user_ids = list({d.user_id for d in doctors if d.user_id})
@@ -193,6 +195,7 @@ async def list_doctors():
             name=u.name if u else None,
             phone=u.phone if u else "",
             imageUrl=image_url,
+            is_online=is_user_online(str(d.user_id)),
         ))
     return out
 
@@ -223,6 +226,7 @@ async def get_patient_doctors(patient_id: str):
             name=u.name if u else None,
             phone=u.phone if u else "",
             imageUrl=image_url,
+            is_online=is_user_online(str(d.user_id)),
         ))
     return out
 

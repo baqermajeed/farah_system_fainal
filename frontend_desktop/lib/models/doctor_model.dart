@@ -25,6 +25,9 @@ class DoctorModel {
   @HiveField(6)
   final DateTime? lastTransferAt;
 
+  /// Whether the doctor's desktop app is currently open (not persisted in Hive).
+  final bool isOnline;
+
   DoctorModel({
     required this.id,
     required this.userId,
@@ -33,6 +36,7 @@ class DoctorModel {
     this.imageUrl,
     this.todayTransfers = 0,
     this.lastTransferAt,
+    this.isOnline = false,
   });
 
   factory DoctorModel.fromJson(Map<String, dynamic> json) {
@@ -64,6 +68,7 @@ class DoctorModel {
       imageUrl: json['imageUrl'] ?? json['image_url'],
       todayTransfers: transfers,
       lastTransferAt: lastTransferAt,
+      isOnline: json['is_online'] == true,
     );
   }
 

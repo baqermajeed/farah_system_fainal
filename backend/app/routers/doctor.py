@@ -339,6 +339,7 @@ async def list_doctors_for_manager(current=Depends(get_current_user)):
 
     from datetime import datetime, timezone, timedelta
     from app.services import patient_service
+    from app.services.socket_service import is_user_online
 
     now = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -397,6 +398,7 @@ async def list_doctors_for_manager(current=Depends(get_current_user)):
             "imageUrl": u.imageUrl,
             "today_transfers": today_transfers,
             "last_transfer_at": last_transfer_at.isoformat() if last_transfer_at else None,
+            "is_online": is_user_online(str(d.user_id)),
         }
 
         print(
