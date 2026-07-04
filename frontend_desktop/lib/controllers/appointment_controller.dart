@@ -153,7 +153,6 @@ class AppointmentController extends GetxController {
   Future<void> loadPatientAppointments() async {
     try {
       print('📅 [AppointmentController] loadPatientAppointments called');
-      isLoading.value = true;
 
       // 1) محاولة التحميل من الكاش أولاً (Hive) - بنفس طريقة eversheen
       final authController = Get.find<AuthController>();
@@ -174,6 +173,8 @@ class AppointmentController extends GetxController {
           print(
             '✅ [AppointmentController] Loaded ${appointments.length} appointments from cache',
           );
+      } else if (appointments.isEmpty) {
+        isLoading.value = true;
       }
 
       final userTypeForRequest =
@@ -297,11 +298,10 @@ class AppointmentController extends GetxController {
       if (isRefresh || isInitial) {
         currentPage = 1;
         hasMoreAppointments.value = true;
-        isLoading.value = true;
-        // ⭐ مسح القائمة فوراً عند تغيير التبويب/الفلتر لضمان عدم عرض بيانات قديمة
-        appointments.clear();
-        primaryAppointments.clear();
-        secondaryAppointments.clear();
+        // لا نمسح القائمة ولا نُظهر سبينر إن وُجدت بيانات — يمنع وميض الواجهة
+        if (appointments.isEmpty) {
+          isLoading.value = true;
+        }
       } else {
         if (!hasMoreAppointments.value || isLoadingMoreAppointments.value) return;
         isLoadingMoreAppointments.value = true;
@@ -403,15 +403,14 @@ class AppointmentController extends GetxController {
   // جلب مواعيد مريض محدد (للطبيب) مع فلترتها للطبيب الحالي
   Future<void> loadPatientAppointmentsById(String patientId) async {
     try {
-      isLoading.value = true;
-      
       // محاولة قراءة من Cache أولاً - بنفس طريقة eversheen
       final cachedAppointments = _cacheService.getPatientAppointments(patientId);
       if (cachedAppointments.isNotEmpty) {
         patientAppointmentsCache[patientId] = cachedAppointments;
         patientAppointmentsCache.refresh();
         appointments.value = cachedAppointments;
-        isLoading.value = false;
+      } else if (appointments.isEmpty) {
+        isLoading.value = true;
       }
       
       final appointmentsList = await _appointmentRepository.fetchPatientAppointments(
@@ -454,7 +453,6 @@ class AppointmentController extends GetxController {
   // حذف موعد (للطبيب)
   Future<void> deleteAppointment(String patientId, String appointmentId) async {
     try {
-      isLoading.value = true;
       final success = await _doctorService.deleteAppointment(
         patientId,
         appointmentId,
@@ -479,8 +477,6 @@ class AppointmentController extends GetxController {
     } catch (e) {
       Get.snackbar('خطأ', 'حدث خطأ أثناء حذف الموعد');
       rethrow;
-    } finally {
-      isLoading.value = false;
     }
   }
 
@@ -628,7 +624,6 @@ class AppointmentController extends GetxController {
     String status,
   ) async {
     try {
-      isLoading.value = true;
       final updatedAppointment = await _doctorService.updateAppointmentStatus(
         patientId,
         appointmentId,
@@ -675,8 +670,6 @@ class AppointmentController extends GetxController {
         Get.snackbar('خطأ', 'حدث خطأ أثناء تحديث حالة الموعد');
       }
       rethrow;
-    } finally {
-      isLoading.value = false;
     }
   }
 
@@ -687,7 +680,6 @@ class AppointmentController extends GetxController {
     DateTime scheduledAt,
   ) async {
     try {
-      isLoading.value = true;
       final updatedAppointment = await _doctorService.updateAppointmentDateTime(
         patientId,
         appointmentId,
@@ -734,8 +726,6 @@ class AppointmentController extends GetxController {
         Get.snackbar('خطأ', 'حدث خطأ أثناء تحديث تاريخ الموعد');
       }
       rethrow;
-    } finally {
-      isLoading.value = false;
     }
   }
 

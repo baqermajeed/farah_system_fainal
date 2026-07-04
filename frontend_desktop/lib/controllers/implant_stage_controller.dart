@@ -34,11 +34,6 @@ class ImplantStageController extends GetxController {
 
     _inFlightPatientIds.add(patientId);
     try {
-      // لتجنّب "القفزة" في الواجهة: نحذف أي بيانات قديمة في الذاكرة
-      // ونُظهر حالة تحميل إلى أن تَصل بيانات الباكند الفعلية.
-      isLoading.value = true;
-      stages.removeWhere((s) => s.patientId == patientId);
-
       await loadStages(patientId);
     } finally {
       _inFlightPatientIds.remove(patientId);
@@ -51,7 +46,11 @@ class ImplantStageController extends GetxController {
     // Mark as attempted to avoid loops when the result is legitimately empty.
     _loadedOncePatientIds.add(patientId);
     try {
-      isLoading.value = true;
+      // سبينر فقط إن لم توجد مراحل معروضة لهذا المريض
+      final hasExisting = stages.any((s) => s.patientId == patientId);
+      if (!hasExisting) {
+        isLoading.value = true;
+      }
       errorMessage.value = '';
 
       final loadedStages = await _implantStageService.getImplantStages(patientId);
@@ -75,7 +74,9 @@ class ImplantStageController extends GetxController {
     if (patientIds.isEmpty) return;
 
     try {
-      isLoading.value = true;
+      if (stages.isEmpty) {
+        isLoading.value = true;
+      }
       errorMessage.value = '';
 
       // Mark as attempted to avoid loops.
@@ -103,7 +104,6 @@ class ImplantStageController extends GetxController {
   // تهيئة مراحل زراعة الأسنان
   Future<void> initializeStages(String patientId) async {
     try {
-      isLoading.value = true;
       errorMessage.value = '';
 
       final initializedStages = await _implantStageService.initializeImplantStages(patientId);

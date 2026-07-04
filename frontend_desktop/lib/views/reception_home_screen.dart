@@ -168,6 +168,9 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
   String?
   _currentPatientIdForDoctors; // Track which patient's doctors are loaded
 
+  // آخر مريض حُمّلت بياناته — لتجنب إعادة التحميل عند تعديل نفس المريض
+  String? _lastLoadedPatientProfileId;
+
   // Appointments filtering (custom tab: date range from / to)
   DateTime? _appointmentsRangeStart;
   DateTime? _appointmentsRangeEnd;
@@ -244,36 +247,44 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
 
     // Listen to patient selection changes
     ever(_patientController.selectedPatient, (patient) {
-      if (patient != null) {
-        // التحقق من نوع المستخدم
-        final currentUser = _authController.currentUser.value;
-        final userType = currentUser?.userType.toLowerCase();
+      if (patient == null) return;
 
-        if (userType == 'receptionist') {
-          // موظف الاستقبال:
-          // - تحميل أطباء المريض للقسم الجانبي
-          // - تحميل صور المعرض الخاصة به لهذا المريض
-          if (_currentPatientIdForDoctors != patient.id) {
-            _patientDoctors.clear();
-            _currentPatientIdForDoctors = patient.id;
-            _loadPatientDoctors(patient.id);
-          }
-          _galleryController.loadGallery(patient.id);
-          return;
+      // تحديث بيانات نفس المريض (حفظ التعديل) لا يعيد تحميل التبويبات
+      final isSamePatient = _lastLoadedPatientProfileId == patient.id;
+      if (isSamePatient) {
+        if (mounted) setState(() {});
+        return;
+      }
+      _lastLoadedPatientProfileId = patient.id;
+
+      // التحقق من نوع المستخدم
+      final currentUser = _authController.currentUser.value;
+      final userType = currentUser?.userType.toLowerCase();
+
+      if (userType == 'receptionist') {
+        // موظف الاستقبال:
+        // - تحميل أطباء المريض للقسم الجانبي
+        // - تحميل صور المعرض الخاصة به لهذا المريض
+        if (_currentPatientIdForDoctors != patient.id) {
+          _patientDoctors.clear();
+          _currentPatientIdForDoctors = patient.id;
+          _loadPatientDoctors(patient.id);
         }
-
-        // للطبيب أو أدوار أخرى: تحميل السجلات والمعرض والمواعيد
-        _medicalRecordController.loadPatientRecords(patient.id);
         _galleryController.loadGallery(patient.id);
-        _appointmentController.loadPatientAppointmentsById(patient.id);
+        return;
+      }
 
-        // Load implant stages if treatment type is زراعة
-        if (patient.treatmentHistory != null &&
-            patient.treatmentHistory!.isNotEmpty &&
-            patient.treatmentHistory!.last == 'زراعة') {
-          final implantStageController = Get.put(ImplantStageController());
-          implantStageController.ensureStagesLoaded(patient.id);
-        }
+      // للطبيب أو أدوار أخرى: تحميل السجلات والمعرض والمواعيد
+      _medicalRecordController.loadPatientRecords(patient.id);
+      _galleryController.loadGallery(patient.id);
+      _appointmentController.loadPatientAppointmentsById(patient.id);
+
+      // Load implant stages if treatment type is زراعة
+      if (patient.treatmentHistory != null &&
+          patient.treatmentHistory!.isNotEmpty &&
+          patient.treatmentHistory!.last == 'زراعة') {
+        final implantStageController = Get.put(ImplantStageController());
+        implantStageController.ensureStagesLoaded(patient.id);
       }
     });
   }
@@ -1311,7 +1322,8 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
           // ترتيب المرضى من الأحدث إلى الأقدم حسب الـ id
           patientsList.sort((a, b) => b.id.compareTo(a.id));
 
-          if (isSearching || (isLoading && query.isEmpty)) {
+          if (isSearching ||
+              (isLoading && query.isEmpty && patientsList.isEmpty)) {
             return ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               children: const [
@@ -2017,11 +2029,11 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
           // Patients List
           Expanded(
             child: Obx(() {
-              if (_patientController.isLoading.value) {
+              final patients = _patientController.patients;
+              if (_patientController.isLoading.value && patients.isEmpty) {
                 return const Center(child: CircularProgressIndicator());
               }
 
-              final patients = _patientController.patients;
               final query = _searchController.text.toLowerCase();
               final filteredPatients = patients.where((p) {
                 return p.name.toLowerCase().contains(query) ||
@@ -2854,7 +2866,11 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
 
   Widget _buildRecordsTab(PatientModel patient) {
     return Obx(() {
-      if (_medicalRecordController.isLoading.value) {
+      final records = _medicalRecordController.records
+          .where((record) => record.patientId == patient.id)
+          .toList();
+
+      if (_medicalRecordController.isLoading.value && records.isEmpty) {
         return Container(
           color: const Color(0xFFF4FEFF),
           child: Center(
@@ -2863,9 +2879,6 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
         );
       }
 
-      final records = _medicalRecordController.records
-          .where((record) => record.patientId == patient.id)
-          .toList();
 
       if (records.isEmpty) {
         return Container(
@@ -3068,15 +3081,6 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
     _appointmentController.ensurePatientAppointmentsLoadedById(patient.id);
 
     return Obx(() {
-      if (_appointmentController.isLoading.value) {
-        return Container(
-          color: const Color(0xFFF4FEFF),
-          child: Center(
-            child: CircularProgressIndicator(color: AppColors.primary),
-          ),
-        );
-      }
-
       final cached = _appointmentController.getCachedPatientAppointments(
         patient.id,
       );
@@ -3085,6 +3089,15 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
           : _appointmentController.appointments
                 .where((apt) => apt.patientId == patient.id)
                 .toList();
+
+      if (_appointmentController.isLoading.value && appointments.isEmpty) {
+        return Container(
+          color: const Color(0xFFF4FEFF),
+          child: Center(
+            child: CircularProgressIndicator(color: AppColors.primary),
+          ),
+        );
+      }
 
       if (appointments.isEmpty) {
         return Container(
@@ -3220,7 +3233,10 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
     }
 
     return Obx(() {
-      if (implantStageController.isLoading.value) {
+      // Only consider stages for this patient (controller may hold stages for multiple patients)
+      final patientStages = implantStageController.stagesForPatient(patient.id);
+
+      if (implantStageController.isLoading.value && patientStages.isEmpty) {
         return Container(
           color: const Color(0xFFF4FEFF),
           child: Center(
@@ -3228,9 +3244,6 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
           ),
         );
       }
-
-      // Only consider stages for this patient (controller may hold stages for multiple patients)
-      final patientStages = implantStageController.stagesForPatient(patient.id);
 
       if (patientStages.isEmpty) {
         return Container(
@@ -3792,7 +3805,9 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
 
   Widget _buildGalleryTab(PatientModel patient) {
     return Obx(() {
-      if (_galleryController.isLoading.value) {
+      final images = _galleryController.galleryImages;
+      // سبينر كامل فقط عند عدم وجود صور — لا نخفي المحتوى أثناء التحديث
+      if (_galleryController.isLoading.value && images.isEmpty) {
         return Container(
           color: const Color(0xFFF4FEFF),
           child: Center(
@@ -3801,7 +3816,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
         );
       }
 
-      if (_galleryController.galleryImages.isEmpty) {
+      if (images.isEmpty) {
         return Container(
           color: const Color(0xFFF4FEFF),
           child: Center(
@@ -3897,7 +3912,8 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
   /// معرض صور الموظف في ملف المريض (يظهر لموظف الاستقبال فقط فوق الأطباء المعالجون)
   Widget _buildReceptionGallerySection(PatientModel patient) {
     return Obx(() {
-      if (_galleryController.isLoading.value) {
+      final images = _galleryController.galleryImages;
+      if (_galleryController.isLoading.value && images.isEmpty) {
         return Container(
           margin: EdgeInsets.symmetric(horizontal: 16.w),
           padding: EdgeInsets.all(16.w),
@@ -3917,8 +3933,6 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
           ),
         );
       }
-
-      final images = _galleryController.galleryImages;
 
       return Container(
         margin: EdgeInsets.symmetric(horizontal: 16.w),
@@ -7458,12 +7472,36 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
     final ageController = TextEditingController(
       text: patient.age > 0 ? patient.age.toString() : '',
     );
-    final cityController = TextEditingController(text: patient.city);
+
+    // نفس محافظات شاشة إضافة مريض
+    const cities = <String>[
+      'بغداد',
+      'البصرة',
+      'النجف الاشرف',
+      'كربلاء',
+      'الموصل',
+      'أربيل',
+      'السليمانية',
+      'ديالى',
+      'الديوانية',
+      'المثنى',
+      'كركوك',
+      'واسط',
+      'ميسان',
+      'الأنبار',
+      'ذي قار',
+      'بابل',
+      'دهوك',
+      'صلاح الدين',
+    ];
 
     final normalizedGender = (patient.gender == 'female' || patient.gender == 'أنثى')
         ? 'female'
         : 'male';
     String selectedGender = normalizedGender;
+    final currentCity = patient.city.trim();
+    String? selectedCity =
+        cities.contains(currentCity) ? currentCity : null;
     bool isSaving = false;
 
     showDialog(
@@ -7561,9 +7599,33 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                       ],
                     ),
                     SizedBox(height: 10.h),
-                    TextField(
-                      controller: cityController,
-                      textAlign: TextAlign.right,
+                    DropdownButtonFormField<String>(
+                      value: selectedCity,
+                      isExpanded: true,
+                      hint: Text(
+                        'اختر المحافظة',
+                        textAlign: TextAlign.right,
+                        style: TextStyle(
+                          fontSize: 14.sp,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      items: cities
+                          .map(
+                            (city) => DropdownMenuItem<String>(
+                              value: city,
+                              child: Text(
+                                city,
+                                textAlign: TextAlign.right,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: isSaving
+                          ? null
+                          : (value) {
+                              setDialogState(() => selectedCity = value);
+                            },
                       decoration: InputDecoration(
                         labelText: 'المدينة',
                         border: OutlineInputBorder(
@@ -7606,7 +7668,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                                 : () async {
                                     final name = nameController.text.trim();
                                     final phone = phoneController.text.trim();
-                                    final city = cityController.text.trim();
+                                    final city = selectedCity?.trim() ?? '';
                                     final age = int.tryParse(ageController.text.trim());
                                     final phoneValid = RegExp(r'^07\d{9}$').hasMatch(
                                       phone,

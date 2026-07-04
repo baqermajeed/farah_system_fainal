@@ -82,11 +82,14 @@ class MedicalRecordController extends GetxController {
   Future<void> loadPatientRecords(String patientId) async {
     _activePatientId = patientId;
     try {
-      isLoading.value = true;
-
       final cachedRecords = _cacheService.getMedicalRecords(patientId);
       if (cachedRecords.isNotEmpty) {
         records.value = _sortRecords(cachedRecords);
+      }
+
+      // سبينر فقط عند عدم وجود بيانات معروضة
+      if (records.isEmpty) {
+        isLoading.value = true;
       }
 
       try {
@@ -448,7 +451,6 @@ class MedicalRecordController extends GetxController {
     List<File>? imageFiles,
   }) async {
     try {
-      isLoading.value = true;
       final updatedRecord = await _doctorService.updateNote(
         patientId: patientId,
         noteId: recordId,
@@ -479,8 +481,6 @@ class MedicalRecordController extends GetxController {
         Get.snackbar('خطأ', 'حدث خطأ أثناء تحديث السجل');
       }
       rethrow;
-    } finally {
-      isLoading.value = false;
     }
   }
 
@@ -544,7 +544,6 @@ class MedicalRecordController extends GetxController {
     required String recordId,
   }) async {
     try {
-      isLoading.value = true;
       await _doctorService.deleteNote(
         patientId: patientId,
         noteId: recordId,
@@ -570,8 +569,6 @@ class MedicalRecordController extends GetxController {
         Get.snackbar('خطأ', 'حدث خطأ أثناء حذف السجل');
       }
       rethrow;
-    } finally {
-      isLoading.value = false;
     }
   }
 

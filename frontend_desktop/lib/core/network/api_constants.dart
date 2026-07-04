@@ -1,9 +1,9 @@
 class ApiConstants {
   /// Base URL for all API calls.
-  /// Default (for local testing now): `http://127.0.0.1:8000`.
+  /// Default: `https://sys-api.farahdent.com`.
   /// Use `--dart-define=API_BASE_URL=<url>` or `--dart-define=API_HOST=<host>`
-  /// only when you need to target a different backend.
-  static const String _defaultBaseUrl = 'http://127.0.0.1:8000';
+  /// only when you need to target a different backend (e.g. local).
+  static const String _defaultBaseUrl = 'https://sys-api.farahdent.com';
 
   static const String _apiHostOverride = String.fromEnvironment(
     'API_HOST',
@@ -150,6 +150,13 @@ class ApiConstants {
       '/doctor/patients/$patientId/transfer';
   static const String doctorDoctors = '/doctor/doctors';
   static const String doctorAppointments = '/doctor/appointments';
+
+  // Dental Chart (FDI)
+  static String patientDentalChart(String patientId) =>
+      '/patients/$patientId/dental-chart';
+  static String patientDentalTooth(String patientId, String toothNo) =>
+      '/patients/$patientId/dental-chart/teeth/$toothNo';
+  static const String dentalChartMeta = '/dental-chart/meta';
 
   // Implant Stages Endpoints
   static String getImplantStages(String patientId) =>

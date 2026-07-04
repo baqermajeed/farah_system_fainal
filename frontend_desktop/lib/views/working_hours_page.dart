@@ -66,7 +66,8 @@ class WorkingHoursPage extends StatelessWidget {
             // Body
             Expanded(
               child: Obx(() {
-                if (controller.isLoading.value) {
+                if (controller.isLoading.value &&
+                    controller.workingHours.isEmpty) {
                   return Center(
                     child: CircularProgressIndicator(
                       color: AppColors.primary,

@@ -722,13 +722,22 @@ async def create_gallery_image(
     image_path: str,
     note: Optional[str],
     doctor_id: str | None = None,
+    client_operation_id: Optional[str] = None,
 ) -> GalleryImage:
     """
     إنشاء سجل صورة في معرض المريض.
 
     - uploaded_by_user_id: المستخدم (طبيب / استقبال / مصور) الذي رفع الصورة.
     - doctor_id: يتم تمريره فقط عندما تكون الصورة مرفوعة من قبل الطبيب لحساب النشاط.
+    - client_operation_id: لمنع التكرار عند إعادة محاولة الرفع من العميل.
     """
+    if client_operation_id:
+        existing = await GalleryImage.find_one(
+            GalleryImage.client_operation_id == client_operation_id
+        )
+        if existing:
+            return existing
+
     doctor_oid = OID(doctor_id) if doctor_id else None
     gi = GalleryImage(
         patient_id=OID(patient_id),
@@ -736,8 +745,18 @@ async def create_gallery_image(
         image_path=image_path,
         note=note,
         doctor_id=doctor_oid,
+        client_operation_id=client_operation_id,
     )
-    await gi.insert()
+    try:
+        await gi.insert()
+    except Exception:
+        if client_operation_id:
+            existing = await GalleryImage.find_one(
+                GalleryImage.client_operation_id == client_operation_id
+            )
+            if existing:
+                return existing
+        raise
 
     # لا نربط النشاط بحفظ الصور ضمن آلية تفعيل المرضى الجديدة.
     if doctor_id:

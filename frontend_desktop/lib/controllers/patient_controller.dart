@@ -88,8 +88,10 @@ class PatientController extends GetxController {
       if (isRefresh || isInitial) {
         currentPage = 1;
         hasMorePatients.value = true;
-        isLoading.value = true;
-        patients.clear();
+        // لا نمسح القائمة ولا نُظهر سبينر إن وُجدت بيانات — يمنع وميض الواجهة
+        if (patients.isEmpty) {
+          isLoading.value = true;
+        }
       } else {
         if (!hasMorePatients.value || isLoadingMorePatients.value) return;
         isLoadingMorePatients.value = true;
@@ -106,6 +108,7 @@ class PatientController extends GetxController {
           final cachedPatients = _cacheService.getFirstPatients(pageLimit);
           if (cachedPatients.isNotEmpty) {
             patients.assignAll(cachedPatients);
+            isLoading.value = false;
             print(
               '✅ [PatientController] Loaded ${patients.length} patients from cache',
             );
@@ -216,7 +219,7 @@ class PatientController extends GetxController {
     PatientModel? oldPatient;
 
     try {
-      isLoading.value = true;
+      // لا isLoading — تحديث متفائل بدون وميض الواجهة
 
       // 1) حفظ نسخة قديمة (لأجل التراجع) + تحديث متفائل في الواجهة والكاش
       final index = patients.indexWhere((p) => p.id == patientId);
@@ -320,8 +323,6 @@ class PatientController extends GetxController {
       } else {
         Get.snackbar('خطأ', 'حدث خطأ أثناء تحديث نوع العلاج');
       }
-    } finally {
-      isLoading.value = false;
     }
   }
 
@@ -332,7 +333,7 @@ class PatientController extends GetxController {
     PatientModel? oldPatient;
 
     try {
-      isLoading.value = true;
+      // لا isLoading — تحديث متفائل بدون وميض الواجهة
 
       final index = patients.indexWhere((p) => p.id == patientId);
       if (index != -1) {
@@ -423,8 +424,6 @@ class PatientController extends GetxController {
       } else {
         Get.snackbar('خطأ', 'حدث خطأ أثناء تحديث طرق الدفع');
       }
-    } finally {
-      isLoading.value = false;
     }
   }
 
@@ -438,7 +437,7 @@ class PatientController extends GetxController {
   }) async {
     PatientModel? oldPatient;
     try {
-      isLoading.value = true;
+      // لا نستخدم isLoading هنا — يمنع وميض كامل الواجهة أثناء الحفظ
       final index = patients.indexWhere((p) => p.id == patientId);
       if (index != -1) {
         oldPatient = patients[index];
@@ -490,6 +489,9 @@ class PatientController extends GetxController {
         if (index != -1) {
           patients[index] = oldPatient;
         }
+        if (selectedPatient.value?.id == patientId) {
+          selectedPatient.value = oldPatient;
+        }
       }
       if (NetworkUtils.isNetworkError(e)) {
         NetworkUtils.showNetworkErrorDialog();
@@ -503,6 +505,9 @@ class PatientController extends GetxController {
         if (index != -1) {
           patients[index] = oldPatient;
         }
+        if (selectedPatient.value?.id == patientId) {
+          selectedPatient.value = oldPatient;
+        }
       }
       if (NetworkUtils.isNetworkError(e)) {
         NetworkUtils.showNetworkErrorDialog();
@@ -510,8 +515,6 @@ class PatientController extends GetxController {
         Get.snackbar('خطأ', 'حدث خطأ أثناء تحديث بيانات المريض');
       }
       rethrow;
-    } finally {
-      isLoading.value = false;
     }
   }
 
@@ -556,7 +559,6 @@ class PatientController extends GetxController {
 
   Future<void> activatePatientByReception(String patientId) async {
     try {
-      isLoading.value = true;
       final updatedPatient = await _patientService.activatePatient(patientId);
       final index = patients.indexWhere((p) => p.id == patientId);
       if (index != -1) {
@@ -581,8 +583,6 @@ class PatientController extends GetxController {
       } else {
         Get.snackbar('خطأ', 'فشل تنشيط المريض');
       }
-    } finally {
-      isLoading.value = false;
     }
   }
 
@@ -591,7 +591,6 @@ class PatientController extends GetxController {
     required String status,
   }) async {
     try {
-      isLoading.value = true;
       final updatedPatient = await _patientService.updatePatientActivityStatus(
         patientId: patientId,
         status: status,
@@ -618,8 +617,6 @@ class PatientController extends GetxController {
       } else {
         Get.snackbar('خطأ', 'فشل تحديث حالة المريض');
       }
-    } finally {
-      isLoading.value = false;
     }
   }
 

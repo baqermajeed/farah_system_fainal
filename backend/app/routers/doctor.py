@@ -101,12 +101,14 @@ def _build_appointment_out(
         if getattr(appointment, "scheduled_at", None)
         else datetime.now(timezone.utc)
     )
-    if scheduled_at.tzinfo is None:
-        scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
-    else:
-        scheduled_at = scheduled_at.astimezone(timezone.utc)
+    # العميل يرسل وقت العيادة المحلي بدون إزاحة؛ التخزين قد يحمل tz UTC بالخطأ.
+    # نُرجع مكونات الساعة كما هي (wall-clock) بدون لاحقة Z حتى لا يُضاف +3 عند العرض.
+    if scheduled_at.tzinfo is not None:
+        scheduled_at = scheduled_at.replace(tzinfo=None)
+    scheduled_at = scheduled_at.replace(microsecond=0)
 
-    is_late = normalized_status == "pending" and scheduled_at < datetime.now(timezone.utc)
+    now_clinic = datetime.now().replace(tzinfo=None, microsecond=0)
+    is_late = normalized_status == "pending" and scheduled_at < now_clinic
 
     return AppointmentOut(
         id=str(appointment.id),
@@ -941,10 +943,29 @@ async def add_gallery_image(
     patient_id: str,
     note: str | None = Form(None),
     image: UploadFile = File(...),
+    x_idempotency_key: str | None = Header(default=None, alias="X-Idempotency-Key"),
     current=Depends(get_current_user),
 ):
     """رفع صورة إلى معرض المريض (قسم المعرض)."""
     doctor_id = await _get_current_doctor_id(current)
+
+    # إعادة نفس السجل عند تكرار نفس مفتاح العملية (رفع آمن بلا تكرار)
+    if x_idempotency_key:
+        from app.models.media import GalleryImage
+        existing = await GalleryImage.find_one(
+            GalleryImage.client_operation_id == x_idempotency_key
+        )
+        if existing:
+            return GalleryOut(
+                id=str(existing.id),
+                patient_id=str(existing.patient_id),
+                image_path=existing.image_path,
+                note=existing.note,
+                created_at=existing.created_at.isoformat()
+                if existing.created_at
+                else datetime.now(timezone.utc).isoformat(),
+            )
+
     patient_name_hint = await _get_patient_user_name(patient_id)
     if IMAGE_TYPES and image.content_type not in IMAGE_TYPES:
         from fastapi import HTTPException
@@ -967,6 +988,7 @@ async def add_gallery_image(
         image_path=image_path,
         note=note,
         doctor_id=doctor_id,
+        client_operation_id=x_idempotency_key,
     )
     return GalleryOut(
         id=str(gi.id),

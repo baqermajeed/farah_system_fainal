@@ -628,8 +628,9 @@ class DoctorService {
   Future<GalleryImageModel> uploadGalleryImage(
     String patientId,
     File imageFile,
-    String? note,
-  ) async {
+    String? note, {
+    String? idempotencyKey,
+  }) async {
     try {
       final formData = dio.FormData.fromMap({
         'image': await dio.MultipartFile.fromFile(
@@ -642,9 +643,10 @@ class DoctorService {
       final response = await _api.post(
         ApiConstants.doctorPatientGallery(patientId),
         formData: formData,
+        options: _idempotencyOptions(idempotencyKey),
       );
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200 || response.statusCode == 201) {
         return GalleryImageModel.fromJson(response.data);
       } else {
         throw ApiException('فشل رفع الصورة');
@@ -830,13 +832,18 @@ class DoctorService {
   }
 
   // حذف صورة من معرض المريض
-  Future<bool> deleteGalleryImage(String patientId, String imageId) async {
+  Future<bool> deleteGalleryImage(
+    String patientId,
+    String imageId, {
+    String? idempotencyKey,
+  }) async {
     try {
       final response = await _api.delete(
         ApiConstants.doctorDeleteGalleryImage(patientId, imageId),
+        options: _idempotencyOptions(idempotencyKey),
       );
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200 || response.statusCode == 204) {
         return true;
       } else {
         throw ApiException('فشل حذف الصورة');
@@ -966,5 +973,70 @@ class DoctorService {
       createdAt:
           json['created_at']?.toString() ?? json['createdAt']?.toString(),
     );
+  }
+
+  /// جلب مخطط الأسنان (FDI) للمريض — خاص بالطبيب الحالي.
+  Future<Map<String, dynamic>> getDentalChart(String patientId) async {
+    try {
+      final response = await _api.get(
+        ApiConstants.patientDentalChart(patientId),
+      );
+      if (response.statusCode == 200) {
+        final data = response.data;
+        if (data is Map) {
+          return Map<String, dynamic>.from(data);
+        }
+        return <String, dynamic>{};
+      }
+      throw ApiException('فشل جلب مخطط الأسنان');
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('فشل جلب مخطط الأسنان: ${e.toString()}');
+    }
+  }
+
+  /// حفظ/استبدال مخطط الأسنان بالكامل.
+  Future<Map<String, dynamic>> upsertDentalChart({
+    required String patientId,
+    required Map<String, List<String>> chart,
+    required Map<String, List<Map<String, dynamic>>> notes,
+    String? selectedTooth,
+    String? idempotencyKey,
+  }) async {
+    try {
+      final notesPayload = <String, dynamic>{};
+      notes.forEach((tooth, entries) {
+        notesPayload[tooth] = entries.map((e) {
+          return {
+            'text': e['text'] ?? e['note'] ?? '',
+            'createdAt': e['createdAt'] ?? e['created_at'],
+            'created_at': e['created_at'] ?? e['createdAt'],
+          };
+        }).toList();
+      });
+
+      final response = await _api.put(
+        ApiConstants.patientDentalChart(patientId),
+        data: {
+          'chart': chart,
+          'notes': notesPayload,
+          'selected_tooth': selectedTooth,
+          'selectedTooth': selectedTooth,
+        },
+        options: _idempotencyOptions(idempotencyKey),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = response.data;
+        if (data is Map) {
+          return Map<String, dynamic>.from(data);
+        }
+        return <String, dynamic>{};
+      }
+      throw ApiException('فشل حفظ مخطط الأسنان');
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('فشل حفظ مخطط الأسنان: ${e.toString()}');
+    }
   }
 }

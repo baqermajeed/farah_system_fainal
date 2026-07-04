@@ -67,15 +67,35 @@ class AppointmentModel {
     this.stageName,
   });
 
+  /// وقت العيادة يُرسل/يُخزَّن كوقت حائط (wall-clock) محلي.
+  /// الباكند قد يُرجعه مع لاحقة UTC/`Z` بالخطأ؛ لا نطبّق toLocal() حتى لا يُزاد فرق العراق (+3).
   static DateTime _parseScheduledAt(String value) {
     try {
-      final hasTimezone = value.endsWith('Z') ||
-          RegExp(r'[\+\-]\d{2}:?\d{2}$').hasMatch(value);
       final parsed = DateTime.parse(value);
-      return hasTimezone ? parsed.toLocal() : parsed;
+      return DateTime(
+        parsed.year,
+        parsed.month,
+        parsed.day,
+        parsed.hour,
+        parsed.minute,
+        parsed.second,
+        parsed.millisecond,
+      );
     } catch (_) {
       return DateTime.now();
     }
+  }
+
+  static DateTime _asWallClock(DateTime value) {
+    return DateTime(
+      value.year,
+      value.month,
+      value.day,
+      value.hour,
+      value.minute,
+      value.second,
+      value.millisecond,
+    );
   }
 
   factory AppointmentModel.fromJson(Map<String, dynamic> json) {
@@ -88,13 +108,12 @@ class AppointmentModel {
     if (scheduledAt is String) {
       isoString = scheduledAt;
       try {
-        // احترم المنطقة الزمنية إذا وُجدت، وإلا اعتبرها محلية
         appointmentDateTime = _parseScheduledAt(scheduledAt);
       } catch (_) {
         appointmentDateTime = DateTime.now();
       }
     } else if (scheduledAt is DateTime) {
-      appointmentDateTime = scheduledAt.toLocal();
+      appointmentDateTime = _asWallClock(scheduledAt);
       isoString = scheduledAt.toIso8601String();
     } else {
       appointmentDateTime = DateTime.now();
@@ -106,7 +125,6 @@ class AppointmentModel {
         return _formatTime(DateTime.now());
       }
       try {
-        // نحترم المنطقة الزمنية إن وُجدت، وإلا نستخدمها كوقت محلي
         final dt = _parseScheduledAt(value);
         return _formatTime(dt);
       } catch (_) {

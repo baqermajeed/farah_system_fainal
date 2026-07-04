@@ -7,6 +7,9 @@ class SyncOutboxEntry {
   static const String typeAddNote = 'add_note';
   static const String typeUpdateNote = 'update_note';
   static const String typeDeleteNote = 'delete_note';
+  static const String typeAddGalleryImage = 'add_gallery_image';
+  static const String typeDeleteGalleryImage = 'delete_gallery_image';
+  static const String typeUpsertDentalChart = 'upsert_dental_chart';
 
   final String id;
   final String idempotencyKey;

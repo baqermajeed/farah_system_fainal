@@ -261,13 +261,14 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
     final appointmentController = Get.find<AppointmentController>();
 
     return Obx(() {
-      if (appointmentController.isLoading.value) {
-        return const LoadingWidget(message: 'جاري تحميل المواعيد...');
-      }
-
       // استخدام المواعيد مباشرة - الفلترة تتم في الـ backend
       final filteredAppointments = appointmentController.appointments;
       String emptyMessage = 'لا توجد مواعيد';
+
+      if (appointmentController.isLoading.value &&
+          filteredAppointments.isEmpty) {
+        return const LoadingWidget(message: 'جاري تحميل المواعيد...');
+      }
 
       if (filteredAppointments.isEmpty) {
         return EmptyStateWidget(

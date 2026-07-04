@@ -286,6 +286,12 @@ class OutboxStore {
   static String noteEntityKey(String patientId, String noteId) =>
       'note:$patientId:$noteId';
 
+  static String galleryEntityKey(String patientId, String imageId) =>
+      'gallery:$patientId:$imageId';
+
+  static String dentalChartEntityKey(String patientId) =>
+      'dental_chart:$patientId';
+
   static String _newId() {
     final rand = Random.secure();
     final a = DateTime.now().microsecondsSinceEpoch.toRadixString(16);

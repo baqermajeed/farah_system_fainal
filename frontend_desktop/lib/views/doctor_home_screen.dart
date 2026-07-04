@@ -36,12 +36,16 @@ import 'package:frontend_desktop/services/doctor_service.dart';
 import 'package:frontend_desktop/services/auth_service.dart';
 import 'package:frontend_desktop/models/patient_model.dart';
 import 'package:frontend_desktop/models/appointment_model.dart';
+import 'package:frontend_desktop/models/gallery_image_model.dart';
 import 'package:frontend_desktop/models/implant_stage_model.dart';
 import 'package:frontend_desktop/core/utils/image_utils.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:frontend_desktop/services/patient_service.dart';
 import 'package:frontend_desktop/services/cache_service.dart';
+import 'package:frontend_desktop/services/outbox_store.dart';
+import 'package:frontend_desktop/services/sync_worker.dart';
+import 'package:frontend_desktop/models/sync_outbox_entry.dart';
 import 'package:frontend_desktop/models/doctor_model.dart';
 import 'package:frontend_desktop/main.dart' show availableCamerasList;
 
@@ -410,8 +414,12 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
   final Map<String, Map<String, List<_DentalNoteEntry>>> _dentalNotesByPatient =
       {};
   final Map<String, String> _selectedDentalToothByPatient = {};
-  final Set<String> _dentalDataLoadedPatients = {};
+  final Set<String> _dentalCacheAppliedPatients = {};
+  final Set<String> _dentalServerFetchedPatients = {};
+  final Set<String> _dentalServerInFlightPatients = {};
   final CacheService _cacheService = CacheService();
+  final DoctorService _dentalDoctorService = DoctorService();
+  final OutboxStore _dentalOutbox = OutboxStore();
 
   static const List<String> _upperTeethFdi = [
     '18',
@@ -480,6 +488,9 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
   // ⭐ ScrollController للـ Pagination
   final ScrollController _patientsScrollController = ScrollController();
 
+  // آخر مريض حُمّلت بياناته (معرض/سجلات/مواعيد) — لتجنب إعادة التحميل عند تعديل نفس المريض
+  String? _lastLoadedPatientProfileId;
+
   // Appointments filtering (custom tab: date range from / to)
   DateTime? _appointmentsRangeStart;
   DateTime? _appointmentsRangeEnd;
@@ -545,23 +556,32 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
     );
     // Listen to patient selection changes
     ever(_patientController.selectedPatient, (patient) {
-      if (patient != null) {
-        // Load records, gallery, and appointments when a patient is selected
-        _medicalRecordController.loadPatientRecords(patient.id);
-        _galleryController.loadGallery(patient.id);
-        _appointmentController.loadPatientAppointmentsById(patient.id);
+      if (patient == null) return;
 
-        // Set default tab to Gallery (index 0) when a patient is selected
-        _tabController.animateTo(0);
-        _currentTabIndex.value = 0;
+      // تحديث بيانات نفس المريض (مثل حفظ التعديل) لا يعيد تحميل التبويبات
+      final isSamePatient = _lastLoadedPatientProfileId == patient.id;
+      if (isSamePatient) {
+        if (mounted) setState(() {});
+        return;
+      }
 
-        // Load implant stages if treatment type is زراعة
-        if (patient.treatmentHistory != null &&
-            patient.treatmentHistory!.isNotEmpty &&
-            patient.treatmentHistory!.last == 'زراعة') {
-          final implantStageController = Get.put(ImplantStageController());
-          implantStageController.ensureStagesLoaded(patient.id);
-        }
+      _lastLoadedPatientProfileId = patient.id;
+
+      // Load records, gallery, and appointments when a patient is selected
+      _medicalRecordController.loadPatientRecords(patient.id);
+      _galleryController.loadGallery(patient.id);
+      _appointmentController.loadPatientAppointmentsById(patient.id);
+
+      // Set default tab to Gallery (index 0) when a patient is selected
+      _tabController.animateTo(0);
+      _currentTabIndex.value = 0;
+
+      // Load implant stages if treatment type is زراعة
+      if (patient.treatmentHistory != null &&
+          patient.treatmentHistory!.isNotEmpty &&
+          patient.treatmentHistory!.last == 'زراعة') {
+        final implantStageController = Get.put(ImplantStageController());
+        implantStageController.ensureStagesLoaded(patient.id);
       }
     });
   }
@@ -1698,7 +1718,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
           // ترتيب المرضى من الأحدث إلى الأقدم حسب الـ id
           patientsList.sort((a, b) => b.id.compareTo(a.id));
 
-          if (isSearching || (isLoading && query.isEmpty)) {
+          if (isSearching || (isLoading && query.isEmpty && patientsList.isEmpty)) {
             return ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               children: const [
@@ -2331,11 +2351,12 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
           // Patients List
           Expanded(
             child: Obx(() {
-              if (_patientController.isLoading.value) {
+              final patients = _patientController.patients.toList();
+              // لا نخفي القائمة أثناء التحديث إن وُجدت بيانات
+              if (_patientController.isLoading.value && patients.isEmpty) {
                 return const Center(child: CircularProgressIndicator());
               }
 
-              final patients = _patientController.patients.toList();
               final query = _searchController.text.toLowerCase();
               final filteredPatients = patients.where((p) {
                 return p.name.toLowerCase().contains(query) ||
@@ -3173,7 +3194,12 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
 
   Widget _buildRecordsTab(PatientModel patient) {
     return Obx(() {
-      if (_medicalRecordController.isLoading.value) {
+      final records = _medicalRecordController.records
+          .where((record) => record.patientId == patient.id)
+          .toList();
+
+      // سبينر فقط عند عدم وجود سجلات — لا نخفي المحتوى أثناء التحديث
+      if (_medicalRecordController.isLoading.value && records.isEmpty) {
         return Container(
           color: const Color(0xFFF4FEFF),
           child: Center(
@@ -3182,9 +3208,6 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
         );
       }
 
-      final records = _medicalRecordController.records
-          .where((record) => record.patientId == patient.id)
-          .toList();
 
       if (records.isEmpty) {
         return Container(
@@ -3387,15 +3410,6 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
     _appointmentController.ensurePatientAppointmentsLoadedById(patient.id);
 
     return Obx(() {
-      if (_appointmentController.isLoading.value) {
-        return Container(
-          color: const Color(0xFFF4FEFF),
-          child: Center(
-            child: CircularProgressIndicator(color: AppColors.primary),
-          ),
-        );
-      }
-
       final cached = _appointmentController.getCachedPatientAppointments(
         patient.id,
       );
@@ -3406,6 +3420,17 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
           : _appointmentController.appointments
                 .where((apt) => apt.patientId == patient.id)
                 .toList();
+
+      // سبينر فقط عند عدم وجود مواعيد — لا نخفي المحتوى أثناء التحديث
+      if (_appointmentController.isLoading.value && appointments.isEmpty) {
+        return Container(
+          color: const Color(0xFFF4FEFF),
+          child: Center(
+            child: CircularProgressIndicator(color: AppColors.primary),
+          ),
+        );
+      }
+
 
       // ✅ حماية إضافية من التكرار:
       // في بعض الحالات قد يرجع الـ backend نفس الموعد مرتين أو يتم دمجه مرتين
@@ -4596,7 +4621,11 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
 
   Widget _buildGalleryTab(PatientModel patient) {
     return Obx(() {
-      if (_galleryController.isLoading.value) {
+      final galleryImages = _galleryController.galleryImages.toList();
+      final isLoading = _galleryController.isLoading.value;
+
+      // سبينر كامل فقط عند عدم وجود أي صور — لا نخفي المحتوى أثناء التحديث
+      if (isLoading && galleryImages.isEmpty) {
         return Container(
           color: const Color(0xFFF4FEFF),
           child: Center(
@@ -4604,8 +4633,6 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
           ),
         );
       }
-
-      final galleryImages = _galleryController.galleryImages.toList();
 
       if (galleryImages.isEmpty) {
         return Container(
@@ -4651,53 +4678,94 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
           itemCount: galleryImages.length,
           itemBuilder: (context, index) {
             final image = galleryImages[index];
-            final imageUrl = ImageUtils.convertToValidUrl(image.imagePath);
             return GestureDetector(
               onTap: () {
                 _showGalleryImageDialog(context, image);
               },
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8.r),
-                child: imageUrl != null && ImageUtils.isValidImageUrl(imageUrl)
-                    ? CachedNetworkImage(
-                        imageUrl: imageUrl,
-                        fit: BoxFit.cover,
-                        progressIndicatorBuilder: (context, url, progress) =>
-                            Container(
-                              color: AppColors.divider,
-                              child: Center(
-                                child: CircularProgressIndicator(
-                                  value: progress.progress,
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    AppColors.primary,
-                                  ),
-                                ),
-                              ),
-                            ),
-                        errorWidget: (context, url, error) => Container(
-                          color: AppColors.divider,
-                          child: Icon(
-                            Icons.broken_image,
-                            color: AppColors.textHint,
-                            size: 30.sp,
-                          ),
-                        ),
-                      )
-                    : Container(
-                        color: AppColors.divider,
-                        child: Icon(
-                          Icons.broken_image,
-                          color: AppColors.textHint,
-                          size: 30.sp,
-                        ),
-                      ),
+                child: _buildGalleryThumbnail(image),
               ),
             );
           },
         ),
       );
     });
+  }
+
+  /// عرض صورة محلية معلّقة أو صورة من السيرفر بدون كسر الشبكة.
+  Widget _buildGalleryThumbnail(GalleryImageModel image) {
+    final path = image.imagePath;
+    final isLocalPending = image.id.startsWith('local_') ||
+        image.id.startsWith('temp-') ||
+        (!path.startsWith('http') && path.isNotEmpty);
+
+    if (isLocalPending) {
+      final file = File(path);
+      if (file.existsSync()) {
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.file(file, fit: BoxFit.cover),
+            if (image.id.startsWith('local_'))
+              Positioned(
+                top: 4,
+                left: 4,
+                child: Container(
+                  padding: EdgeInsets.all(3.w),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(8.r),
+                  ),
+                  child: SizedBox(
+                    width: 12.w,
+                    height: 12.w,
+                    child: const CircularProgressIndicator(
+                      strokeWidth: 1.5,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      }
+    }
+
+    final imageUrl = ImageUtils.convertToValidUrl(path);
+    if (imageUrl != null && ImageUtils.isValidImageUrl(imageUrl)) {
+      return CachedNetworkImage(
+        imageUrl: imageUrl,
+        fit: BoxFit.cover,
+        progressIndicatorBuilder: (context, url, progress) => Container(
+          color: AppColors.divider,
+          child: Center(
+            child: CircularProgressIndicator(
+              value: progress.progress,
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+            ),
+          ),
+        ),
+        errorWidget: (context, url, error) => Container(
+          color: AppColors.divider,
+          child: Icon(
+            Icons.broken_image,
+            color: AppColors.textHint,
+            size: 30.sp,
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      color: AppColors.divider,
+      child: Icon(
+        Icons.broken_image,
+        color: AppColors.textHint,
+        size: 30.sp,
+      ),
+    );
   }
 
   Widget _buildActionIcon(IconData icon, {bool hasNotification = false}) {
@@ -4866,37 +4934,151 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
   }
 
   void _ensureDentalDataLoaded(String patientId) {
-    if (patientId.isEmpty || _dentalDataLoadedPatients.contains(patientId)) {
-      return;
-    }
-    _dentalDataLoadedPatients.add(patientId);
+    if (patientId.isEmpty) return;
 
+    // 1) كاش محلي فوري (بدون وميض)
+    if (!_dentalCacheAppliedPatients.contains(patientId)) {
+      _dentalCacheAppliedPatients.add(patientId);
+      _applyDentalFromCache(patientId);
+    }
+
+    // 2) جلب من السيرفر بالخلفية مرة واحدة لكل مريض في الجلسة
+    if (!_dentalServerFetchedPatients.contains(patientId) &&
+        !_dentalServerInFlightPatients.contains(patientId)) {
+      _dentalServerInFlightPatients.add(patientId);
+      unawaited(_fetchDentalChartFromServer(patientId));
+    }
+  }
+
+  void _applyDentalFromCache(String patientId) {
     final cached = _cacheService.getDentalChart(patientId);
     if (cached == null) return;
 
-    final chart = <String, Set<String>>{};
-    cached.chart.forEach((tooth, statuses) {
+    _applyDentalPayload(
+      patientId,
+      chart: cached.chart,
+      notes: cached.notes,
+      selectedTooth: cached.selectedTooth,
+    );
+  }
+
+  void _applyDentalPayload(
+    String patientId, {
+    required Map<String, List<String>> chart,
+    required Map<String, List<Map<String, dynamic>>> notes,
+    String? selectedTooth,
+  }) {
+    final chartMap = <String, Set<String>>{};
+    chart.forEach((tooth, statuses) {
       if (statuses.isNotEmpty) {
-        chart[tooth] = statuses.toSet();
+        chartMap[tooth] = statuses.toSet();
       }
     });
-    _dentalChartByPatient[patientId] = chart;
+    _dentalChartByPatient[patientId] = chartMap;
 
-    final notes = <String, List<_DentalNoteEntry>>{};
-    cached.notes.forEach((tooth, entries) {
+    final notesMap = <String, List<_DentalNoteEntry>>{};
+    notes.forEach((tooth, entries) {
       final parsed = entries
           .map(_DentalNoteEntry.fromJson)
           .where((note) => note.text.trim().isNotEmpty)
           .toList();
       if (parsed.isNotEmpty) {
-        notes[tooth] = parsed;
+        notesMap[tooth] = parsed;
       }
     });
-    _dentalNotesByPatient[patientId] = notes;
+    _dentalNotesByPatient[patientId] = notesMap;
 
-    final selectedTooth = cached.selectedTooth;
     if (selectedTooth != null && selectedTooth.isNotEmpty) {
       _selectedDentalToothByPatient[patientId] = selectedTooth;
+    } else {
+      _selectedDentalToothByPatient.remove(patientId);
+    }
+  }
+
+  bool _hasPendingDentalChartSync(String patientId) {
+    if (!_dentalOutbox.isReady) return false;
+    return _dentalOutbox
+        .findByEntityKey(OutboxStore.dentalChartEntityKey(patientId))
+        .any((e) => e.type == SyncOutboxEntry.typeUpsertDentalChart);
+  }
+
+  Future<void> _fetchDentalChartFromServer(String patientId) async {
+    try {
+      await _dentalOutbox.init();
+
+      // تعديلات محلية لم تُرفع بعد — لا نستبدلها ببيانات السيرفر
+      if (_hasPendingDentalChartSync(patientId)) {
+        _dentalServerFetchedPatients.add(patientId);
+        return;
+      }
+
+      final data = await _dentalDoctorService.getDentalChart(patientId);
+      final chart = <String, List<String>>{};
+      final notes = <String, List<Map<String, dynamic>>>{};
+
+      final chartRaw = data['chart'];
+      if (chartRaw is Map) {
+        chartRaw.forEach((key, value) {
+          final tooth = key.toString();
+          if (value is List) {
+            chart[tooth] = value.map((e) => e.toString()).toList();
+          }
+        });
+      }
+
+      final notesRaw = data['notes'];
+      if (notesRaw is Map) {
+        notesRaw.forEach((key, value) {
+          final tooth = key.toString();
+          final entries = <Map<String, dynamic>>[];
+          if (value is List) {
+            for (final item in value) {
+              if (item is Map) {
+                entries.add(Map<String, dynamic>.from(item));
+              }
+            }
+          }
+          if (entries.isNotEmpty) {
+            notes[tooth] = entries;
+          }
+        });
+      }
+
+      final selectedTooth =
+          (data['selected_tooth'] ?? data['selectedTooth'])?.toString();
+
+      // إعادة التحقق: قد يُضاف أمر معلّق أثناء الجلب
+      if (_hasPendingDentalChartSync(patientId)) {
+        return;
+      }
+
+      _applyDentalPayload(
+        patientId,
+        chart: chart,
+        notes: notes,
+        selectedTooth: selectedTooth,
+      );
+
+      if (chart.isEmpty && notes.isEmpty) {
+        await _cacheService.deleteDentalChart(patientId);
+      } else {
+        await _cacheService.saveDentalChart(
+          patientId: patientId,
+          chart: chart,
+          notes: notes,
+          selectedTooth: selectedTooth,
+        );
+      }
+
+      if (mounted &&
+          _patientController.selectedPatient.value?.id == patientId) {
+        setState(() {});
+      }
+    } catch (e) {
+      print('⚠️ [DentalChart] Server fetch failed (using local): $e');
+    } finally {
+      _dentalServerInFlightPatients.remove(patientId);
+      _dentalServerFetchedPatients.add(patientId);
     }
   }
 
@@ -4920,17 +5102,45 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
       }
     });
 
+    final selectedTooth = _selectedDentalToothByPatient[patientId];
+
+    // 1) حفظ محلي فوري
     if (chartPayload.isEmpty && notesPayload.isEmpty) {
       await _cacheService.deleteDentalChart(patientId);
-      return;
+    } else {
+      await _cacheService.saveDentalChart(
+        patientId: patientId,
+        chart: chartPayload,
+        notes: notesPayload,
+        selectedTooth: selectedTooth,
+      );
     }
 
-    await _cacheService.saveDentalChart(
-      patientId: patientId,
-      chart: chartPayload,
-      notes: notesPayload,
-      selectedTooth: _selectedDentalToothByPatient[patientId],
+    // 2) طابور رفع دائم (دمج أي أمر سابق لنفس المريض)
+    await _dentalOutbox.init();
+    final entityKey = OutboxStore.dentalChartEntityKey(patientId);
+    for (final old in _dentalOutbox.findByEntityKey(entityKey)) {
+      if (old.type == SyncOutboxEntry.typeUpsertDentalChart) {
+        await _dentalOutbox.remove(old.id);
+      }
+    }
+
+    final operationId =
+        '${DateTime.now().microsecondsSinceEpoch}_${patientId.hashCode}';
+    await _dentalOutbox.enqueue(
+      type: SyncOutboxEntry.typeUpsertDentalChart,
+      entityKey: entityKey,
+      idempotencyKey: operationId,
+      payload: {
+        'operationId': operationId,
+        'patientId': patientId,
+        'chart': chartPayload,
+        'notes': notesPayload,
+        'selectedTooth': selectedTooth,
+      },
     );
+
+    unawaited(SyncWorker.instance.kick());
   }
 
   Widget _buildDentalChartTab(PatientModel patient) {
@@ -6611,7 +6821,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                       if (dialogContext.mounted) {
                                         if (success) {
                                           Navigator.of(dialogContext).pop();
-                                          // المعرض تم تحديثه متفائلاً في الكونترولر، لا حاجة لإعادة تحميل
+                                          // القائمة تُحدَّث محلياً فوراً؛ الرفع للسيرفر بالخلفية
                                         } else {
                                           setDialogState(() {
                                             isUploading = false;
@@ -10021,7 +10231,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                 // Days list
                 Flexible(
                   child: Obx(() {
-                    if (controller.isLoading.value) {
+                    if (controller.isLoading.value &&
+                        controller.workingHours.isEmpty) {
                       return Center(
                         child: CircularProgressIndicator(
                           color: AppColors.primary,
@@ -10105,12 +10316,36 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
     final ageController = TextEditingController(
       text: patient.age > 0 ? patient.age.toString() : '',
     );
-    final cityController = TextEditingController(text: patient.city);
+
+    // نفس محافظات شاشة إضافة مريض
+    const cities = <String>[
+      'بغداد',
+      'البصرة',
+      'النجف الاشرف',
+      'كربلاء',
+      'الموصل',
+      'أربيل',
+      'السليمانية',
+      'ديالى',
+      'الديوانية',
+      'المثنى',
+      'كركوك',
+      'واسط',
+      'ميسان',
+      'الأنبار',
+      'ذي قار',
+      'بابل',
+      'دهوك',
+      'صلاح الدين',
+    ];
 
     final normalizedGender = (patient.gender == 'female' || patient.gender == 'أنثى')
         ? 'female'
         : 'male';
     String selectedGender = normalizedGender;
+    final currentCity = patient.city.trim();
+    String? selectedCity =
+        cities.contains(currentCity) ? currentCity : null;
     bool isSaving = false;
 
     showDialog(
@@ -10196,9 +10431,33 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                       ],
                     ),
                     SizedBox(height: 10.h),
-                    TextField(
-                      controller: cityController,
-                      textAlign: TextAlign.right,
+                    DropdownButtonFormField<String>(
+                      value: selectedCity,
+                      isExpanded: true,
+                      hint: Text(
+                        'اختر المحافظة',
+                        textAlign: TextAlign.right,
+                        style: TextStyle(
+                          fontSize: 14.sp,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      items: cities
+                          .map(
+                            (city) => DropdownMenuItem<String>(
+                              value: city,
+                              child: Text(
+                                city,
+                                textAlign: TextAlign.right,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: isSaving
+                          ? null
+                          : (value) {
+                              setDialogState(() => selectedCity = value);
+                            },
                       decoration: InputDecoration(
                         labelText: 'المدينة',
                         border: OutlineInputBorder(
@@ -10240,7 +10499,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                 ? null
                                 : () async {
                                     final name = nameController.text.trim();
-                                    final city = cityController.text.trim();
+                                    final city = selectedCity?.trim() ?? '';
                                     final age = int.tryParse(ageController.text.trim());
                                     if (name.isEmpty || city.isEmpty || age == null || age <= 0) {
                                       Get.snackbar(

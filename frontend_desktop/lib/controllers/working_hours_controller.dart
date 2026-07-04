@@ -75,7 +75,10 @@ class WorkingHoursController extends GetxController {
       return;
     }
 
-    isLoading.value = true;
+    // لا نُظهر سبينر كامل إن كانت هناك بيانات افتراضية/سابقة معروضة
+    if (workingHours.isEmpty) {
+      isLoading.value = true;
+    }
     try {
       print('📡 [WorkingHoursController] Fetching working hours from backend for doctor: $resolvedDoctorId');
       final userType =

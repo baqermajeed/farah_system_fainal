@@ -627,12 +627,13 @@ async def list_appointments(
             pu = user_map.get(p.user_id) if p else None
             du = user_map.get(d.user_id) if d else None
             normalized_status = _appointment_status_for_output(getattr(a, "status", None))
-            sa = a.scheduled_at if a.scheduled_at else datetime.now(timezone.utc)
-            if sa.tzinfo is None:
-                sa = sa.replace(tzinfo=timezone.utc)
-            else:
-                sa = sa.astimezone(timezone.utc)
-            is_late = normalized_status == "pending" and sa < datetime.now(timezone.utc)
+            # وقت العيادة المحلي (wall-clock) — لا نُلصق UTC حتى لا يظهر +3 ساعات في الواجهة
+            sa = a.scheduled_at if a.scheduled_at else datetime.now()
+            if sa.tzinfo is not None:
+                sa = sa.replace(tzinfo=None)
+            sa = sa.replace(microsecond=0)
+            now_clinic = datetime.now().replace(tzinfo=None, microsecond=0)
+            is_late = normalized_status == "pending" and sa < now_clinic
 
             out.append(
                 ReceptionAppointmentOut(

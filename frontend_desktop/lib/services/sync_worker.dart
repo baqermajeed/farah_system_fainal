@@ -40,7 +40,8 @@ class SyncWorker {
     });
 
     _publishPendingCount();
-    await kick();
+    // لا ننتظر تفريغ الطابور هنا — يعمل بالخلفية حتى لا يبطئ تسجيل الدخول
+    unawaited(kick());
     _scheduleWake();
     print(
       '✅ [SyncWorker] Started (pending=${_outbox.pendingCount})',
@@ -64,7 +65,7 @@ class SyncWorker {
       return;
     }
     await _outbox.markAllReadyNow();
-    await kick();
+    unawaited(kick());
     _scheduleWake();
   }
 
@@ -137,6 +138,15 @@ class SyncWorker {
           break;
         case SyncOutboxEntry.typeDeleteNote:
           await _processDeleteNote(entry);
+          break;
+        case SyncOutboxEntry.typeAddGalleryImage:
+          await _processAddGalleryImage(entry);
+          break;
+        case SyncOutboxEntry.typeDeleteGalleryImage:
+          await _processDeleteGalleryImage(entry);
+          break;
+        case SyncOutboxEntry.typeUpsertDentalChart:
+          await _processUpsertDentalChart(entry);
           break;
         default:
           // نوع غير معروف — نبقيه ونؤجل (لا نحذف بيانات)
@@ -357,6 +367,201 @@ class SyncWorker {
     );
 
     print('✅ [SyncWorker] delete_note synced $noteId');
+  }
+
+  Future<void> _processAddGalleryImage(SyncOutboxEntry entry) async {
+    final patientId = '${entry.payload['patientId'] ?? ''}';
+    final localImageId = '${entry.payload['localImageId'] ?? ''}';
+    final note = entry.payload['note']?.toString();
+    final imagePath = '${entry.payload['imagePath'] ?? ''}';
+
+    if (patientId.isEmpty || localImageId.isEmpty || imagePath.isEmpty) {
+      await _outbox.scheduleRetry(entry, 'Invalid add_gallery_image payload');
+      return;
+    }
+
+    final file = File(imagePath);
+    if (!await file.exists()) {
+      await _outbox.scheduleRetry(entry, 'Local gallery image file missing');
+      return;
+    }
+
+    final serverImage = await _doctorService.uploadGalleryImage(
+      patientId,
+      file,
+      note,
+      idempotencyKey: entry.idempotencyKey,
+    );
+
+    try {
+      await _cacheService.deleteGalleryImage(patientId, localImageId);
+      await _cacheService.saveGalleryImage(serverImage);
+    } catch (e) {
+      print('⚠️ [SyncWorker] Cache update after add_gallery_image: $e');
+    }
+
+    await _remapLocalGalleryId(
+      patientId: patientId,
+      localImageId: localImageId,
+      serverImageId: serverImage.id,
+    );
+
+    await _outbox.markDone(entry);
+
+    SyncEvents.emitGallerySynced(
+      GallerySyncedEvent(
+        patientId: patientId,
+        localImageId: localImageId,
+        serverImage: serverImage,
+      ),
+    );
+
+    print(
+      '✅ [SyncWorker] add_gallery_image synced $localImageId -> ${serverImage.id}',
+    );
+  }
+
+  Future<void> _processDeleteGalleryImage(SyncOutboxEntry entry) async {
+    final patientId = '${entry.payload['patientId'] ?? ''}';
+    final imageId = '${entry.payload['imageId'] ?? ''}';
+
+    if (patientId.isEmpty || imageId.isEmpty) {
+      await _outbox.scheduleRetry(entry, 'Invalid delete_gallery_image payload');
+      return;
+    }
+
+    if (imageId.startsWith('local_')) {
+      await _outbox.scheduleRetry(
+        entry,
+        'Waiting for local gallery image create to sync',
+      );
+      return;
+    }
+
+    try {
+      await _doctorService.deleteGalleryImage(
+        patientId,
+        imageId,
+        idempotencyKey: entry.idempotencyKey,
+      );
+    } on ApiException catch (e) {
+      final isNotFound = e.statusCode == 404 ||
+          e is NotFoundException ||
+          e.message.toLowerCase().contains('not found') ||
+          e.message.contains('غير موجود');
+      if (!isNotFound) rethrow;
+    }
+
+    try {
+      await _cacheService.deleteGalleryImage(patientId, imageId);
+    } catch (e) {
+      print('⚠️ [SyncWorker] Cache delete after delete_gallery_image: $e');
+    }
+
+    await _outbox.markDone(entry);
+
+    SyncEvents.emitGalleryRemoved(
+      GalleryRemovedEvent(patientId: patientId, imageId: imageId),
+    );
+
+    print('✅ [SyncWorker] delete_gallery_image synced $imageId');
+  }
+
+  Future<void> _remapLocalGalleryId({
+    required String patientId,
+    required String localImageId,
+    required String serverImageId,
+  }) async {
+    final oldKey = OutboxStore.galleryEntityKey(patientId, localImageId);
+    final newKey = OutboxStore.galleryEntityKey(patientId, serverImageId);
+
+    for (final entry in _outbox.getAll()) {
+      final payload = Map<String, dynamic>.from(entry.payload);
+      var changed = false;
+
+      if (payload['imageId']?.toString() == localImageId) {
+        payload['imageId'] = serverImageId;
+        changed = true;
+      }
+      if (payload['localImageId']?.toString() == localImageId) {
+        payload['localImageId'] = serverImageId;
+        changed = true;
+      }
+
+      final entityKey =
+          entry.entityKey == oldKey ? newKey : entry.entityKey;
+
+      if (changed || entityKey != entry.entityKey) {
+        await _outbox.save(
+          SyncOutboxEntry(
+            id: entry.id,
+            idempotencyKey: entry.idempotencyKey,
+            type: entry.type,
+            entityKey: entityKey,
+            payload: payload,
+            status: SyncOutboxEntry.statusPending,
+            createdAtMs: entry.createdAtMs,
+            priority: entry.priority,
+            retryCount: entry.retryCount,
+            nextAttemptAtMs: DateTime.now().millisecondsSinceEpoch,
+            lastError: entry.lastError,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _processUpsertDentalChart(SyncOutboxEntry entry) async {
+    final patientId = '${entry.payload['patientId'] ?? ''}';
+    if (patientId.isEmpty) {
+      await _outbox.scheduleRetry(entry, 'Invalid upsert_dental_chart payload');
+      return;
+    }
+
+    final chart = <String, List<String>>{};
+    final chartRaw = entry.payload['chart'];
+    if (chartRaw is Map) {
+      chartRaw.forEach((key, value) {
+        final tooth = key.toString();
+        if (value is List) {
+          chart[tooth] = value.map((e) => e.toString()).toList();
+        }
+      });
+    }
+
+    final notes = <String, List<Map<String, dynamic>>>{};
+    final notesRaw = entry.payload['notes'];
+    if (notesRaw is Map) {
+      notesRaw.forEach((key, value) {
+        final tooth = key.toString();
+        final entries = <Map<String, dynamic>>[];
+        if (value is List) {
+          for (final item in value) {
+            if (item is Map) {
+              entries.add(Map<String, dynamic>.from(item));
+            }
+          }
+        }
+        if (entries.isNotEmpty) {
+          notes[tooth] = entries;
+        }
+      });
+    }
+
+    final selectedTooth = entry.payload['selectedTooth']?.toString();
+
+    await _doctorService.upsertDentalChart(
+      patientId: patientId,
+      chart: chart,
+      notes: notes,
+      selectedTooth: selectedTooth != null && selectedTooth.isNotEmpty
+          ? selectedTooth
+          : null,
+      idempotencyKey: entry.idempotencyKey,
+    );
+
+    await _outbox.markDone(entry);
+    print('✅ [SyncWorker] upsert_dental_chart synced for $patientId');
   }
 
   List<String> _readStringList(dynamic value) {

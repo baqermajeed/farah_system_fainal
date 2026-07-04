@@ -52,8 +52,8 @@ class AuthController extends GetxController {
         currentUser.value = cachedUser;
         print('✅ [AuthController] User loaded from cache: ${cachedUser.name}');
         await _syncPatientProfileId();
-        // استئناف رفع الأوامر المعلّقة فوراً عند فتح التطبيق
-        await _startDoctorSyncIfNeeded(cachedUser);
+        // استئناف رفع الأوامر بالخلفية عند فتح التطبيق
+        unawaited(_startDoctorSyncIfNeeded(cachedUser));
       }
       
       final isLoggedIn = await _authService.isLoggedIn();
@@ -72,8 +72,8 @@ class AuthController extends GetxController {
           print(
             '✅ [AuthController] User loaded from session: ${user.name} (${user.userType})',
           );
-          await _syncPresence(user);
-          await _startDoctorSyncIfNeeded(user);
+          unawaited(_syncPresence(user));
+          unawaited(_startDoctorSyncIfNeeded(user));
         } else {
           if (_isNetworkFailureResponse(res)) {
             print(
@@ -81,7 +81,7 @@ class AuthController extends GetxController {
             );
             final existing = currentUser.value;
             if (existing != null) {
-              await _startDoctorSyncIfNeeded(existing);
+              unawaited(_startDoctorSyncIfNeeded(existing));
             }
             return;
           }
@@ -147,8 +147,8 @@ class AuthController extends GetxController {
           print(
             '✅ [AuthController] User loaded: ${user.name} (${user.userType})',
           );
-          await _syncPresence(user);
-          await _startDoctorSyncIfNeeded(user);
+          unawaited(_syncPresence(user));
+          unawaited(_startDoctorSyncIfNeeded(user));
 
           if (!navigate) return;
 
@@ -277,13 +277,9 @@ class AuthController extends GetxController {
           }
 
           currentUser.value = user;
-          
-          // حفظ في Cache - بنفس طريقة eversheen
+
+          // حفظ محلي سريع ثم الانتقال فوراً — لا ننتظر Socket/Outbox على شاشة الدخول
           await _cacheService.saveUser(user);
-          
-          await _syncPatientProfileId();
-          await _syncPresence(user);
-          await _startDoctorSyncIfNeeded(user);
 
           String targetRoute;
           switch (actualType) {
@@ -301,16 +297,23 @@ class AuthController extends GetxController {
           }
 
           print('🔀 [AuthController] Navigating to: $targetRoute');
+          isLoading.value = false;
           Get.offAllNamed(targetRoute);
-          // انتظار قليلاً حتى تكتمل عملية التنقل قبل عرض Snackbar
-          await Future.delayed(const Duration(milliseconds: 300));
-          if (Get.context != null) {
-            try {
-              Get.snackbar('نجح', 'تم تسجيل الدخول بنجاح');
-            } catch (e) {
-              print('⚠️ [AuthController] Error showing snackbar: $e');
+
+          // مهام خلفية بعد الدخول (لا تُبطئ زر تسجيل الدخول)
+          unawaited(_syncPatientProfileId());
+          unawaited(_syncPresence(user));
+          unawaited(_startDoctorSyncIfNeeded(user));
+
+          Future<void>.delayed(const Duration(milliseconds: 300), () {
+            if (Get.context != null) {
+              try {
+                Get.snackbar('نجح', 'تم تسجيل الدخول بنجاح');
+              } catch (e) {
+                print('⚠️ [AuthController] Error showing snackbar: $e');
+              }
             }
-          }
+          });
         } else {
           final errorMsg = userRes['error']?.toString() ?? 'فشل جلب معلومات المستخدم';
           if (NetworkUtils.isNetworkError(errorMsg)) {
