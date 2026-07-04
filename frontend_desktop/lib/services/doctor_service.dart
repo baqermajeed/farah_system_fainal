@@ -334,12 +334,44 @@ class DoctorService {
     }
   }
 
+  Future<PatientModel> updatePatientProfile({
+    required String patientId,
+    String? name,
+    String? gender,
+    int? age,
+    String? city,
+  }) async {
+    try {
+      final Map<String, dynamic> data = {};
+      if (name != null) data['name'] = name;
+      if (gender != null) data['gender'] = gender;
+      if (age != null) data['age'] = age;
+      if (city != null) data['city'] = city;
+
+      final response = await _api.patch(
+        ApiConstants.doctorUpdatePatient(patientId),
+        data: data,
+      );
+
+      if (response.statusCode == 200) {
+        return _mapPatientOutToModel(
+          (response.data as Map).cast<String, dynamic>(),
+        );
+      }
+      throw ApiException('فشل تحديث بيانات المريض');
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('فشل تحديث بيانات المريض: ${e.toString()}');
+    }
+  }
+
   // إضافة سجل (ملاحظة) للمريض
   Future<MedicalRecordModel> addNote({
     required String patientId,
     String? note,
     File? imageFile,
     List<File>? imageFiles,
+    String? idempotencyKey,
   }) async {
     try {
       final filesToSend = imageFiles ?? (imageFile != null ? [imageFile] : []);
@@ -360,6 +392,7 @@ class DoctorService {
       final response = await _api.post(
         ApiConstants.doctorPatientNotes(patientId),
         formData: formData,
+        options: _idempotencyOptions(idempotencyKey),
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
@@ -381,6 +414,7 @@ class DoctorService {
     required String noteId,
     String? note,
     List<File>? imageFiles,
+    String? idempotencyKey,
   }) async {
     try {
       final formData = dio.FormData.fromMap({
@@ -401,6 +435,7 @@ class DoctorService {
       final response = await _api.put(
         ApiConstants.doctorUpdateNote(patientId, noteId),
         formData: formData,
+        options: _idempotencyOptions(idempotencyKey),
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
@@ -420,10 +455,12 @@ class DoctorService {
   Future<void> deleteNote({
     required String patientId,
     required String noteId,
+    String? idempotencyKey,
   }) async {
     try {
       final response = await _api.delete(
         ApiConstants.doctorDeleteNote(patientId, noteId),
+        options: _idempotencyOptions(idempotencyKey),
       );
 
       if (response.statusCode == 200 || response.statusCode == 204) {
@@ -437,6 +474,13 @@ class DoctorService {
       }
       throw ApiException('فشل حذف السجل: ${e.toString()}');
     }
+  }
+
+  dio.Options? _idempotencyOptions(String? idempotencyKey) {
+    if (idempotencyKey == null || idempotencyKey.isEmpty) return null;
+    return dio.Options(
+      headers: {'X-Idempotency-Key': idempotencyKey},
+    );
   }
 
   // إضافة موعد جديد

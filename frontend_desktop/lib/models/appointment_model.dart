@@ -40,6 +40,15 @@ class AppointmentModel {
   @HiveField(10)
   final List<String> imagePaths;
 
+  @HiveField(13)
+  final bool isLate;
+
+  @HiveField(14)
+  final String kind;
+
+  @HiveField(15)
+  final String? stageName;
+
   AppointmentModel({
     required this.id,
     required this.patientId,
@@ -53,6 +62,9 @@ class AppointmentModel {
     this.notes,
     this.imagePath,
     this.imagePaths = const [],
+    this.isLate = false,
+    this.kind = 'regular',
+    this.stageName,
   });
 
   static DateTime _parseScheduledAt(String value) {
@@ -131,6 +143,9 @@ class AppointmentModel {
       notes: json['note'] ?? json['notes'],
       imagePath: json['image_path'],
       imagePaths: finalImagePaths,
+      isLate: (json['is_late'] ?? json['isLate'] ?? false) == true,
+      kind: (json['kind'] ?? 'regular').toString(),
+      stageName: json['stage_name']?.toString() ?? json['stageName']?.toString(),
     );
   }
 
@@ -152,6 +167,9 @@ class AppointmentModel {
       'notes': notes,
       'image_path': imagePath,
       'image_paths': imagePaths,
+      'is_late': isLate,
+      'kind': kind,
+      'stage_name': stageName,
     };
   }
 }

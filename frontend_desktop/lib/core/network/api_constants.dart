@@ -1,9 +1,9 @@
 class ApiConstants {
   /// Base URL for all API calls.
-  /// Default: `https://sys-api.farahdent.com`.
+  /// Default (for local testing now): `http://127.0.0.1:8000`.
   /// Use `--dart-define=API_BASE_URL=<url>` or `--dart-define=API_HOST=<host>`
   /// only when you need to target a different backend.
-  static const String _defaultBaseUrl = 'https://sys-api.farahdent.com';
+  static const String _defaultBaseUrl = 'http://127.0.0.1:8000';
 
   static const String _apiHostOverride = String.fromEnvironment(
     'API_HOST',
@@ -89,12 +89,16 @@ class ApiConstants {
       '/reception/patients/$patientId/activate';
   static String receptionUpdatePatientActivityStatus(String patientId) =>
       '/reception/patients/$patientId/activity-status';
+  static String receptionUpdatePatient(String patientId) =>
+      '/reception/patients/$patientId';
   static String receptionPatientGallery(String patientId) =>
       '/reception/patients/$patientId/gallery';
   static const String receptionCallCenterAppointments =
       '/reception/call-center-appointments';
   static String receptionCallCenterAppointmentAccept(String id) =>
       '/reception/call-center-appointments/$id/accept';
+  /// أرشفة طابور الاستقبال في السيرفر (العرض يبقى محلياً).
+  static const String receptionQueue = '/reception/queue';
 
   // Call Center Endpoints
   static const String callCenterAppointments = '/call-center/appointments';
@@ -111,6 +115,8 @@ class ApiConstants {
       '/doctor/patients/$patientId/treatment';
   static String doctorPatientPaymentMethods(String patientId) =>
       '/doctor/patients/$patientId/payment-methods';
+  static String doctorUpdatePatient(String patientId) =>
+      '/doctor/patients/$patientId';
   static String doctorPatientNotes(String patientId) =>
       '/doctor/patients/$patientId/notes';
   static String doctorUpdateNote(String patientId, String noteId) =>

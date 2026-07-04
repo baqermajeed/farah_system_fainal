@@ -30,6 +30,7 @@ from app.routers import chat as chat_router
 from app.routers import stats as stats_router
 from app.routers import doctor_working_hours as doctor_working_hours_router
 from app.routers import implant_stage as implant_stage_router
+from app.routers import dental_chart as dental_chart_router
 from app.routers import call_center as call_center_router
 from app.routers import call_center_internal as call_center_internal_router
 from app.services.socket_service import sio, get_socket_app
@@ -121,6 +122,9 @@ app.include_router(doctor_working_hours_router.router)
 print("   ✅ Doctor Working Hours router registered")
 app.include_router(implant_stage_router.router)
 print("   ✅ Implant Stages router registered")
+app.include_router(dental_chart_router.router)
+app.include_router(dental_chart_router.meta_router)
+print("   ✅ Dental Chart router registered")
 app.include_router(call_center_router.router)
 app.include_router(call_center_internal_router.router)
 print("   ✅ Call Center router registered")
@@ -307,8 +311,6 @@ async def on_startup():
     
     # Initialize and start appointment reminder scheduler
     try:
-        from app.services.patient_service import update_late_appointments
-        
         scheduler = AsyncIOScheduler()
         # Schedule reminder check every hour
         scheduler.add_job(
@@ -319,19 +321,9 @@ async def on_startup():
             id="appointment_reminders",
             replace_existing=True
         )
-        # Schedule late appointments update every hour (at minute 5)
-        scheduler.add_job(
-            update_late_appointments,
-            trigger="cron",
-            hour="*",  # Every hour
-            minute=5,  # At minute 5 (5 minutes after the hour)
-            id="update_late_appointments",
-            replace_existing=True
-        )
         scheduler.start()
         logger.info("Appointment reminder scheduler started")
         print("✅ [STARTUP] Appointment reminder scheduler started (runs every hour)")
-        print("✅ [STARTUP] Late appointments updater started (runs every hour at :05)")
     except Exception as e:
         logger.error(f"Failed to start appointment reminder scheduler: {e}")
         print(f"⚠️ [STARTUP] Failed to start appointment reminder scheduler: {e}")

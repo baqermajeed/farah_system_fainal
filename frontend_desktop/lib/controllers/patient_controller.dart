@@ -428,6 +428,93 @@ class PatientController extends GetxController {
     }
   }
 
+  Future<void> updatePatientProfile({
+    required String patientId,
+    String? name,
+    String? phone,
+    String? gender,
+    int? age,
+    String? city,
+  }) async {
+    PatientModel? oldPatient;
+    try {
+      isLoading.value = true;
+      final index = patients.indexWhere((p) => p.id == patientId);
+      if (index != -1) {
+        oldPatient = patients[index];
+      }
+
+      final authController = Get.find<AuthController>();
+      final userType = authController.currentUser.value?.userType.toLowerCase();
+
+      final PatientModel updatedPatient;
+      if (userType == 'receptionist' || userType == 'admin') {
+        updatedPatient = await _patientService.updatePatientByReception(
+          patientId: patientId,
+          name: name,
+          phone: phone,
+          gender: gender,
+          age: age,
+          city: city,
+        );
+      } else {
+        updatedPatient = await _doctorService.updatePatientProfile(
+          patientId: patientId,
+          name: name,
+          gender: gender,
+          age: age,
+          city: city,
+        );
+      }
+
+      final newIndex = patients.indexWhere((p) => p.id == patientId);
+      if (newIndex != -1) {
+        patients[newIndex] = updatedPatient;
+      }
+
+      if (selectedPatient.value?.id == patientId) {
+        selectedPatient.value = updatedPatient;
+      }
+
+      final searchIndex = searchResults.indexWhere((p) => p.id == patientId);
+      if (searchIndex != -1) {
+        searchResults[searchIndex] = updatedPatient;
+      }
+
+      try {
+        await _cacheService.savePatient(updatedPatient);
+      } catch (_) {}
+    } on ApiException catch (e) {
+      if (oldPatient != null) {
+        final index = patients.indexWhere((p) => p.id == patientId);
+        if (index != -1) {
+          patients[index] = oldPatient;
+        }
+      }
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', e.message);
+      }
+      rethrow;
+    } catch (e) {
+      if (oldPatient != null) {
+        final index = patients.indexWhere((p) => p.id == patientId);
+        if (index != -1) {
+          patients[index] = oldPatient;
+        }
+      }
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', 'حدث خطأ أثناء تحديث بيانات المريض');
+      }
+      rethrow;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
   // تحديث الأطباء المرتبطين بمريض معين في الواجهة بدون إعادة تحميل كاملة
   Future<void> updatePatientDoctorIds(
     String patientId,

@@ -2435,6 +2435,26 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
     );
   }
 
+  String _formatPatientCreatedAt(PatientModel patient) {
+    DateTime? date;
+    final raw = patient.createdAt;
+    if (raw != null && raw.trim().isNotEmpty) {
+      date = DateTime.tryParse(raw);
+    }
+    // احتياطي: استخراج التاريخ من Mongo ObjectId إن لم يتوفر created_at
+    if (date == null && patient.id.length >= 8) {
+      try {
+        final seconds = int.parse(patient.id.substring(0, 8), radix: 16);
+        date = DateTime.fromMillisecondsSinceEpoch(
+          seconds * 1000,
+          isUtc: true,
+        );
+      } catch (_) {}
+    }
+    if (date == null) return 'لا يوجد';
+    return DateFormat('yyyy/MM/dd', 'ar').format(date.toLocal());
+  }
+
   Widget _buildPatientFile(PatientModel patient) {
     // التحقق من نوع المستخدم
     final userType = _authController.currentUser.value?.userType;
@@ -2499,6 +2519,49 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                                   height: 32.h,
                                   child: ElevatedButton.icon(
                                     onPressed: () {
+                                      _showEditPatientProfileDialog(
+                                        context,
+                                        patient,
+                                      );
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppColors.primaryLight,
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 4.w,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(
+                                          8.r,
+                                        ),
+                                      ),
+                                    ),
+                                    icon: Icon(
+                                      Icons.edit,
+                                      color: AppColors.primary,
+                                      size: 16.sp,
+                                    ),
+                                    label: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Text(
+                                        'تعديل المعلومات',
+                                        style: TextStyle(
+                                          fontSize: 11.sp,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.primary,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              SizedBox(height: 3.h),
+                              Padding(
+                                padding: EdgeInsets.only(left: 10.w),
+                                child: SizedBox(
+                                  width: 120.w,
+                                  height: 32.h,
+                                  child: ElevatedButton.icon(
+                                    onPressed: () {
                                       _showAddImageDialog(context, patient.id);
                                     },
                                     style: ElevatedButton.styleFrom(
@@ -2536,12 +2599,12 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                           ],
                         ),
                         const Spacer(),
-                        // Patient Details (Text only) - same height as image
-                        Container(
-                          height: 145.h,
+                        // Patient Details (Text only)
+                        Padding(
+                          padding: EdgeInsets.symmetric(vertical: 4.h),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.end,
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               // Name at the top
                               Text(
@@ -2618,6 +2681,17 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                               // نوع المريض - أسفل نوع العلاج
                               Text(
                                 'نوع المريض : ${(patient.visitType != null && patient.visitType!.trim().isNotEmpty) ? patient.visitType : 'لا يوجد'}',
+                                style: TextStyle(
+                                  fontSize: 12.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: const Color(0xFF505558),
+                                ),
+                                textAlign: TextAlign.right,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                'تاريخ الإنشاء : ${_formatPatientCreatedAt(patient)}',
                                 style: TextStyle(
                                   fontSize: 12.sp,
                                   fontWeight: FontWeight.w600,
@@ -7375,6 +7449,243 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
     );
   }
 
+  void _showEditPatientProfileDialog(
+    BuildContext context,
+    PatientModel patient,
+  ) {
+    final nameController = TextEditingController(text: patient.name);
+    final phoneController = TextEditingController(text: patient.phoneNumber);
+    final ageController = TextEditingController(
+      text: patient.age > 0 ? patient.age.toString() : '',
+    );
+    final cityController = TextEditingController(text: patient.city);
+
+    final normalizedGender = (patient.gender == 'female' || patient.gender == 'أنثى')
+        ? 'female'
+        : 'male';
+    String selectedGender = normalizedGender;
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              child: Container(
+                width: 390.w,
+                padding: EdgeInsets.all(16.w),
+                decoration: BoxDecoration(
+                  color: AppColors.white,
+                  borderRadius: BorderRadius.circular(20.r),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'تعديل معلومات المريض',
+                      style: TextStyle(
+                        fontSize: 15.sp,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    SizedBox(height: 12.h),
+                    TextField(
+                      controller: nameController,
+                      textAlign: TextAlign.right,
+                      decoration: InputDecoration(
+                        labelText: 'الاسم',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10.r),
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 10.h),
+                    TextField(
+                      controller: phoneController,
+                      textAlign: TextAlign.right,
+                      keyboardType: TextInputType.phone,
+                      decoration: InputDecoration(
+                        labelText: 'رقم الهاتف',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10.r),
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 10.h),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: ageController,
+                            textAlign: TextAlign.right,
+                            keyboardType: TextInputType.number,
+                            decoration: InputDecoration(
+                              labelText: 'العمر',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10.r),
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 10.w),
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: selectedGender,
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'male',
+                                child: Text('ذكر'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'female',
+                                child: Text('أنثى'),
+                              ),
+                            ],
+                            onChanged: isSaving
+                                ? null
+                                : (value) {
+                                    if (value == null) return;
+                                    setDialogState(() => selectedGender = value);
+                                  },
+                            decoration: InputDecoration(
+                              labelText: 'الجنس',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10.r),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 10.h),
+                    TextField(
+                      controller: cityController,
+                      textAlign: TextAlign.right,
+                      decoration: InputDecoration(
+                        labelText: 'المدينة',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10.r),
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 14.h),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: isSaving
+                                ? null
+                                : () => Navigator.of(dialogContext).pop(),
+                            child: Container(
+                              height: 42.h,
+                              decoration: BoxDecoration(
+                                color: AppColors.divider,
+                                borderRadius: BorderRadius.circular(10.r),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  'إلغاء',
+                                  style: TextStyle(
+                                    fontSize: 13.sp,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 10.w),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: isSaving
+                                ? null
+                                : () async {
+                                    final name = nameController.text.trim();
+                                    final phone = phoneController.text.trim();
+                                    final city = cityController.text.trim();
+                                    final age = int.tryParse(ageController.text.trim());
+                                    final phoneValid = RegExp(r'^07\d{9}$').hasMatch(
+                                      phone,
+                                    );
+
+                                    if (name.isEmpty ||
+                                        city.isEmpty ||
+                                        age == null ||
+                                        age <= 0 ||
+                                        !phoneValid) {
+                                      Get.snackbar(
+                                        'تنبيه',
+                                        'تحقق من الاسم/الهاتف/العمر/المدينة',
+                                      );
+                                      return;
+                                    }
+
+                                    setDialogState(() => isSaving = true);
+                                    try {
+                                      await _patientController.updatePatientProfile(
+                                        patientId: patient.id,
+                                        name: name,
+                                        phone: phone,
+                                        gender: selectedGender,
+                                        age: age,
+                                        city: city,
+                                      );
+                                      if (dialogContext.mounted) {
+                                        Navigator.of(dialogContext).pop();
+                                      }
+                                      Get.snackbar('نجح', 'تم تحديث معلومات المريض');
+                                    } catch (_) {
+                                      // The controller already handles API errors/snackbar.
+                                    } finally {
+                                      if (dialogContext.mounted) {
+                                        setDialogState(() => isSaving = false);
+                                      }
+                                    }
+                                  },
+                            child: Container(
+                              height: 42.h,
+                              decoration: BoxDecoration(
+                                color: AppColors.primary,
+                                borderRadius: BorderRadius.circular(10.r),
+                              ),
+                              child: Center(
+                                child: isSaving
+                                    ? SizedBox(
+                                        width: 18.w,
+                                        height: 18.w,
+                                        child: const CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : Text(
+                                        'حفظ',
+                                        style: TextStyle(
+                                          fontSize: 13.sp,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showAddPatientDialog(BuildContext context) {
     final TextEditingController _nameController = TextEditingController();
     final TextEditingController _phoneController = TextEditingController();
@@ -9594,6 +9905,10 @@ class _SelectDoctorDialogState extends State<_SelectDoctorDialog> {
                                     child: Row(
                                       mainAxisAlignment: MainAxisAlignment.end,
                                       children: [
+                                        DoctorOnlineIndicator(
+                                          userId: doctor.userId,
+                                        ),
+                                        SizedBox(width: 6.w),
                                         Flexible(
                                           child: Text(
                                             doctor.name ?? 'طبيب',
@@ -9608,8 +9923,6 @@ class _SelectDoctorDialogState extends State<_SelectDoctorDialog> {
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
-                                        SizedBox(width: 6.w),
-                                        DoctorOnlineIndicator(userId: doctor.userId),
                                       ],
                                     ),
                                   ),

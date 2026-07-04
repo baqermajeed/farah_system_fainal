@@ -26,6 +26,7 @@ import 'package:frontend_desktop/controllers/auth_controller.dart';
 import 'package:frontend_desktop/controllers/queue_controller.dart';
 import 'package:frontend_desktop/controllers/presence_controller.dart';
 import 'package:frontend_desktop/services/cache_service.dart';
+import 'package:frontend_desktop/services/outbox_store.dart';
 import 'package:frontend_desktop/services/queue_announcement_service.dart';
 import 'package:frontend_desktop/services/queue_window_service.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -70,6 +71,9 @@ Future<void> _bootstrapMainApp() async {
   await initializeDateFormatting('ar', null);
   await CacheService().init();
 
+  // طابور المزامنة الدائم — منفصل عن الكاش ولا يُمسح أبداً معه
+  await OutboxStore().init();
+
   try {
     final cacheService = CacheService();
     final totalCached = cacheService.totalCachedItems;
@@ -86,6 +90,9 @@ Future<void> _bootstrapMainApp() async {
 
   await Hive.openBox('metaData');
   await QueueAnnouncementService.instance.init();
+
+  // جاهزية الطابور الدائم؛ الرفع يبدأ عند دخول الطبيب (AuthController)
+  print('📦 [Main] Outbox ready (pending=${OutboxStore().pendingCount})');
 
   Get.put(PresenceController());
   Get.put(AuthController());

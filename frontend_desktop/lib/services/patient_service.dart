@@ -74,6 +74,39 @@ class PatientService {
     }
   }
 
+  Future<PatientModel> updatePatientByReception({
+    required String patientId,
+    String? name,
+    String? phone,
+    String? gender,
+    int? age,
+    String? city,
+  }) async {
+    try {
+      final Map<String, dynamic> data = {};
+      if (name != null) data['name'] = name;
+      if (phone != null) data['phone'] = phone;
+      if (gender != null) data['gender'] = gender;
+      if (age != null) data['age'] = age;
+      if (city != null) data['city'] = city;
+
+      final response = await _api.patch(
+        ApiConstants.receptionUpdatePatient(patientId),
+        data: data,
+      );
+
+      if (response.statusCode == 200) {
+        return _mapPatientOutToModel(
+          (response.data as Map).cast<String, dynamic>(),
+        );
+      }
+      throw ApiException('فشل تحديث بيانات المريض');
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('فشل تحديث بيانات المريض: ${e.toString()}');
+    }
+  }
+
   // إنشاء مريض جديد (للاستقبال)
   Future<PatientModel> createPatientForReception({
     required String name,

@@ -253,7 +253,7 @@ class AppointmentController extends GetxController {
         date: scheduledAt,
         time:
             '${scheduledAt.hour.toString().padLeft(2, '0')}:${scheduledAt.minute.toString().padLeft(2, '0')}',
-        status: 'scheduled',
+        status: 'pending',
         notes: note,
         imagePath: null,
         imagePaths: const [],

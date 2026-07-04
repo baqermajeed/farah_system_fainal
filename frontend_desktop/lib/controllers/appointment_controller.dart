@@ -102,6 +102,9 @@ class AppointmentController extends GetxController {
       notes: appointment.notes,
       imagePath: appointment.imagePath,
       imagePaths: appointment.imagePaths,
+      isLate: appointment.isLate,
+      kind: appointment.kind,
+      stageName: appointment.stageName,
     );
   }
 
@@ -506,6 +509,9 @@ class AppointmentController extends GetxController {
         notes: note,
         imagePath: null,
         imagePaths: const [],
+        isLate: false,
+        kind: 'regular',
+        stageName: null,
       );
 
       // إضافة الموعد المؤقت إلى قائمة المواعيد العامة

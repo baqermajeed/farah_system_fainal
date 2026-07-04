@@ -7,6 +7,15 @@ settings = get_settings()
 _mongo_client: AsyncIOMotorClient | None = None
 
 
+async def _ensure_users_phone_unique_index(db) -> None:
+    """Drop stale non-unique phone index so Beanie can recreate it as unique."""
+    users = db["users"]
+    indexes = await users.index_information()
+    phone_index = indexes.get("phone_1")
+    if phone_index and not phone_index.get("unique"):
+        await users.drop_index("phone_1")
+
+
 async def init_db() -> None:
     """Initialize MongoDB (Beanie) and register document models."""
     global _mongo_client
@@ -15,6 +24,7 @@ async def init_db() -> None:
     db_name = settings.MONGODB_URI.rsplit("/", 1)[-1].split("?")[0]  # Remove query params
     if not db_name:
         db_name = "clinic_db"  # Default database name
+    await _ensure_users_phone_unique_index(_mongo_client[db_name])
     from app.models import (
         User,
         Doctor,
@@ -32,6 +42,8 @@ async def init_db() -> None:
         InactivePatientLog,
         DoctorWorkingHours,
         ImplantStage,
+        DentalChart,  # noqa: F401 — registered below
+        ReceptionQueueDay,
     )
     await init_beanie(
         database=_mongo_client[db_name],
@@ -52,6 +64,8 @@ async def init_db() -> None:
             InactivePatientLog,
             DoctorWorkingHours,
             ImplantStage,
+            DentalChart,
+            ReceptionQueueDay,
         ],
     )
 

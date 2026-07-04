@@ -225,11 +225,12 @@ class AppointmentCreate(BaseModel):
 
 class AppointmentStatusUpdate(BaseModel):
     """Schema لتحديث حالة الموعد."""
-    status: str = Field(..., description="الحالة الجديدة: pending, completed, cancelled, late")
+    status: str = Field(..., description="الحالة الجديدة: pending, completed, cancelled")
 
     @field_validator("status")
     @classmethod
     def validate_status(cls, v: str) -> str:
+        # نقبل late للتوافق مع العملاء القديمة، ونحوّله إلى pending.
         allowed_statuses = ["pending", "completed", "cancelled", "late"]
         if v.lower() not in allowed_statuses:
             raise ValueError(f"Status must be one of: {', '.join(allowed_statuses)}")
@@ -264,6 +265,9 @@ class AppointmentOut(BaseModel):
     image_path: Optional[str] = None  # للتوافق مع البيانات القديمة
     image_paths: List[str] = []  # قائمة الصور الجديدة
     status: str
+    is_late: bool = False
+    kind: str = "regular"
+    stage_name: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -288,6 +292,9 @@ class ReceptionAppointmentOut(BaseModel):
     note: Optional[str] = None
     image_path: Optional[str] = None
     status: str
+    is_late: bool = False
+    kind: str = "regular"
+    stage_name: Optional[str] = None
 
 # -------------------- Notes / Gallery --------------------
 
@@ -396,3 +403,75 @@ class ImplantStageDateUpdate(BaseModel):
 class ImplantStagesResponse(BaseModel):
     """Schema لاستجابة قائمة المراحل."""
     stages: List[ImplantStageOut]
+
+
+# -------------------- Dental Chart (FDI) --------------------
+
+class DentalNoteEntryIn(BaseModel):
+    """ملاحظة على سن — يقبل createdAt (الواجهة) أو created_at."""
+    text: str
+    createdAt: Optional[str] = None
+    created_at: Optional[str] = None
+
+
+class DentalNoteEntryOut(BaseModel):
+    """ملاحظة على سن — بصيغة الواجهة (createdAt)."""
+    text: str
+    createdAt: str
+
+
+class DentalChartUpsert(BaseModel):
+    """حفظ/استبدال مخطط الأسنان بالكامل (مطابق لـ CacheService.saveDentalChart)."""
+    chart: Dict[str, List[str]] = {}
+    notes: Dict[str, List[DentalNoteEntryIn]] = {}
+    selected_tooth: Optional[str] = None
+    # توافق مع مفتاح الواجهة camelCase
+    selectedTooth: Optional[str] = None
+
+
+class DentalToothPatch(BaseModel):
+    """تحديث سن واحد."""
+    statuses: Optional[List[str]] = None
+    notes: Optional[List[DentalNoteEntryIn]] = None
+    clear: bool = False
+
+
+class DentalChartOut(BaseModel):
+    """استجابة مخطط الأسنان."""
+    id: Optional[str] = None
+    patient_id: str
+    doctor_id: str
+    chart: Dict[str, List[str]] = {}
+    notes: Dict[str, List[DentalNoteEntryOut]] = {}
+    selected_tooth: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+    class Config:
+        from_attributes = True
+
+
+# -------------------- Reception: Daily Queue Archive --------------------
+
+class ReceptionQueueEntryIn(BaseModel):
+    number: int = Field(..., ge=1, le=100)
+    name: str = Field(..., min_length=1, max_length=200)
+
+
+class ReceptionQueueSyncIn(BaseModel):
+    """مزامنة أرشيف طابور يوم واحد (العرض يبقى محلياً على جهاز الاستقبال)."""
+
+    date: str = Field(..., description="YYYY-MM-DD")
+    entries: List[ReceptionQueueEntryIn] = Field(default_factory=list)
+
+
+class ReceptionQueueEntryOut(BaseModel):
+    number: int
+    name: str
+
+
+class ReceptionQueueDayOut(BaseModel):
+    date: str
+    total_count: int
+    entries: List[ReceptionQueueEntryOut] = []
+    updated_at: str

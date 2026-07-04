@@ -41,6 +41,7 @@ import 'package:frontend_desktop/core/utils/image_utils.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:frontend_desktop/services/patient_service.dart';
+import 'package:frontend_desktop/services/cache_service.dart';
 import 'package:frontend_desktop/models/doctor_model.dart';
 import 'package:frontend_desktop/main.dart' show availableCamerasList;
 
@@ -78,11 +79,309 @@ class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
   }
 }
 
+class _ToothShapePainter extends CustomPainter {
+  final Color borderColor;
+  final bool isUpper;
+  final double strokeWidth;
+  final String toothKind;
+
+  _ToothShapePainter({
+    required this.borderColor,
+    required this.isUpper,
+    required this.strokeWidth,
+    required this.toothKind,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (!isUpper) {
+      canvas.translate(0, size.height);
+      canvas.scale(1, -1);
+    }
+
+    final Path path;
+    switch (toothKind) {
+      case 'incisor':
+        path = _incisorPath(size);
+        break;
+      case 'canine':
+        path = _caninePath(size);
+        break;
+      case 'premolar':
+        path = _premolarPath(size);
+        break;
+      default:
+        path = _molarPath(size);
+        break;
+    }
+
+    final fill = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    final stroke = Paint()
+      ..color = borderColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth;
+
+    canvas.drawPath(path, fill);
+    canvas.drawPath(path, stroke);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ToothShapePainter oldDelegate) {
+    return oldDelegate.borderColor != borderColor ||
+        oldDelegate.isUpper != isUpper ||
+        oldDelegate.strokeWidth != strokeWidth ||
+        oldDelegate.toothKind != toothKind;
+  }
+
+  Path _incisorPath(Size size) {
+    return Path()
+      ..moveTo(size.width * 0.30, size.height * 0.15)
+      ..quadraticBezierTo(
+        size.width * 0.50,
+        size.height * 0.02,
+        size.width * 0.70,
+        size.height * 0.15,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.82,
+        size.height * 0.32,
+        size.width * 0.77,
+        size.height * 0.58,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.70,
+        size.height * 0.84,
+        size.width * 0.57,
+        size.height * 0.97,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.52,
+        size.height * 1.02,
+        size.width * 0.50,
+        size.height * 0.92,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.48,
+        size.height * 1.02,
+        size.width * 0.43,
+        size.height * 0.97,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.30,
+        size.height * 0.84,
+        size.width * 0.23,
+        size.height * 0.58,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.18,
+        size.height * 0.32,
+        size.width * 0.30,
+        size.height * 0.15,
+      )
+      ..close();
+  }
+
+  Path _caninePath(Size size) {
+    return Path()
+      ..moveTo(size.width * 0.26, size.height * 0.18)
+      ..quadraticBezierTo(
+        size.width * 0.42,
+        size.height * 0.02,
+        size.width * 0.50,
+        size.height * 0.04,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.58,
+        size.height * 0.02,
+        size.width * 0.74,
+        size.height * 0.18,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.86,
+        size.height * 0.35,
+        size.width * 0.81,
+        size.height * 0.58,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.75,
+        size.height * 0.84,
+        size.width * 0.60,
+        size.height * 0.97,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.54,
+        size.height * 1.00,
+        size.width * 0.50,
+        size.height * 0.89,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.46,
+        size.height * 1.00,
+        size.width * 0.40,
+        size.height * 0.97,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.25,
+        size.height * 0.84,
+        size.width * 0.19,
+        size.height * 0.58,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.14,
+        size.height * 0.35,
+        size.width * 0.26,
+        size.height * 0.18,
+      )
+      ..close();
+  }
+
+  Path _premolarPath(Size size) {
+    return Path()
+      ..moveTo(size.width * 0.22, size.height * 0.18)
+      ..quadraticBezierTo(
+        size.width * 0.36,
+        size.height * 0.04,
+        size.width * 0.50,
+        size.height * 0.07,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.64,
+        size.height * 0.04,
+        size.width * 0.78,
+        size.height * 0.18,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.90,
+        size.height * 0.35,
+        size.width * 0.84,
+        size.height * 0.57,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.76,
+        size.height * 0.82,
+        size.width * 0.62,
+        size.height * 0.96,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.56,
+        size.height * 1.00,
+        size.width * 0.50,
+        size.height * 0.89,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.44,
+        size.height * 1.00,
+        size.width * 0.38,
+        size.height * 0.96,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.24,
+        size.height * 0.82,
+        size.width * 0.16,
+        size.height * 0.57,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.10,
+        size.height * 0.35,
+        size.width * 0.22,
+        size.height * 0.18,
+      )
+      ..close();
+  }
+
+  Path _molarPath(Size size) {
+    return Path()
+      ..moveTo(size.width * 0.18, size.height * 0.20)
+      ..quadraticBezierTo(
+        size.width * 0.30,
+        size.height * 0.05,
+        size.width * 0.42,
+        size.height * 0.08,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.50,
+        size.height * 0.02,
+        size.width * 0.58,
+        size.height * 0.08,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.70,
+        size.height * 0.05,
+        size.width * 0.82,
+        size.height * 0.20,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.92,
+        size.height * 0.36,
+        size.width * 0.88,
+        size.height * 0.58,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.80,
+        size.height * 0.82,
+        size.width * 0.66,
+        size.height * 0.96,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.57,
+        size.height * 1.01,
+        size.width * 0.50,
+        size.height * 0.88,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.43,
+        size.height * 1.01,
+        size.width * 0.34,
+        size.height * 0.96,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.20,
+        size.height * 0.82,
+        size.width * 0.12,
+        size.height * 0.58,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.08,
+        size.height * 0.36,
+        size.width * 0.18,
+        size.height * 0.20,
+      )
+      ..close();
+  }
+}
+
 class DoctorHomeScreen extends StatefulWidget {
   const DoctorHomeScreen({super.key});
 
   @override
   State<DoctorHomeScreen> createState() => _DoctorHomeScreenState();
+}
+
+class _DentalNoteEntry {
+  final String text;
+  final DateTime createdAt;
+
+  const _DentalNoteEntry({
+    required this.text,
+    required this.createdAt,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'text': text,
+        'createdAt': createdAt.toIso8601String(),
+      };
+
+  factory _DentalNoteEntry.fromJson(Map<String, dynamic> json) {
+    final createdAtRaw = json['createdAt'];
+    return _DentalNoteEntry(
+      text: json['text']?.toString() ?? '',
+      createdAt: createdAtRaw is String
+          ? DateTime.tryParse(createdAtRaw) ?? DateTime.now()
+          : DateTime.now(),
+    );
+  }
 }
 
 class _DoctorHomeScreenState extends State<DoctorHomeScreen>
@@ -107,6 +406,76 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
       false.obs; // Track if appointments should be shown
   final TextEditingController _qrScanController = TextEditingController();
   final GlobalKey _qrPrintKey = GlobalKey();
+  final Map<String, Map<String, Set<String>>> _dentalChartByPatient = {};
+  final Map<String, Map<String, List<_DentalNoteEntry>>> _dentalNotesByPatient =
+      {};
+  final Map<String, String> _selectedDentalToothByPatient = {};
+  final Set<String> _dentalDataLoadedPatients = {};
+  final CacheService _cacheService = CacheService();
+
+  static const List<String> _upperTeethFdi = [
+    '18',
+    '17',
+    '16',
+    '15',
+    '14',
+    '13',
+    '12',
+    '11',
+    '21',
+    '22',
+    '23',
+    '24',
+    '25',
+    '26',
+    '27',
+    '28',
+  ];
+
+  static const List<String> _lowerTeethFdi = [
+    '48',
+    '47',
+    '46',
+    '45',
+    '44',
+    '43',
+    '42',
+    '41',
+    '31',
+    '32',
+    '33',
+    '34',
+    '35',
+    '36',
+    '37',
+    '38',
+  ];
+
+  static const List<String> _dentalStatuses = [
+    'زراعة',
+    'قلع',
+    'مفقود',
+    'تاج',
+    'حشوة',
+    'جسر',
+    'قص لثة',
+    'فينير',
+    'تسوس',
+  ];
+
+  static const Map<String, List<String>> _dentalSubStatuses = {
+    'حشوة': [
+      'حشوة تجميلية',
+      'حشوة جذر',
+      'حشوة معدنية',
+      'حشوة مختبرية',
+    ],
+    'تاج': [
+      'زركون',
+      'سيراميك',
+      'اي ماكس',
+    ],
+  };
 
   // ⭐ ScrollController للـ Pagination
   final ScrollController _patientsScrollController = ScrollController();
@@ -144,13 +513,13 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _appointmentsTabController = TabController(length: 4, vsync: this);
     // Listen to tab changes
     _tabController.addListener(() {
-      if (!_tabController.indexIsChanging) {
-        _currentTabIndex.value = _tabController.index;
-      }
+      // Update immediately to avoid 1-frame/1-second UI flicker
+      // (e.g. showing "حجز موعد" briefly while switching to appointments tab).
+      _currentTabIndex.value = _tabController.index;
     });
 
     // ⭐ إضافة listener لتغيير تبويبات المواعيد لإعادة تحميل المواعيد بالفلتر المناسب
@@ -1255,7 +1624,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
           ),
           // Column 1: All Patients (on the right)
           Container(
-            width: 450.w,
+            width: 360.w,
             decoration: BoxDecoration(
               border: Border(
                 left: BorderSide(color: const Color(0xFF649FCC), width: 1),
@@ -2276,10 +2645,13 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                 ),
                               ),
                               SizedBox(width: 8.w),
-                              // Edit treatment type button
+                              // Edit patient profile button
                               GestureDetector(
                                 onTap: () {
-                                  _showTreatmentTypeDialog(context, patient);
+                                  _showEditPatientProfileDialog(
+                                    context,
+                                    patient,
+                                  );
                                 },
                                 child: Container(
                                   width: 40.w,
@@ -2289,9 +2661,31 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                     borderRadius: BorderRadius.circular(8.r),
                                   ),
                                   child: Icon(
-                                    Icons.edit,
+                                    Icons.person_outline,
                                     color: AppColors.primary,
                                     size: 20.sp,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(width: 8.w),
+                              Tooltip(
+                                message: 'نوع العلاج',
+                                child: GestureDetector(
+                                  onTap: () {
+                                    _showTreatmentTypeDialog(context, patient);
+                                  },
+                                  child: Container(
+                                    width: 40.w,
+                                    height: 40.w,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primaryLight,
+                                      borderRadius: BorderRadius.circular(8.r),
+                                    ),
+                                    child: Icon(
+                                      Icons.edit,
+                                      color: AppColors.primary,
+                                      size: 20.sp,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -2347,12 +2741,12 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                             ],
                           ),
                           Spacer(),
-                          // Patient Details (Text only) - same height as image
-                          Container(
-                            height: 145.h,
+                          // Patient Details (Text only)
+                          Padding(
+                            padding: EdgeInsets.symmetric(vertical: 4.h),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.end,
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              mainAxisSize: MainAxisSize.min,
                               children: [
                                 // Name at the top
                                 Builder(
@@ -2551,6 +2945,17 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
+                                Text(
+                                  'تاريخ الإنشاء : ${_formatPatientCreatedAt(patient)}',
+                                  style: TextStyle(
+                                    fontSize: 12.sp,
+                                    fontWeight: FontWeight.w600,
+                                    color: const Color(0xFF505558),
+                                  ),
+                                  textAlign: TextAlign.right,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ],
                             ),
                           ),
@@ -2684,6 +3089,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                               Tab(text: 'معرض الصور'),
                               Tab(text: 'المواعيد'),
                               Tab(text: 'السجلات'),
+                              Tab(text: 'Dental Chart'),
                             ],
                           ),
                         ),
@@ -2695,31 +3101,43 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
               body: Stack(
                 children: [
                   // Tab Content
-                  TabBarView(
-                    controller: _tabController,
-                    children: [
-                      _buildGalleryTab(patient), // معرض الصور (index 0)
-                      _buildAppointmentsTab(patient), // المواعيد (index 1)
-                      _buildRecordsTab(patient), // السجلات (index 2)
-                    ],
+                  // بناء التبويب النشط فقط — يتجنب انهيار Windows عند التبديل
+                  // بين Dental Chart وباقي التبويبات (TabBarView يبني صفحات متعددة).
+                  AnimatedBuilder(
+                    animation: _tabController,
+                    builder: (context, _) {
+                      switch (_tabController.index) {
+                        case 0:
+                          return _buildGalleryTab(patient);
+                        case 1:
+                          return _buildAppointmentsTab(patient);
+                        case 2:
+                          return _buildRecordsTab(patient);
+                        case 3:
+                          return _buildDentalChartTab(patient);
+                        default:
+                          return const SizedBox.shrink();
+                      }
+                    },
                   ),
 
                   // Add Record Button (Floating button)
                   Obx(() {
-                    final selectedPatient =
-                        _patientController.selectedPatient.value;
-                    if (selectedPatient == null) {
+                    final tabIndex = _currentTabIndex.value;
+                    if (tabIndex == 3) {
                       return const SizedBox.shrink();
                     }
-
-                    final tabIndex = _currentTabIndex.value;
+                    if (tabIndex == 1 &&
+                        _isImplantTreatment(patient)) {
+                      return const SizedBox.shrink();
+                    }
                     return Positioned(
                       bottom: 24.h,
                       left: 240.w,
                       right: 240.w,
                       child: ElevatedButton(
                         onPressed: () {
-                          _onButtonPressed(tabIndex, selectedPatient.id);
+                          _onButtonPressed(tabIndex, patient.id);
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.primary.withOpacity(0.9),
@@ -4418,6 +4836,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
         return 'حجز موعد';
       case 2: // السجلات (Records)
         return 'اضافة سجل';
+      case 3: // Dental Chart
+        return '';
       default:
         return 'اضافة سجل';
     }
@@ -4434,7 +4854,1242 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
       case 2: // السجلات (Records)
         _showAddRecordDialog(context, patientId);
         break;
+      case 3: // Dental Chart
+        break;
     }
+  }
+
+  bool _isImplantTreatment(PatientModel patient) {
+    return patient.treatmentHistory != null &&
+        patient.treatmentHistory!.isNotEmpty &&
+        patient.treatmentHistory!.last == 'زراعة';
+  }
+
+  void _ensureDentalDataLoaded(String patientId) {
+    if (patientId.isEmpty || _dentalDataLoadedPatients.contains(patientId)) {
+      return;
+    }
+    _dentalDataLoadedPatients.add(patientId);
+
+    final cached = _cacheService.getDentalChart(patientId);
+    if (cached == null) return;
+
+    final chart = <String, Set<String>>{};
+    cached.chart.forEach((tooth, statuses) {
+      if (statuses.isNotEmpty) {
+        chart[tooth] = statuses.toSet();
+      }
+    });
+    _dentalChartByPatient[patientId] = chart;
+
+    final notes = <String, List<_DentalNoteEntry>>{};
+    cached.notes.forEach((tooth, entries) {
+      final parsed = entries
+          .map(_DentalNoteEntry.fromJson)
+          .where((note) => note.text.trim().isNotEmpty)
+          .toList();
+      if (parsed.isNotEmpty) {
+        notes[tooth] = parsed;
+      }
+    });
+    _dentalNotesByPatient[patientId] = notes;
+
+    final selectedTooth = cached.selectedTooth;
+    if (selectedTooth != null && selectedTooth.isNotEmpty) {
+      _selectedDentalToothByPatient[patientId] = selectedTooth;
+    }
+  }
+
+  Future<void> _persistDentalData(String patientId) async {
+    if (patientId.isEmpty) return;
+
+    final chart = _dentalChartByPatient[patientId] ?? {};
+    final notes = _dentalNotesByPatient[patientId] ?? {};
+
+    final chartPayload = <String, List<String>>{};
+    chart.forEach((tooth, statuses) {
+      if (statuses.isNotEmpty) {
+        chartPayload[tooth] = statuses.toList();
+      }
+    });
+
+    final notesPayload = <String, List<Map<String, dynamic>>>{};
+    notes.forEach((tooth, entries) {
+      if (entries.isNotEmpty) {
+        notesPayload[tooth] = entries.map((e) => e.toJson()).toList();
+      }
+    });
+
+    if (chartPayload.isEmpty && notesPayload.isEmpty) {
+      await _cacheService.deleteDentalChart(patientId);
+      return;
+    }
+
+    await _cacheService.saveDentalChart(
+      patientId: patientId,
+      chart: chartPayload,
+      notes: notesPayload,
+      selectedTooth: _selectedDentalToothByPatient[patientId],
+    );
+  }
+
+  Widget _buildDentalChartTab(PatientModel patient) {
+    _ensureDentalDataLoaded(patient.id);
+    final chart = _dentalChartByPatient.putIfAbsent(patient.id, () => {});
+    final selectedTooth = _selectedDentalToothByPatient[patient.id];
+
+    return Container(
+      color: const Color(0xFFF4FEFF),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(8.w, 8.h, 8.w, 12.h),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 9.h),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10.r),
+                  border: Border.all(color: AppColors.divider),
+                ),
+                child: Text(
+                  'Dental Chart (FDI) - اضغط على أي سن لتغيير حالته',
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              SizedBox(height: 12.h),
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14.r),
+                  border: Border.all(color: AppColors.divider),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      'الفك العلوي',
+                      style: TextStyle(
+                        fontSize: 20.sp,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF1F2A44),
+                      ),
+                    ),
+                    SizedBox(height: 8.h),
+                    _buildDentalArchRow(
+                      teeth: _upperTeethFdi,
+                      chart: chart,
+                      selectedTooth: selectedTooth,
+                      numbersOnTop: true,
+                      onToothTap: (toothNo) => _showDentalStatusPicker(
+                        patient: patient,
+                        toothNo: toothNo,
+                      ),
+                    ),
+                    SizedBox(height: 10.h),
+                    SizedBox(
+                      height: 120.h,
+                      child: Stack(
+                        children: [
+                          Positioned(
+                            top: 58.h,
+                            left: 20.w,
+                            right: 20.w,
+                            child: Container(height: 1.2, color: const Color(0xFFD6DBE3)),
+                          ),
+                          Center(
+                            child: Container(
+                              width: 1.2,
+                              color: const Color(0xFFD6DBE3),
+                            ),
+                          ),
+                          Positioned(
+                            top: 52.h,
+                            left: 0,
+                            child: Text(
+                              'يمين',
+                              style: TextStyle(
+                                fontSize: 16.sp,
+                                color: const Color(0xFF6C7A90),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            top: 52.h,
+                            right: 0,
+                            child: Text(
+                              'يسار',
+                              style: TextStyle(
+                                fontSize: 16.sp,
+                                color: const Color(0xFF6C7A90),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    _buildDentalArchRow(
+                      teeth: _lowerTeethFdi,
+                      chart: chart,
+                      selectedTooth: selectedTooth,
+                      numbersOnTop: false,
+                      onToothTap: (toothNo) => _showDentalStatusPicker(
+                        patient: patient,
+                        toothNo: toothNo,
+                      ),
+                    ),
+                    SizedBox(height: 10.h),
+                    Text(
+                      'الفك السفلي',
+                      style: TextStyle(
+                        fontSize: 20.sp,
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFF1F2A44),
+                      ),
+                    ),
+                    SizedBox(height: 10.h),
+                    Wrap(
+                      spacing: 8.w,
+                      runSpacing: 8.h,
+                      alignment: WrapAlignment.center,
+                      children: _dentalStatuses
+                          .map(
+                            (status) => Container(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 10.w,
+                                vertical: 5.h,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _dentalStatusColor(status).withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(999.r),
+                                border: Border.all(
+                                  color: _dentalStatusColor(status).withOpacity(0.7),
+                                ),
+                              ),
+                              child: Text(
+                                status,
+                                style: TextStyle(
+                                  fontSize: 11.sp,
+                                  color: _dentalStatusColor(status),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                    SizedBox(height: 8.h),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDentalArchRow({
+    required List<String> teeth,
+    required Map<String, Set<String>> chart,
+    required String? selectedTooth,
+    required bool numbersOnTop,
+    required ValueChanged<String> onToothTap,
+  }) {
+    final total = teeth.length;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: teeth.asMap().entries.map((entry) {
+        final index = entry.key;
+        final toothNo = entry.value;
+        final yOffset = _archYOffset(
+          index: index,
+          total: total,
+          isUpper: numbersOnTop,
+        );
+
+        return Padding(
+          padding: EdgeInsets.symmetric(horizontal: 2.w),
+          child: Transform.translate(
+            offset: Offset(0, yOffset),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (numbersOnTop) ...[
+                  Text(
+                    toothNo,
+                    style: TextStyle(
+                      fontSize: 11.sp,
+                      color: const Color(0xFF1D68D9),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  SizedBox(height: 3.h),
+                ],
+                _buildToothVisual(
+                  toothNo: toothNo,
+                  statuses: chart[toothNo] ?? const <String>{},
+                  isSelected: selectedTooth == toothNo,
+                  isUpper: numbersOnTop,
+                  onTap: () => onToothTap(toothNo),
+                ),
+                if (!numbersOnTop) ...[
+                  SizedBox(height: 3.h),
+                  Text(
+                    toothNo,
+                    style: TextStyle(
+                      fontSize: 11.sp,
+                      color: const Color(0xFF1D68D9),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  double _archYOffset({
+    required int index,
+    required int total,
+    required bool isUpper,
+  }) {
+    if (total <= 1) return 0;
+    final center = (total - 1) / 2;
+    final normalizedDist = ((index - center).abs() / center).clamp(0.0, 1.0);
+    final curve = normalizedDist * normalizedDist * normalizedDist;
+    final amplitude = 18.h;
+    // Upper arch: sides go slightly down, center up.
+    // Lower arch: mirrored for visual symmetry.
+    return isUpper ? curve * amplitude : -(curve * amplitude);
+  }
+
+  Widget _buildToothVisual({
+    required String toothNo,
+    required Set<String> statuses,
+    required bool isSelected,
+    required bool isUpper,
+    required VoidCallback onTap,
+  }) {
+    final borderColor = isSelected ? const Color(0xFF4CA7FF) : const Color(0xFFB9C0CC);
+    final kind = _toothKindFromNumber(toothNo);
+    final width = _toothWidth(kind);
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14.r),
+      child: SizedBox(
+        width: width,
+        height: 60.h,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  painter: _ToothShapePainter(
+                    borderColor: borderColor,
+                    isUpper: isUpper,
+                    strokeWidth: isSelected ? 2.0 : 1.4,
+                    toothKind: kind,
+                  ),
+                ),
+              ),
+            ),
+            if (isSelected)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Container(
+                    margin: EdgeInsets.symmetric(horizontal: 2.w, vertical: 3.h),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: const Color(0xFF4CA7FF), width: 1.8),
+                      borderRadius: BorderRadius.circular(14.r),
+                      color: const Color(0x124CA7FF),
+                    ),
+                  ),
+                ),
+              ),
+            if (_hasStatus(statuses, 'حشوة'))
+              Center(
+                child: Container(
+                  width: 18.w,
+                  height: 28.h,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF2D24C),
+                    borderRadius: BorderRadius.circular(10.r),
+                  ),
+                ),
+              ),
+            if (_hasStatus(statuses, 'تسوس'))
+              Center(
+                child: Container(
+                  width: 11.w,
+                  height: 11.w,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF2D3035),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            if (_hasStatus(statuses, 'قص لثة'))
+              Positioned(
+                top: isUpper ? 4.h : null,
+                bottom: isUpper ? null : 4.h,
+                left: 6.w,
+                right: 6.w,
+                child: Container(
+                  height: 10.h,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE25555),
+                    borderRadius: BorderRadius.circular(10.r),
+                  ),
+                ),
+              ),
+            if (_hasStatus(statuses, 'فينير'))
+              Positioned(
+                top: isUpper ? 4.h : null,
+                bottom: isUpper ? null : 4.h,
+                left: 6.w,
+                right: 6.w,
+                child: Container(
+                  height: 10.h,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFAB8AF7),
+                    borderRadius: BorderRadius.circular(10.r),
+                  ),
+                ),
+              ),
+            if (_hasStatus(statuses, 'تاج'))
+              Positioned.fill(
+                child: Container(
+                  margin: EdgeInsets.symmetric(horizontal: 3.w, vertical: 4.h),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: const Color(0xFF4CA7FF), width: 1.3),
+                    borderRadius: BorderRadius.circular(14.r),
+                    color: const Color(0x224CA7FF),
+                  ),
+                ),
+              ),
+            if (_hasStatus(statuses, 'جسر'))
+              Positioned(
+                left: 5.w,
+                right: 5.w,
+                top: 24.h,
+                child: Container(
+                  height: 5.h,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1CB7D8),
+                    borderRadius: BorderRadius.circular(6.r),
+                  ),
+                ),
+              ),
+            if (_hasStatus(statuses, 'مفقود'))
+              Center(
+                child: Text(
+                  '✕',
+                  style: TextStyle(
+                    fontSize: 18.sp,
+                    color: const Color(0xFF565C66),
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            if (_hasStatus(statuses, 'قلع'))
+              Center(
+                child: Text(
+                  '✕',
+                  style: TextStyle(
+                    fontSize: 18.sp,
+                    color: const Color(0xFFC0392B),
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            if (_hasStatus(statuses, 'زراعة'))
+              Center(
+                child: Icon(
+                  Icons.hardware,
+                  size: 16.sp,
+                  color: const Color(0xFF1CB7D8),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _toothKindFromNumber(String toothNo) {
+    final n = int.tryParse(toothNo);
+    if (n == null) return 'molar';
+    final unit = n % 10;
+    if (unit == 1 || unit == 2) return 'incisor';
+    if (unit == 3) return 'canine';
+    if (unit == 4 || unit == 5) return 'premolar';
+    return 'molar';
+  }
+
+  double _toothWidth(String kind) {
+    switch (kind) {
+      case 'incisor':
+        return 30.w;
+      case 'canine':
+        return 32.w;
+      case 'premolar':
+        return 35.w;
+      case 'molar':
+      default:
+        return 38.w;
+    }
+  }
+
+  Future<void> _showDentalStatusPicker({
+    required PatientModel patient,
+    required String toothNo,
+  }) async {
+    _ensureDentalDataLoaded(patient.id);
+    final chart = _dentalChartByPatient.putIfAbsent(patient.id, () => {});
+    final notesByTooth = _dentalNotesByPatient.putIfAbsent(patient.id, () => {});
+    final current = Set<String>.from(chart[toothNo] ?? const <String>{});
+    final List<_DentalNoteEntry> currentNotes = List<_DentalNoteEntry>.from(
+      notesByTooth[toothNo] ?? const <_DentalNoteEntry>[],
+    );
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) {
+        final temp = Set<String>.from(current);
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final selectedParentWithSubs = _dentalStatuses
+                .where(
+                  (status) =>
+                      _hasStatus(temp, status) &&
+                      (_dentalSubStatuses[status]?.isNotEmpty ?? false),
+                )
+                .toList();
+
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(30.r),
+              ),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: 560.w,
+                  minWidth: 470.w,
+                  maxHeight: 680.h,
+                ),
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFFFFFFF), Color(0xFFF4F8FF)],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                    borderRadius: BorderRadius.circular(30.r),
+                    border: Border.all(color: const Color(0xFFDCE7FA)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF1D3557).withOpacity(0.18),
+                        blurRadius: 34,
+                        offset: const Offset(0, 14),
+                      ),
+                    ],
+                  ),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.max,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 16.w,
+                            vertical: 11.h,
+                          ),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF0EA5E9), Color(0xFF2563EB)],
+                              begin: Alignment.centerLeft,
+                              end: Alignment.centerRight,
+                            ),
+                            borderRadius: BorderRadius.circular(18.r),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF2563EB).withOpacity(0.35),
+                                blurRadius: 16,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: EdgeInsets.all(8.w),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.22),
+                                  borderRadius: BorderRadius.circular(12.r),
+                                ),
+                                child: Icon(
+                                  Icons.medical_services_outlined,
+                                  color: Colors.white,
+                                  size: 19.sp,
+                                ),
+                              ),
+                              SizedBox(width: 10.w),
+                              Expanded(
+                                child: Text(
+                                  'إعدادات السن $toothNo',
+                                  textAlign: TextAlign.right,
+                                  style: TextStyle(
+                                    fontSize: 18.sp,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                              InkWell(
+                                onTap: () => Navigator.of(context).pop(),
+                                borderRadius: BorderRadius.circular(999.r),
+                                child: Padding(
+                                  padding: EdgeInsets.all(6.w),
+                                  child: const Icon(
+                                    Icons.close_rounded,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(height: 12.h),
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 12.w,
+                            vertical: 10.h,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FBFF),
+                            borderRadius: BorderRadius.circular(16.r),
+                            border: Border.all(color: const Color(0xFFDDE7F6)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(
+                                    Icons.auto_awesome_rounded,
+                                    color: Color(0xFF2563EB),
+                                    size: 16,
+                                  ),
+                                  SizedBox(width: 6.w),
+                                  Expanded(
+                                    child: Text(
+                                      'الحالات الرئيسية',
+                                      textAlign: TextAlign.right,
+                                      style: TextStyle(
+                                        fontSize: 12.sp,
+                                        fontWeight: FontWeight.w800,
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  ),
+                                  Text(
+                                    '${temp.length} محدد',
+                                    style: TextStyle(
+                                      fontSize: 11.sp,
+                                      color: const Color(0xFF64748B),
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              SizedBox(height: 8.h),
+                              Wrap(
+                                spacing: 7.w,
+                                runSpacing: 7.h,
+                                alignment: WrapAlignment.end,
+                                children: _dentalStatuses.map((status) {
+                                  final selected = _hasStatus(temp, status);
+                                  final hasSubs =
+                                      (_dentalSubStatuses[status]?.isNotEmpty ??
+                                          false);
+                                  return FilterChip(
+                                    materialTapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    selected: selected,
+                                    label: Text(
+                                      hasSubs ? '$status ▼' : status,
+                                      style: TextStyle(
+                                        color: selected
+                                            ? Colors.white
+                                            : _dentalStatusColor(status),
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 12.sp,
+                                      ),
+                                    ),
+                                    backgroundColor:
+                                        _dentalStatusColor(status).withOpacity(0.08),
+                                    selectedColor: _dentalStatusColor(status),
+                                    checkmarkColor: Colors.white,
+                                    side: BorderSide(
+                                      color: _dentalStatusColor(status)
+                                          .withOpacity(0.45),
+                                    ),
+                                    onSelected: (value) {
+                                      setDialogState(() {
+                                        if (value) {
+                                          temp.add(_statusToken(status));
+                                        } else {
+                                          _removeStatusWithSubs(temp, status);
+                                        }
+                                      });
+                                    },
+                                  );
+                                }).toList(),
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(height: 10.h),
+                        if (selectedParentWithSubs.isNotEmpty) ...[
+                          Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 12.w,
+                              vertical: 8.h,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(14.r),
+                              border: Border.all(color: const Color(0xFFD9E4F7)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: selectedParentWithSubs.map((parentStatus) {
+                                final subOptions =
+                                    _dentalSubStatuses[parentStatus] ??
+                                    const <String>[];
+                                return Padding(
+                                  padding: EdgeInsets.only(bottom: 6.h),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      Text(
+                                        'خيارات $parentStatus',
+                                        textAlign: TextAlign.right,
+                                        style: TextStyle(
+                                          fontSize: 12.sp,
+                                          fontWeight: FontWeight.w700,
+                                          color: _dentalStatusColor(parentStatus),
+                                        ),
+                                      ),
+                                      SizedBox(height: 4.h),
+                                      Wrap(
+                                        spacing: 7.w,
+                                        runSpacing: 7.h,
+                                        alignment: WrapAlignment.end,
+                                        children: subOptions.map((sub) {
+                                          final token = _statusToken(
+                                            parentStatus,
+                                            sub,
+                                          );
+                                          final subSelected = temp.contains(token);
+                                          return FilterChip(
+                                            materialTapTargetSize:
+                                                MaterialTapTargetSize.shrinkWrap,
+                                            selected: subSelected,
+                                            label: Text(
+                                              sub,
+                                              style: TextStyle(
+                                                color: subSelected
+                                                    ? Colors.white
+                                                    : _dentalStatusColor(
+                                                        parentStatus,
+                                                      ),
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 11.sp,
+                                              ),
+                                            ),
+                                            backgroundColor: _dentalStatusColor(
+                                              parentStatus,
+                                            ).withOpacity(0.12),
+                                            selectedColor: _dentalStatusColor(
+                                              parentStatus,
+                                            ),
+                                            checkmarkColor: Colors.white,
+                                            side: BorderSide(
+                                              color: _dentalStatusColor(
+                                                parentStatus,
+                                              ).withOpacity(0.55),
+                                            ),
+                                            onSelected: (value) {
+                                              setDialogState(() {
+                                                if (value) {
+                                                  temp.add(
+                                                    _statusToken(parentStatus),
+                                                  );
+                                                  temp.add(token);
+                                                } else {
+                                                  temp.remove(token);
+                                                }
+                                              });
+                                            },
+                                          );
+                                        }).toList(),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                          SizedBox(height: 10.h),
+                        ],
+                        Expanded(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFF),
+                              borderRadius: BorderRadius.circular(14.r),
+                              border: Border.all(color: const Color(0xFFE3EAF5)),
+                            ),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 10.w,
+                              vertical: 10.h,
+                            ),
+                            child: currentNotes.isEmpty
+                                ? Center(
+                                    child: Text(
+                                      'لا توجد ملاحظات بعد',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 12.sp,
+                                        color: AppColors.textHint,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  )
+                                : ListView.separated(
+                                    itemCount: currentNotes.length,
+                                    separatorBuilder: (_, __) =>
+                                        SizedBox(height: 8.h),
+                                    itemBuilder: (context, index) {
+                                      final noteEntry = currentNotes[index];
+                                      return Container(
+                                        width: double.infinity,
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: 12.w,
+                                          vertical: 10.h,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius:
+                                              BorderRadius.circular(14.r),
+                                          border: Border.all(
+                                            color: AppColors.divider,
+                                          ),
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.stretch,
+                                          children: [
+                                            Text(
+                                              noteEntry.text,
+                                              textAlign: TextAlign.right,
+                                              style: TextStyle(
+                                                fontSize: 13.sp,
+                                                color: AppColors.textPrimary,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                            SizedBox(height: 8.h),
+                                            Row(
+                                              children: [
+                                                InkWell(
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                    999.r,
+                                                  ),
+                                                  onTap: () {
+                                                    setDialogState(() {
+                                                      currentNotes
+                                                          .removeAt(index);
+                                                    });
+                                                  },
+                                                  child: Padding(
+                                                    padding:
+                                                        EdgeInsets.symmetric(
+                                                      horizontal: 4.w,
+                                                      vertical: 2.h,
+                                                    ),
+                                                    child: Row(
+                                                      children: [
+                                                        Icon(
+                                                          Icons
+                                                              .delete_outline_rounded,
+                                                          color: const Color(
+                                                            0xFFC0392B,
+                                                          ),
+                                                          size: 15.sp,
+                                                        ),
+                                                        SizedBox(width: 3.w),
+                                                        Text(
+                                                          'حذف',
+                                                          style: TextStyle(
+                                                            color:
+                                                                const Color(
+                                                              0xFFC0392B,
+                                                            ),
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                            fontSize: 11.sp,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+                                                SizedBox(width: 8.w),
+                                                InkWell(
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                    999.r,
+                                                  ),
+                                                  onTap: () async {
+                                                    final entry =
+                                                        await _showDentalNoteInputDialog(
+                                                      toothNo: toothNo,
+                                                      initialText:
+                                                          noteEntry.text,
+                                                      createdAt:
+                                                          noteEntry.createdAt,
+                                                    );
+                                                    if (entry != null) {
+                                                      setDialogState(() {
+                                                        currentNotes[index] =
+                                                            entry;
+                                                      });
+                                                    }
+                                                  },
+                                                  child: Padding(
+                                                    padding:
+                                                        EdgeInsets.symmetric(
+                                                      horizontal: 4.w,
+                                                      vertical: 2.h,
+                                                    ),
+                                                    child: Row(
+                                                      children: [
+                                                        Icon(
+                                                          Icons
+                                                              .edit_note_rounded,
+                                                          color: const Color(
+                                                            0xFF2563EB,
+                                                          ),
+                                                          size: 15.sp,
+                                                        ),
+                                                        SizedBox(width: 3.w),
+                                                        Text(
+                                                          'تعديل',
+                                                          style: TextStyle(
+                                                            color:
+                                                                const Color(
+                                                              0xFF2563EB,
+                                                            ),
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                            fontSize: 11.sp,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+                                                const Spacer(),
+                                                Text(
+                                                  _formatDentalNoteDate(
+                                                    noteEntry.createdAt,
+                                                  ),
+                                                  textAlign: TextAlign.right,
+                                                  style: TextStyle(
+                                                    fontSize: 11.sp,
+                                                    color: AppColors
+                                                        .textSecondary,
+                                                    fontWeight:
+                                                        FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                          ),
+                        ),
+                        SizedBox(height: 10.h),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: const Color(0xFF2563EB),
+                                  side: const BorderSide(
+                                    color: Color(0xFFB7CDF6),
+                                  ),
+                                  padding: EdgeInsets.symmetric(vertical: 11.h),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12.r),
+                                  ),
+                                ),
+                                onPressed: () async {
+                                  final entry = await _showDentalNoteInputDialog(
+                                    toothNo: toothNo,
+                                  );
+                                  if (entry != null) {
+                                    setDialogState(() {
+                                      currentNotes.insert(0, entry);
+                                    });
+                                  }
+                                },
+                                icon: const Icon(
+                                  Icons.note_add_outlined,
+                                  size: 18,
+                                ),
+                                label: const Text('إضافة ملاحظة'),
+                              ),
+                            ),
+                            SizedBox(width: 8.w),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF2563EB),
+                                  foregroundColor: Colors.white,
+                                  elevation: 3,
+                                  shadowColor: const Color(0xFF2563EB)
+                                      .withOpacity(0.35),
+                                  padding: EdgeInsets.symmetric(vertical: 11.h),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12.r),
+                                  ),
+                                ),
+                                onPressed: () async {
+                                  setState(() {
+                                    if (temp.isEmpty) {
+                                      chart.remove(toothNo);
+                                    } else {
+                                      chart[toothNo] = Set<String>.from(temp);
+                                    }
+                                    if (currentNotes.isEmpty) {
+                                      notesByTooth.remove(toothNo);
+                                    } else {
+                                      notesByTooth[toothNo] =
+                                          List<_DentalNoteEntry>.from(
+                                        currentNotes,
+                                      );
+                                    }
+                                    _selectedDentalToothByPatient[patient.id] =
+                                        toothNo;
+                                  });
+                                  await _persistDentalData(patient.id);
+                                  if (context.mounted) {
+                                    Navigator.of(context).pop();
+                                  }
+                                },
+                                icon: const Icon(Icons.check_rounded, size: 18),
+                                label: const Text('حفظ'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Color _dentalStatusColor(String status) {
+    switch (status) {
+      case 'زراعة':
+        return const Color(0xFF12B2D7);
+      case 'قلع':
+        return const Color(0xFFC0392B);
+      case 'مفقود':
+        return const Color(0xFF636B75);
+      case 'تاج':
+        return const Color(0xFF4CA7FF);
+      case 'حشوة':
+        return const Color(0xFFE6B91F);
+      case 'جسر':
+        return const Color(0xFF1CB7D8);
+      case 'قص لثة':
+        return const Color(0xFFE25555);
+      case 'فينير':
+        return const Color(0xFF9A7CF2);
+      case 'تسوس':
+        return const Color(0xFF3A3F46);
+      default:
+        return const Color(0xFF8C95A3);
+    }
+  }
+
+  String _statusToken(String status, [String? subStatus]) {
+    if (subStatus == null || subStatus.isEmpty) return status;
+    return '$status::$subStatus';
+  }
+
+  bool _hasStatus(Set<String> statuses, String status) {
+    if (statuses.contains(status)) return true;
+    final prefix = '$status::';
+    return statuses.any((entry) => entry.startsWith(prefix));
+  }
+
+  void _removeStatusWithSubs(Set<String> statuses, String status) {
+    statuses.remove(status);
+    final prefix = '$status::';
+    statuses.removeWhere((entry) => entry.startsWith(prefix));
+  }
+
+  String _formatDentalNoteDate(DateTime date) {
+    return DateFormat('yyyy/MM/dd - HH:mm', 'ar').format(date);
+  }
+
+  String _formatPatientCreatedAt(PatientModel patient) {
+    DateTime? date;
+    final raw = patient.createdAt;
+    if (raw != null && raw.trim().isNotEmpty) {
+      date = DateTime.tryParse(raw);
+    }
+    // احتياطي: استخراج التاريخ من Mongo ObjectId إن لم يتوفر created_at
+    if (date == null && patient.id.length >= 8) {
+      try {
+        final seconds = int.parse(patient.id.substring(0, 8), radix: 16);
+        date = DateTime.fromMillisecondsSinceEpoch(
+          seconds * 1000,
+          isUtc: true,
+        );
+      } catch (_) {}
+    }
+    if (date == null) return 'لا يوجد';
+    return DateFormat('yyyy/MM/dd', 'ar').format(date.toLocal());
+  }
+
+  Future<_DentalNoteEntry?> _showDentalNoteInputDialog({
+    required String toothNo,
+    String? initialText,
+    DateTime? createdAt,
+  }) async {
+    final controller = TextEditingController(text: initialText ?? '');
+    final isEditing = initialText != null;
+
+    final result = await showDialog<_DentalNoteEntry>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16.r),
+          ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: 430.w),
+            child: Padding(
+              padding: EdgeInsets.all(14.w),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    isEditing
+                        ? 'تعديل ملاحظة السن $toothNo'
+                        : 'ملاحظة جديدة للسن $toothNo',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  SizedBox(height: 10.h),
+                  TextField(
+                    controller: controller,
+                    minLines: 3,
+                    maxLines: 6,
+                    textAlign: TextAlign.right,
+                    decoration: InputDecoration(
+                      hintText: 'اكتب الملاحظة...',
+                      fillColor: const Color(0xFFF8FAFF),
+                      filled: true,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10.r),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10.r),
+                        borderSide: BorderSide(color: AppColors.divider),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10.r),
+                        borderSide: BorderSide(color: AppColors.primary),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: 10.h),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.of(dialogContext).pop(),
+                          child: const Text('إلغاء'),
+                        ),
+                      ),
+                      SizedBox(width: 8.w),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () {
+                            final note = controller.text.trim();
+                            if (note.isEmpty) {
+                              Get.snackbar('تنبيه', 'الرجاء كتابة الملاحظة');
+                              return;
+                            }
+                            Navigator.of(dialogContext).pop(
+                              _DentalNoteEntry(
+                                text: note,
+                                createdAt: createdAt ?? DateTime.now(),
+                              ),
+                            );
+                          },
+                          child: const Text('حفظ'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    controller.dispose();
+    return result;
   }
 
   void _showAddRecordDialog(BuildContext context, String patientId) {
@@ -8442,6 +10097,219 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
     );
   }
 
+  void _showEditPatientProfileDialog(
+    BuildContext context,
+    PatientModel patient,
+  ) {
+    final nameController = TextEditingController(text: patient.name);
+    final ageController = TextEditingController(
+      text: patient.age > 0 ? patient.age.toString() : '',
+    );
+    final cityController = TextEditingController(text: patient.city);
+
+    final normalizedGender = (patient.gender == 'female' || patient.gender == 'أنثى')
+        ? 'female'
+        : 'male';
+    String selectedGender = normalizedGender;
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              child: Container(
+                width: 380.w,
+                padding: EdgeInsets.all(16.w),
+                decoration: BoxDecoration(
+                  color: AppColors.white,
+                  borderRadius: BorderRadius.circular(20.r),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'تعديل معلومات المريض',
+                      style: TextStyle(
+                        fontSize: 15.sp,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    SizedBox(height: 12.h),
+                    TextField(
+                      controller: nameController,
+                      textAlign: TextAlign.right,
+                      decoration: InputDecoration(
+                        labelText: 'الاسم',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10.r),
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 10.h),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: ageController,
+                            textAlign: TextAlign.right,
+                            keyboardType: TextInputType.number,
+                            decoration: InputDecoration(
+                              labelText: 'العمر',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10.r),
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 10.w),
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: selectedGender,
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'male',
+                                child: Text('ذكر'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'female',
+                                child: Text('أنثى'),
+                              ),
+                            ],
+                            onChanged: isSaving
+                                ? null
+                                : (value) {
+                                    if (value == null) return;
+                                    setDialogState(() => selectedGender = value);
+                                  },
+                            decoration: InputDecoration(
+                              labelText: 'الجنس',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10.r),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 10.h),
+                    TextField(
+                      controller: cityController,
+                      textAlign: TextAlign.right,
+                      decoration: InputDecoration(
+                        labelText: 'المدينة',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10.r),
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 14.h),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: isSaving
+                                ? null
+                                : () => Navigator.of(dialogContext).pop(),
+                            child: Container(
+                              height: 42.h,
+                              decoration: BoxDecoration(
+                                color: AppColors.divider,
+                                borderRadius: BorderRadius.circular(10.r),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  'إلغاء',
+                                  style: TextStyle(
+                                    fontSize: 13.sp,
+                                    fontWeight: FontWeight.bold,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 10.w),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: isSaving
+                                ? null
+                                : () async {
+                                    final name = nameController.text.trim();
+                                    final city = cityController.text.trim();
+                                    final age = int.tryParse(ageController.text.trim());
+                                    if (name.isEmpty || city.isEmpty || age == null || age <= 0) {
+                                      Get.snackbar(
+                                        'تنبيه',
+                                        'يرجى إدخال معلومات صحيحة',
+                                      );
+                                      return;
+                                    }
+                                    setDialogState(() => isSaving = true);
+                                    try {
+                                      await _patientController.updatePatientProfile(
+                                        patientId: patient.id,
+                                        name: name,
+                                        gender: selectedGender,
+                                        age: age,
+                                        city: city,
+                                      );
+                                      if (dialogContext.mounted) {
+                                        Navigator.of(dialogContext).pop();
+                                      }
+                                      Get.snackbar('نجح', 'تم تحديث معلومات المريض');
+                                    } catch (_) {
+                                      // The controller already handles API errors/snackbar.
+                                    } finally {
+                                      if (dialogContext.mounted) {
+                                        setDialogState(() => isSaving = false);
+                                      }
+                                    }
+                                  },
+                            child: Container(
+                              height: 42.h,
+                              decoration: BoxDecoration(
+                                color: AppColors.primary,
+                                borderRadius: BorderRadius.circular(10.r),
+                              ),
+                              child: Center(
+                                child: isSaving
+                                    ? SizedBox(
+                                        width: 18.w,
+                                        height: 18.w,
+                                        child: const CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : Text(
+                                        'حفظ',
+                                        style: TextStyle(
+                                          fontSize: 13.sp,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showPaymentMethodsDialog(BuildContext context, PatientModel patient) {
     final List<String> paymentMethods = [
       'نقد',
@@ -9201,22 +11069,33 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                       crossAxisAlignment:
                                           CrossAxisAlignment.center,
                                       children: [
-                                        // اسم الطبيب (من اليمين)
                                         Expanded(
-                                          child: Text(
-                                            doctor.name ?? doctor.phone,
-                                            style: TextStyle(
-                                              fontSize: 12.sp,
-                                              fontWeight: FontWeight.w700,
-                                              color: AppColors.textPrimary,
-                                            ),
-                                            textAlign: TextAlign.right,
-                                            maxLines: 2,
-                                            overflow: TextOverflow.ellipsis,
+                                          child: Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.end,
+                                            children: [
+                                              DoctorOnlineIndicator(
+                                                userId: doctor.userId,
+                                              ),
+                                              SizedBox(width: 4.w),
+                                              Flexible(
+                                                child: Text(
+                                                  doctor.name ?? doctor.phone,
+                                                  style: TextStyle(
+                                                    fontSize: 12.sp,
+                                                    fontWeight: FontWeight.w700,
+                                                    color:
+                                                        AppColors.textPrimary,
+                                                  ),
+                                                  textAlign: TextAlign.right,
+                                                  maxLines: 2,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ),
-                                        SizedBox(width: 4.w),
-                                        DoctorOnlineIndicator(userId: doctor.userId),
                                         SizedBox(width: 4.w),
                                         // صورة الطبيب
                                         CircleAvatar(

@@ -292,10 +292,8 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
               status == 'cancelled' ||
               status == 'no_show';
 
-          // "متأخر" = موعد قبل الآن ولسه حالته scheduled/pending (حتى لو كنت بفلتر اليوم/هذا الشهر)
-          final isLate = filter == 'المتأخرون' ||
-              (appointment.date.isBefore(now) &&
-                  (status == 'scheduled' || status == 'pending'));
+          // late يُحسب في backend، ونعتمد عليه مباشرة لتوحيد المنطق.
+          final isLate = appointment.isLate || filter == 'المتأخرون';
 
           return Padding(
             padding: EdgeInsets.only(bottom: 16.h),

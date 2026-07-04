@@ -8,6 +8,7 @@ import 'package:frontend_desktop/services/cache_service.dart';
 import 'package:frontend_desktop/core/routes/app_routes.dart';
 import 'package:frontend_desktop/core/utils/network_utils.dart';
 import 'package:frontend_desktop/controllers/presence_controller.dart';
+import 'package:frontend_desktop/services/sync_worker.dart';
 
 class AuthController extends GetxController {
   final _authService = AuthService();
@@ -30,6 +31,7 @@ class AuthController extends GetxController {
       final user = currentUser.value;
       if (user != null) {
         unawaited(_syncPresence(user));
+        unawaited(_resumeDoctorSyncIfNeeded(user));
       }
     });
   }
@@ -50,6 +52,8 @@ class AuthController extends GetxController {
         currentUser.value = cachedUser;
         print('✅ [AuthController] User loaded from cache: ${cachedUser.name}');
         await _syncPatientProfileId();
+        // استئناف رفع الأوامر المعلّقة فوراً عند فتح التطبيق
+        await _startDoctorSyncIfNeeded(cachedUser);
       }
       
       final isLoggedIn = await _authService.isLoggedIn();
@@ -69,11 +73,16 @@ class AuthController extends GetxController {
             '✅ [AuthController] User loaded from session: ${user.name} (${user.userType})',
           );
           await _syncPresence(user);
+          await _startDoctorSyncIfNeeded(user);
         } else {
           if (_isNetworkFailureResponse(res)) {
             print(
               '🌐 [AuthController] Network issue while restoring session. Keeping cached session.',
             );
+            final existing = currentUser.value;
+            if (existing != null) {
+              await _startDoctorSyncIfNeeded(existing);
+            }
             return;
           }
 
@@ -139,6 +148,7 @@ class AuthController extends GetxController {
             '✅ [AuthController] User loaded: ${user.name} (${user.userType})',
           );
           await _syncPresence(user);
+          await _startDoctorSyncIfNeeded(user);
 
           if (!navigate) return;
 
@@ -273,6 +283,7 @@ class AuthController extends GetxController {
           
           await _syncPatientProfileId();
           await _syncPresence(user);
+          await _startDoctorSyncIfNeeded(user);
 
           String targetRoute;
           switch (actualType) {
@@ -331,6 +342,8 @@ class AuthController extends GetxController {
 
   Future<void> logout() async {
     try {
+      // إيقاف الرفع فقط — الأوامر المعلّقة تبقى على القرص وتُرفع عند الدخول مجدداً
+      SyncWorker.instance.stop();
       if (Get.isRegistered<PresenceController>()) {
         Get.find<PresenceController>().disconnect();
       }
@@ -380,6 +393,8 @@ class AuthController extends GetxController {
   }
 
   Future<void> _clearSessionLocal() async {
+    // لا نمسح الـ Outbox أبداً — البيانات المهمة تبقى حتى تُرفع
+    SyncWorker.instance.stop();
     if (Get.isRegistered<PresenceController>()) {
       Get.find<PresenceController>().disconnect();
     }
@@ -425,5 +440,20 @@ class AuthController extends GetxController {
   Future<void> _syncPresence(UserModel user) async {
     if (!Get.isRegistered<PresenceController>()) return;
     await Get.find<PresenceController>().connectForUser(user);
+  }
+
+  /// مزامنة خلفية للطبيب فقط — أوامر دائمة تُعاد بلا نهاية حتى تنجح.
+  Future<void> _startDoctorSyncIfNeeded(UserModel user) async {
+    if (user.userType.toLowerCase() != 'doctor') {
+      SyncWorker.instance.stop();
+      return;
+    }
+    await SyncWorker.instance.start();
+  }
+
+  Future<void> _resumeDoctorSyncIfNeeded(UserModel user) async {
+    if (user.userType.toLowerCase() != 'doctor') return;
+    print('🌐 [AuthController] Resuming doctor outbox sync...');
+    await SyncWorker.instance.resumeNow();
   }
 }

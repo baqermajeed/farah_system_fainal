@@ -10,15 +10,20 @@ from app.schemas import (
     DoctorOut,
     PatientOut,
     PatientCreate,
+    PatientUpdate,
     AppointmentOut,
     ReceptionAppointmentOut,
     WorkingHoursOut,
     GalleryOut,
     CallCenterAppointmentOut,
+    ReceptionQueueSyncIn,
+    ReceptionQueueDayOut,
+    ReceptionQueueEntryOut,
 )
 from app.security import require_roles, get_current_user
 from app.constants import Role
 from app.models import Patient, User, CallCenterAppointment
+from app.models.reception_queue import ReceptionQueueDay, ReceptionQueueEntry
 from app.services.stats_service import parse_dates
 from app.services import patient_service
 from app.services.admin_service import create_patient
@@ -41,6 +46,15 @@ router = APIRouter(
     dependencies=[Depends(require_roles([Role.RECEPTIONIST, Role.ADMIN]))],
 )
 working_hours_service = DoctorWorkingHoursService()
+
+
+def _appointment_status_for_output(raw_status: str | None) -> str:
+    status = (raw_status or "pending").lower().strip()
+    if status in {"scheduled", "late"}:
+        return "pending"
+    if status not in {"pending", "completed", "cancelled"}:
+        return "pending"
+    return status
 
 @router.get("/patients", response_model=List[PatientOut])
 async def list_patients(
@@ -203,6 +217,7 @@ async def list_doctors():
 async def get_patient_doctors(patient_id: str):
     """جلب قائمة الأطباء المرتبطين بمريض."""
     from app.models import Doctor
+    from app.services.socket_service import is_user_online
     patient = await Patient.get(patient_id)
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
@@ -394,6 +409,47 @@ async def update_patient_activity_status(
     )
 
 
+@router.patch("/patients/{patient_id}", response_model=PatientOut)
+async def update_patient_profile_by_reception(
+    patient_id: str,
+    payload: PatientUpdate,
+):
+    """تعديل بيانات مريض من قبل موظف الاستقبال/المدير."""
+    if payload.phone is not None and not PHONE_PATTERN.match(payload.phone.strip()):
+        raise HTTPException(
+            status_code=400,
+            detail="رقم الهاتف يجب أن يكون 11 رقم ويبدأ بـ 07",
+        )
+
+    p = await patient_service.update_patient_by_admin(
+        patient_id=patient_id,
+        data=payload,
+    )
+    u = await User.get(p.user_id)
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    return PatientOut(
+        id=str(p.id),
+        user_id=str(p.user_id),
+        name=u.name,
+        phone=u.phone,
+        gender=u.gender,
+        age=u.age,
+        city=u.city,
+        treatment_type=p.treatment_type,
+        visit_type=getattr(p, "visit_type", None),
+        consultation_type=getattr(p, "consultation_type", None),
+        payment_methods=getattr(p, "payment_methods", None),
+        activity_status=getattr(p, "activity_status", "pending"),
+        doctor_ids=[str(did) for did in p.doctor_ids],
+        doctor_profiles=build_doctor_profile_map(p),
+        qr_code_data=p.qr_code_data,
+        qr_image_path=p.qr_image_path,
+        imageUrl=u.imageUrl,
+        created_at=p.created_at.isoformat() if getattr(p, "created_at", None) else None,
+    )
+
+
 @router.post("/patients/{patient_id}/gallery", response_model=GalleryOut)
 async def upload_patient_gallery_image(
     patient_id: str,
@@ -570,6 +626,13 @@ async def list_appointments(
             d = doctor_map.get(a.doctor_id)
             pu = user_map.get(p.user_id) if p else None
             du = user_map.get(d.user_id) if d else None
+            normalized_status = _appointment_status_for_output(getattr(a, "status", None))
+            sa = a.scheduled_at if a.scheduled_at else datetime.now(timezone.utc)
+            if sa.tzinfo is None:
+                sa = sa.replace(tzinfo=timezone.utc)
+            else:
+                sa = sa.astimezone(timezone.utc)
+            is_late = normalized_status == "pending" and sa < datetime.now(timezone.utc)
 
             out.append(
                 ReceptionAppointmentOut(
@@ -579,10 +642,13 @@ async def list_appointments(
                     patient_phone=pu.phone if pu else None,
                     doctor_id=str(a.doctor_id),
                     doctor_name=du.name if du else None,
-                    scheduled_at=a.scheduled_at.isoformat() if a.scheduled_at else datetime.now(timezone.utc).isoformat(),
+                    scheduled_at=sa.isoformat(),
                     note=a.note,
                     image_path=a.image_path,
-                    status=a.status,
+                    status=normalized_status,
+                    is_late=is_late,
+                    kind=getattr(a, "kind", "regular") or "regular",
+                    stage_name=getattr(a, "stage_name", None),
                 )
             )
         return out
@@ -669,3 +735,84 @@ async def accept_call_center_appointment_for_reception(
     doc.accepted_at = datetime.now(timezone.utc)
     await doc.save()
     return {"ok": True, "accepted": True}
+
+
+_DATE_KEY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _queue_day_out(doc: ReceptionQueueDay) -> ReceptionQueueDayOut:
+    return ReceptionQueueDayOut(
+        date=doc.date,
+        total_count=doc.total_count,
+        entries=[
+            ReceptionQueueEntryOut(number=e.number, name=e.name) for e in doc.entries
+        ],
+        updated_at=doc.updated_at.isoformat(),
+    )
+
+
+@router.put("/queue", response_model=ReceptionQueueDayOut)
+async def sync_reception_queue(payload: ReceptionQueueSyncIn):
+    """
+    أرشفة طابور الاستقبال ليوم محدد في قاعدة البيانات.
+    العرض والنداء يبقيان محليين على جهاز الاستقبال؛ هنا يُحفظ فقط:
+    عدد المضافين، الأسماء، وأرقامهم في الطابور.
+    """
+    date_key = (payload.date or "").strip()
+    if not _DATE_KEY_RE.match(date_key):
+        raise HTTPException(status_code=400, detail="صيغة التاريخ يجب أن تكون YYYY-MM-DD")
+
+    # ترتيب حسب الرقم وإزالة التكرار على نفس الرقم (آخر اسم يفوز)
+    by_number: dict[int, str] = {}
+    for item in payload.entries:
+        name = (item.name or "").strip()
+        if not name:
+            continue
+        by_number[item.number] = name
+
+    entries = [
+        ReceptionQueueEntry(number=num, name=by_number[num])
+        for num in sorted(by_number.keys())
+    ]
+    now = datetime.now(timezone.utc)
+
+    doc = await ReceptionQueueDay.find_one(ReceptionQueueDay.date == date_key)
+    if doc:
+        doc.entries = entries
+        doc.total_count = len(entries)
+        doc.updated_at = now
+        await doc.save()
+    else:
+        doc = ReceptionQueueDay(
+            date=date_key,
+            entries=entries,
+            total_count=len(entries),
+            updated_at=now,
+        )
+        await doc.insert()
+
+    return _queue_day_out(doc)
+
+
+@router.get("/queue", response_model=ReceptionQueueDayOut)
+async def get_reception_queue(
+    date: str | None = Query(None, description="YYYY-MM-DD — افتراضي: اليوم (UTC)"),
+):
+    """جلب أرشيف طابور يوم محدد (للتقارير؛ لا يُستخدم لعرض شاشة الطابور)."""
+    if date:
+        date_key = date.strip()
+        if not _DATE_KEY_RE.match(date_key):
+            raise HTTPException(status_code=400, detail="صيغة التاريخ يجب أن تكون YYYY-MM-DD")
+    else:
+        now = datetime.now(timezone.utc)
+        date_key = f"{now.year:04d}-{now.month:02d}-{now.day:02d}"
+
+    doc = await ReceptionQueueDay.find_one(ReceptionQueueDay.date == date_key)
+    if not doc:
+        return ReceptionQueueDayOut(
+            date=date_key,
+            total_count=0,
+            entries=[],
+            updated_at=datetime.now(timezone.utc).isoformat(),
+        )
+    return _queue_day_out(doc)

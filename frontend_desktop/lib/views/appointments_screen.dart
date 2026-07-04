@@ -9,7 +9,6 @@ import 'package:frontend_desktop/core/routes/app_routes.dart';
 import 'package:frontend_desktop/controllers/appointment_controller.dart';
 import 'package:frontend_desktop/controllers/patient_controller.dart';
 import 'package:frontend_desktop/controllers/auth_controller.dart';
-import 'package:frontend_desktop/controllers/implant_stage_controller.dart';
 import 'package:frontend_desktop/models/appointment_model.dart';
 import 'package:frontend_desktop/core/widgets/loading_widget.dart';
 import 'package:frontend_desktop/core/widgets/empty_state_widget.dart';
@@ -59,10 +58,6 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
   DateTime? _customFilterStart;
   DateTime? _customFilterEnd;
 
-  // Cache implant stages converted into appointments to avoid heavy recomputation inside Obx/build.
-  List<AppointmentModel> _implantAppointmentsAll = const [];
-  Worker? _implantWorker;
-
   @override
   void initState() {
     super.initState();
@@ -72,8 +67,6 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
 
     final appointmentController = Get.find<AppointmentController>();
     final patientController = Get.find<PatientController>();
-    // Ensure controller exists once for this screen session.
-    final implantStageController = Get.put(ImplantStageController());
 
     // Load appointments and patients on first build
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -85,15 +78,7 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
       if (patientController.patients.isEmpty) {
         patientController.loadPatients(isInitial: true);
       }
-      // Load implant stages for patients with زراعة treatment
-      _loadImplantStages();
     });
-
-    // Recompute implant appointments whenever patients or stages change (debounced by GetX microtask scheduling).
-    _implantWorker = everAll(
-      [patientController.patients, implantStageController.stages],
-      (_) => _recomputeImplantAppointments(),
-    );
   }
 
   void _onTabChanged() {
@@ -127,7 +112,6 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
   void dispose() {
     _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
-    _implantWorker?.dispose();
     super.dispose();
   }
 
@@ -325,10 +309,8 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
                 status == 'cancelled' ||
                 status == 'no_show';
 
-            // "متأخر" = موعد قبل الآن ولسه حالته scheduled/pending
-            final isLate = filter == 'المتأخرون' ||
-                (appointment.date.isBefore(now) &&
-                    (status == 'pending'));
+            // late يُحسب في backend، ونستخدمه مباشرة لتجنب اختلاف المنطق بين المنصات.
+            final isLate = appointment.isLate || filter == 'المتأخرون';
 
             return Padding(
               padding: EdgeInsets.only(bottom: 16.h),
@@ -817,65 +799,4 @@ class _AppointmentsScreenState extends State<AppointmentsScreen>
     );
   }
 
-  Future<void> _loadImplantStages() async {
-    final patientController = Get.find<PatientController>();
-    final implantStageController = Get.find<ImplantStageController>();
-
-    // جلب جميع المرضى الذين لديهم نوع علاج "زراعة"
-    final implantPatients = patientController.patients.where((patient) {
-      return patient.treatmentHistory != null &&
-          patient.treatmentHistory!.isNotEmpty &&
-          patient.treatmentHistory!.first == 'زراعة';
-    }).toList();
-
-    // Batch load implant stages to reduce repeated rebuilds / network churn
-    try {
-      await implantStageController.loadStagesForPatients(
-        implantPatients.map((p) => p.id).toList(),
-      );
-    } catch (e) {
-      print('❌ [AppointmentsScreen] Error batch loading implant stages: $e');
-    }
-  }
-
-  void _recomputeImplantAppointments() {
-    final patientController = Get.find<PatientController>();
-    final implantStageController = Get.find<ImplantStageController>();
-
-    // Fast maps for lookups
-    final patientById = {
-      for (final p in patientController.patients) p.id: p,
-    };
-
-    final computed = <AppointmentModel>[];
-    for (final stage in implantStageController.stages) {
-      final patient = patientById[stage.patientId];
-      if (patient == null) continue;
-
-      final stageDate = stage.scheduledAt;
-      computed.add(
-        AppointmentModel(
-          id: stage.id,
-          patientId: stage.patientId,
-          patientName: patient.name,
-          doctorId: '',
-          doctorName: '',
-          date: stageDate,
-          time:
-              '${stageDate.hour.toString().padLeft(2, '0')}:${stageDate.minute.toString().padLeft(2, '0')}',
-          status: stage.isCompleted ? 'completed' : 'pending',
-          notes: 'مرحلة: ${stage.stageName}',
-        ),
-      );
-    }
-
-    // Update cache (single rebuild) only if changed size (simple guard)
-    if (mounted) {
-      setState(() {
-        _implantAppointmentsAll = computed;
-      });
-    }
-  }
-
-  // تم إزالة _filterImplantAppointments لأننا نستخدم pagination فقط
 }

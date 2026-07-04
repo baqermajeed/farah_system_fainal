@@ -22,6 +22,10 @@ class CacheService {
   static const String _medicalRecordsBoxName = 'medicalRecordsBox';
   static const String _galleryBoxName = 'galleryBox';
   static const String _queueBoxName = 'queueBox';
+  static const String _dentalChartsBoxName = 'dentalChartsBox';
+  /// زد الرقم عند تغيير مخطط أي نموذج Hive لإسقاط الكاش القديم تلقائياً.
+  static const int _cacheSchemaVersion = 3;
+  static const String _schemaVersionKey = 'cache_schema_version';
 
   // Boxes
   late Box<UserModel> _userBox;
@@ -31,12 +35,14 @@ class CacheService {
   late Box<MedicalRecordModel> _medicalRecordsBox;
   late Box<GalleryImageModel> _galleryBox;
   late Box _queueBox;
+  late Box _dentalChartsBox;
 
   static final CacheService _instance = CacheService._internal();
   factory CacheService() => _instance;
   CacheService._internal();
   Future<void>? _initFuture;
   bool _isInitialized = false;
+  String? _activeHivePath;
 
   /// تهيئة Hive وفتح الصناديق
   Future<void> init() async {
@@ -60,6 +66,7 @@ class CacheService {
     }
 
     await Hive.initFlutter(hiveDir.path);
+    _activeHivePath = hiveDir.path;
 
     // تسجيل المحولات (Adapters)
     if (!Hive.isAdapterRegistered(0)) {
@@ -81,7 +88,67 @@ class CacheService {
       Hive.registerAdapter(GalleryImageModelAdapter());
     }
 
-    // فتح الصناديق
+    await _migrateCacheSchemaIfNeeded();
+
+    try {
+      await _openAllBoxes();
+    } catch (e) {
+      print('⚠️ [CacheService] Primary hive open failed: $e');
+      // Last-resort recovery:
+      // if the primary hive directory is locked/corrupted, switch to a fresh
+      // recovery directory so the app can continue running.
+      try {
+        await Hive.close();
+      } catch (_) {}
+      final recoveryDir = Directory(
+        p.join(
+          appSupportDir.path,
+          'hive_recovery_${DateTime.now().millisecondsSinceEpoch}',
+        ),
+      );
+      if (!await recoveryDir.exists()) {
+        await recoveryDir.create(recursive: true);
+      }
+      await Hive.initFlutter(recoveryDir.path);
+      _activeHivePath = recoveryDir.path;
+      await _openAllBoxes();
+    }
+  }
+
+  Future<void> _migrateCacheSchemaIfNeeded() async {
+    try {
+      final meta = await Hive.openBox('metaData');
+      final current = meta.get(_schemaVersionKey);
+      final currentVersion = current is int
+          ? current
+          : int.tryParse('$current') ?? 0;
+      if (currentVersion == _cacheSchemaVersion) return;
+
+      print(
+        '⚠️ [CacheService] Cache schema $currentVersion -> $_cacheSchemaVersion, resetting typed boxes...',
+      );
+
+      // أسقط الصناديق المعرّضة لكسر المخطط فقط
+      // (لا تمس المستخدم / الطابور / مخطط الأسنان المحلي)
+      for (final boxName in [
+        _appointmentsBoxName,
+        _patientsBoxName,
+        _medicalRecordsBoxName,
+        _galleryBoxName,
+        _doctorsBoxName,
+      ]) {
+        await _cleanupCorruptedBox(boxName);
+      }
+
+      await meta.put(_schemaVersionKey, _cacheSchemaVersion);
+    } catch (e) {
+      print('⚠️ [CacheService] Schema migration failed: $e');
+      // محاولة أخيرة: حذف صندوق المواعيد المعروف بتلفه
+      await _cleanupCorruptedBox(_appointmentsBoxName);
+    }
+  }
+
+  Future<void> _openAllBoxes() async {
     _userBox = await _openBoxWithRetry<UserModel>(_userBoxName);
     _patientsBox = await _openBoxWithRetry<PatientModel>(_patientsBoxName);
     _appointmentsBox = await _openBoxWithRetry<AppointmentModel>(
@@ -93,6 +160,7 @@ class CacheService {
     );
     _galleryBox = await _openBoxWithRetry<GalleryImageModel>(_galleryBoxName);
     _queueBox = await _openBoxWithRetry<dynamic>(_queueBoxName);
+    _dentalChartsBox = await _openBoxWithRetry<dynamic>(_dentalChartsBoxName);
   }
 
   Future<Box<T>> _openBoxWithRetry<T>(
@@ -103,14 +171,53 @@ class CacheService {
     Object? lastError;
     for (var i = 0; i < attempts; i++) {
       try {
-        return await Hive.openBox<T>(boxName);
-      } catch (e) {
+        final box = await Hive.openBox<T>(boxName);
+        // قراءة أولية لاكتشاف التلف مبكراً قبل استخدام الصندوق
+        try {
+          box.length;
+          if (box.isNotEmpty) {
+            box.getAt(0);
+          }
+        } catch (readError) {
+          print(
+            '⚠️ [CacheService] Box "$boxName" unreadable, recreating: $readError',
+          );
+          try {
+            await box.close();
+          } catch (_) {}
+          await _cleanupCorruptedBox(boxName);
+          continue;
+        }
+        return box;
+      } catch (e, st) {
         lastError = e;
         final message = e.toString();
-        final isLockError = message.contains('lock failed') ||
+        var isLockError = message.contains('lock failed') ||
             message.contains('PathAccessException');
+        final isCorruptedBox = e is RangeError ||
+            e is TypeError ||
+            message.contains('Not enough bytes available') ||
+            message.contains('RangeError') ||
+            message.contains('type ') ||
+            message.contains('Wrong checksum') ||
+            message.contains('invalid frame');
+
+        print('⚠️ [CacheService] openBox("$boxName") attempt ${i + 1}: $e');
+
+        // If cache data is corrupted, drop this box and recreate it.
+        // This keeps the app alive after model/schema cache changes.
+        if (isCorruptedBox) {
+          try {
+            await _cleanupCorruptedBox(boxName);
+            continue;
+          } catch (_) {
+            // If delete fails due lock by another process, retry with backoff.
+            isLockError = true;
+          }
+        }
+
         if (!isLockError || i == attempts - 1) {
-          rethrow;
+          Error.throwWithStackTrace(e, st);
         }
         await Future<void>.delayed(
           Duration(milliseconds: baseDelay.inMilliseconds * (i + 1)),
@@ -118,6 +225,34 @@ class CacheService {
       }
     }
     throw lastError ?? Exception('Failed to open Hive box: $boxName');
+  }
+
+  Future<void> _cleanupCorruptedBox(String boxName) async {
+    try {
+      if (Hive.isBoxOpen(boxName)) {
+        await Hive.box(boxName).close();
+      }
+    } catch (_) {}
+
+    try {
+      await Hive.deleteBoxFromDisk(boxName);
+    } catch (_) {}
+
+    final hivePath = _activeHivePath;
+    if (hivePath == null || hivePath.isEmpty) return;
+
+    final dataFile = File(p.join(hivePath, '$boxName.hive'));
+    final lockFile = File(p.join(hivePath, '$boxName.lock'));
+
+    if (await dataFile.exists()) {
+      await dataFile.delete();
+    }
+    if (await lockFile.exists()) {
+      await lockFile.delete();
+    }
+
+    // Give filesystem/lock manager a tiny cooldown before re-open.
+    await Future<void>.delayed(const Duration(milliseconds: 120));
   }
 
   // ==================== Queue Operations ====================
@@ -180,6 +315,108 @@ class CacheService {
       await _queueBox.close();
     }
     _queueBox = await Hive.openBox(_queueBoxName);
+  }
+
+  // ==================== Dental Chart Operations ====================
+
+  /// حفظ مخطط الأسنان والملاحظات لمريض معين
+  Future<void> saveDentalChart({
+    required String patientId,
+    required Map<String, List<String>> chart,
+    required Map<String, List<Map<String, dynamic>>> notes,
+    String? selectedTooth,
+  }) async {
+    try {
+      if (patientId.isEmpty) return;
+
+      await _dentalChartsBox.put(patientId, {
+        'chart': chart.map(
+          (tooth, statuses) => MapEntry(tooth, List<String>.from(statuses)),
+        ),
+        'notes': notes.map(
+          (tooth, entries) => MapEntry(
+            tooth,
+            entries
+                .map((entry) => Map<String, dynamic>.from(entry))
+                .toList(),
+          ),
+        ),
+        if (selectedTooth != null && selectedTooth.isNotEmpty)
+          'selectedTooth': selectedTooth,
+      });
+    } catch (e) {
+      print('❌ [CacheService] Error saving dental chart: $e');
+    }
+  }
+
+  /// جلب مخطط الأسنان والملاحظات لمريض معين
+  ({
+    Map<String, List<String>> chart,
+    Map<String, List<Map<String, dynamic>>> notes,
+    String? selectedTooth,
+  })? getDentalChart(String patientId) {
+    try {
+      if (patientId.isEmpty) return null;
+      final raw = _dentalChartsBox.get(patientId);
+      if (raw is! Map) return null;
+
+      final data = Map<String, dynamic>.from(raw);
+      final chart = <String, List<String>>{};
+      final notes = <String, List<Map<String, dynamic>>>{};
+
+      final chartRaw = data['chart'];
+      if (chartRaw is Map) {
+        chartRaw.forEach((key, value) {
+          final tooth = key.toString();
+          if (value is List) {
+            chart[tooth] = value.map((e) => e.toString()).toList();
+          } else if (value is String && value.isNotEmpty) {
+            chart[tooth] = [value];
+          }
+        });
+      }
+
+      final notesRaw = data['notes'];
+      if (notesRaw is Map) {
+        notesRaw.forEach((key, value) {
+          final tooth = key.toString();
+          final entries = <Map<String, dynamic>>[];
+          if (value is List) {
+            for (final item in value) {
+              if (item is Map) {
+                entries.add(Map<String, dynamic>.from(item));
+              }
+            }
+          } else if (value is Map) {
+            // توافق مع صيغة قديمة: ملاحظة واحدة لكل سن
+            entries.add(Map<String, dynamic>.from(value));
+          }
+          if (entries.isNotEmpty) {
+            notes[tooth] = entries;
+          }
+        });
+      }
+
+      final selectedTooth = data['selectedTooth']?.toString();
+      return (
+        chart: chart,
+        notes: notes,
+        selectedTooth: selectedTooth != null && selectedTooth.isNotEmpty
+            ? selectedTooth
+            : null,
+      );
+    } catch (e) {
+      print('❌ [CacheService] Error loading dental chart: $e');
+      return null;
+    }
+  }
+
+  Future<void> deleteDentalChart(String patientId) async {
+    try {
+      await _dentalChartsBox.delete(patientId);
+    } catch (e) {
+      print('❌ [CacheService] Error deleting dental chart: $e');
+    }
   }
 
   // ==================== User Operations ====================
@@ -556,6 +793,7 @@ class CacheService {
     await _doctorsBox.clear();
     await _medicalRecordsBox.clear();
     await _galleryBox.clear();
+    await _dentalChartsBox.clear();
   }
 
   /// إغلاق جميع الصناديق
@@ -567,6 +805,7 @@ class CacheService {
     await _medicalRecordsBox.close();
     await _galleryBox.close();
     await _queueBox.close();
+    await _dentalChartsBox.close();
   }
 
   /// الحصول على حجم البيانات المخزنة
@@ -576,7 +815,8 @@ class CacheService {
         _appointmentsBox.length +
         _doctorsBox.length +
         _medicalRecordsBox.length +
-        _galleryBox.length;
+        _galleryBox.length +
+        _dentalChartsBox.length;
   }
 
   /// التحقق من وجود بيانات مخزنة

@@ -12,3 +12,5 @@ from .otp import OTPRequest
 from .assignment import AssignmentLog, InactivePatientLog
 from .doctor_working_hours import DoctorWorkingHours
 from .implant_stage import ImplantStage
+from .dental_chart import DentalChart, DentalNoteEntry
+from .reception_queue import ReceptionQueueDay, ReceptionQueueEntry

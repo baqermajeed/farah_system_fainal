@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, UploadFile, File, Query, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, UploadFile, File, Query, Form, HTTPException, Request, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional, Dict
 from datetime import datetime, timezone
@@ -77,6 +77,53 @@ async def _require_doctor_manager(current) -> str:
     if not getattr(doctor, "is_manager", False):
         raise HTTPException(status_code=403, detail="Doctor manager privileges required")
     return str(doctor.id)
+
+
+def _appointment_status_for_output(raw_status: str | None) -> str:
+    status = (raw_status or "pending").lower().strip()
+    if status in {"scheduled", "late"}:
+        return "pending"
+    if status not in {"pending", "completed", "cancelled"}:
+        return "pending"
+    return status
+
+
+def _build_appointment_out(
+    *,
+    appointment,
+    patient_name: str | None = None,
+    patient_phone: str | None = None,
+    doctor_name: str | None = None,
+) -> AppointmentOut:
+    normalized_status = _appointment_status_for_output(getattr(appointment, "status", None))
+    scheduled_at = (
+        appointment.scheduled_at
+        if getattr(appointment, "scheduled_at", None)
+        else datetime.now(timezone.utc)
+    )
+    if scheduled_at.tzinfo is None:
+        scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
+    else:
+        scheduled_at = scheduled_at.astimezone(timezone.utc)
+
+    is_late = normalized_status == "pending" and scheduled_at < datetime.now(timezone.utc)
+
+    return AppointmentOut(
+        id=str(appointment.id),
+        patient_id=str(appointment.patient_id),
+        patient_name=patient_name,
+        patient_phone=patient_phone,
+        doctor_id=str(appointment.doctor_id),
+        doctor_name=doctor_name,
+        scheduled_at=scheduled_at.isoformat(),
+        note=appointment.note,
+        image_path=appointment.image_path,
+        image_paths=getattr(appointment, "image_paths", []) if hasattr(appointment, "image_paths") else (([appointment.image_path] if appointment.image_path else [])),
+        status=normalized_status,
+        is_late=is_late,
+        kind=getattr(appointment, "kind", "regular") or "regular",
+        stage_name=getattr(appointment, "stage_name", None),
+    )
 
 
 def _build_doctor_patient_out(patient: Patient, user: User, doctor_id: str) -> PatientOut:
@@ -698,9 +745,27 @@ async def add_note(
     patient_id: str,
     note: str | None = Form(None),
     images: List[UploadFile] | None = File(None),
+    x_idempotency_key: str | None = Header(default=None, alias="X-Idempotency-Key"),
     current=Depends(get_current_user),
 ):
     """إضافة سجل (ملاحظة) مع صور متعددة اختيارية."""
+    # إن وُجد نفس مفتاح العملية مسبقاً أرجع السجل دون إعادة رفع الصور
+    if x_idempotency_key:
+        from app.models.note import TreatmentNote
+        existing = await TreatmentNote.find_one(
+            TreatmentNote.client_operation_id == x_idempotency_key
+        )
+        if existing:
+            return NoteOut(
+                id=str(existing.id),
+                patient_id=str(existing.patient_id),
+                doctor_id=str(existing.doctor_id),
+                note=existing.note,
+                image_path=existing.image_path,
+                image_paths=existing.image_paths if existing.image_paths else None,
+                created_at=existing.created_at.isoformat() if existing.created_at else datetime.now(timezone.utc).isoformat(),
+            )
+
     image_paths = []
     patient_name_hint = await _get_patient_user_name(patient_id)
     if images:
@@ -730,6 +795,7 @@ async def add_note(
         note=note,
         image_path=image_path,
         image_paths=image_paths,
+        client_operation_id=x_idempotency_key,
     )
     # تحويل TreatmentNote إلى NoteOut يدوياً لضمان قراءة image_paths
     return NoteOut(
@@ -850,16 +916,7 @@ async def add_appointment(
         image_paths=image_paths,
     )
     # تحويل Appointment إلى AppointmentOut يدوياً
-    return AppointmentOut(
-        id=str(ap.id),
-        patient_id=str(ap.patient_id),
-        doctor_id=str(ap.doctor_id),
-        scheduled_at=ap.scheduled_at.isoformat() if ap.scheduled_at else datetime.now(timezone.utc).isoformat(),
-        note=ap.note,
-        image_path=ap.image_path,
-        image_paths=getattr(ap, 'image_paths', []) if hasattr(ap, 'image_paths') else (([ap.image_path] if ap.image_path else [])),
-        status=ap.status,
-    )
+    return _build_appointment_out(appointment=ap)
 
 @router.delete("/patients/{patient_id}/appointments/{appointment_id}")
 async def delete_appointment(
@@ -1009,18 +1066,11 @@ async def list_my_appointments(
                     logger.warning(f"Could not fetch doctor name for appointment {a.id}: {e}")
                 
                 result.append(
-                    AppointmentOut(
-                        id=str(a.id),
-                        patient_id=str(a.patient_id),
+                    _build_appointment_out(
+                        appointment=a,
                         patient_name=patient_name,
-                        patient_phone=patient_phone,  # ⭐ إضافة رقم الهاتف
-                        doctor_id=str(a.doctor_id),
+                        patient_phone=patient_phone,
                         doctor_name=doctor_name,
-                        scheduled_at=a.scheduled_at.isoformat() if a.scheduled_at else datetime.now(timezone.utc).isoformat(),
-                        note=a.note,
-                        image_path=a.image_path,
-                        image_paths=getattr(a, 'image_paths', []) if hasattr(a, 'image_paths') else (([a.image_path] if a.image_path else [])),
-                        status=a.status,
                     )
                 )
             except Exception as e:
@@ -1032,13 +1082,17 @@ async def list_my_appointments(
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @router.patch("/patients/{patient_id}", response_model=PatientOut)
-async def update_patient(patient_id: int, payload: PatientUpdate, db: AsyncSession = Depends(get_db), current=Depends(get_current_user)):
+async def update_patient(
+    patient_id: str,
+    payload: PatientUpdate,
+    current=Depends(get_current_user),
+):
     """تعديل بيانات مريض من قبل الطبيب (إن كان من مرضاه)."""
     doctor_id = await _get_current_doctor_id(current)
     # patient_service.update_patient_by_doctor يعمل على Mongo/Beanie ويأخذ معرفات كنصوص
     p = await patient_service.update_patient_by_doctor(
         doctor_id=doctor_id,
-        patient_id=str(patient_id),
+        patient_id=patient_id,
         data=payload,
     )
     u = await User.get(p.user_id)
@@ -1122,18 +1176,11 @@ async def list_patient_appointments(
                 pass
             
             result.append(
-                AppointmentOut(
-                    id=str(ap.id),
-                    patient_id=str(ap.patient_id),
+                _build_appointment_out(
+                    appointment=ap,
                     patient_name=patient_name,
-                    patient_phone=patient_phone,  # ⭐ إضافة رقم الهاتف
-                    doctor_id=str(ap.doctor_id),
+                    patient_phone=patient_phone,
                     doctor_name=doctor_name,
-                    scheduled_at=ap.scheduled_at.isoformat() if ap.scheduled_at else datetime.now(timezone.utc).isoformat(),
-                    note=ap.note,
-                    image_path=ap.image_path,
-                    image_paths=getattr(ap, 'image_paths', []) if hasattr(ap, 'image_paths') else (([ap.image_path] if ap.image_path else [])),
-                    status=ap.status,
                 )
             )
         except Exception as e:
@@ -1229,17 +1276,10 @@ async def update_appointment_status(
     except Exception:
         pass
 
-    return AppointmentOut(
-        id=str(appointment.id),
-        patient_id=str(appointment.patient_id),
+    return _build_appointment_out(
+        appointment=appointment,
         patient_name=patient_name,
-        doctor_id=str(appointment.doctor_id),
         doctor_name=doctor_name,
-        scheduled_at=appointment.scheduled_at.isoformat() if appointment.scheduled_at else datetime.now(timezone.utc).isoformat(),
-        note=appointment.note,
-        image_path=appointment.image_path,
-        image_paths=getattr(appointment, 'image_paths', []) if hasattr(appointment, 'image_paths') else (([appointment.image_path] if appointment.image_path else [])),
-        status=appointment.status,
     )
 
 @router.patch("/patients/{patient_id}/appointments/{appointment_id}/datetime", response_model=AppointmentOut)
@@ -1284,15 +1324,8 @@ async def update_appointment_datetime(
     except Exception:
         pass
 
-    return AppointmentOut(
-        id=str(appointment.id),
-        patient_id=str(appointment.patient_id),
+    return _build_appointment_out(
+        appointment=appointment,
         patient_name=patient_name,
-        doctor_id=str(appointment.doctor_id),
         doctor_name=doctor_name,
-        scheduled_at=appointment.scheduled_at.isoformat() if appointment.scheduled_at else datetime.now(timezone.utc).isoformat(),
-        note=appointment.note,
-        image_path=appointment.image_path,
-        image_paths=getattr(appointment, 'image_paths', []) if hasattr(appointment, 'image_paths') else (([appointment.image_path] if appointment.image_path else [])),
-        status=appointment.status,
     )

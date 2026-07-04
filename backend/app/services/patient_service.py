@@ -607,7 +607,13 @@ async def set_payment_methods(*, patient_id: str, doctor_id: str, methods: List[
     return patient
 
 async def create_note(
-    *, patient_id: str, doctor_id: str, note: Optional[str], image_path: Optional[str] = None, image_paths: Optional[List[str]] = None
+    *,
+    patient_id: str,
+    doctor_id: str,
+    note: Optional[str],
+    image_path: Optional[str] = None,
+    image_paths: Optional[List[str]] = None,
+    client_operation_id: Optional[str] = None,
 ) -> TreatmentNote:
     """Add a new treatment note (section 1) with optional images; date auto."""
     patient = await Patient.get(OID(patient_id))
@@ -615,6 +621,14 @@ async def create_note(
         raise HTTPException(status_code=404, detail="Patient not found")
     if OID(doctor_id) not in patient.doctor_ids:
         raise HTTPException(status_code=403, detail="Not your patient")
+
+    # إعادة نفس السجل عند تكرار نفس مفتاح العملية (رفع آمن بلا تكرار)
+    if client_operation_id:
+        existing = await TreatmentNote.find_one(
+            TreatmentNote.client_operation_id == client_operation_id
+        )
+        if existing:
+            return existing
     
     # للتوافق مع البيانات القديمة، نستخدم أول صورة كـ image_path
     final_image_path = image_path
@@ -627,9 +641,20 @@ async def create_note(
         doctor_id=OID(doctor_id),
         note=note,
         image_path=final_image_path,
-        image_paths=final_image_paths
+        image_paths=final_image_paths,
+        client_operation_id=client_operation_id,
     )
-    await tn.insert()
+    try:
+        await tn.insert()
+    except Exception:
+        # سباق نادر: طلبان بنفس المفتاح — أرجع الموجود
+        if client_operation_id:
+            existing = await TreatmentNote.find_one(
+                TreatmentNote.client_operation_id == client_operation_id
+            )
+            if existing:
+                return existing
+        raise
 
     await patient.save()
     return tn
@@ -765,17 +790,15 @@ async def create_appointment(
     # للتوافق مع البيانات القديمة، احتفظ بأول صورة في image_path
     final_image_path = final_image_paths[0] if final_image_paths else None
 
-    # التأكد من أن scheduled_at له timezone
-    if scheduled_at.tzinfo is None:
-        scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
-    else:
-        scheduled_at = scheduled_at.astimezone(timezone.utc)
+    # توحيد التخزين على UTC
+    scheduled_at = _to_utc(scheduled_at)
 
     now = datetime.now(timezone.utc)
     ap = Appointment(
         patient_id=patient.id,
         doctor_id=OID(doctor_id),
         scheduled_at=scheduled_at,
+        kind="regular",
         note=note,
         image_path=final_image_path,
         image_paths=final_image_paths,
@@ -813,6 +836,29 @@ async def create_appointment(
     return ap
 
 # ---------------------- Listings & Filters ----------------------
+
+
+def _normalize_appointment_status(raw_status: str | None) -> str:
+    """Normalize legacy statuses to current status model."""
+    status = (raw_status or "pending").lower().strip()
+    if status in {"scheduled", "late"}:
+        return "pending"
+    if status not in {"pending", "completed", "cancelled"}:
+        return "pending"
+    return status
+
+
+async def _normalize_legacy_appointment_statuses(
+    appointments: List[Appointment],
+) -> None:
+    """Migrate legacy statuses in-place to keep data model consistent."""
+    now = datetime.now(timezone.utc)
+    for apt in appointments:
+        normalized = _normalize_appointment_status(getattr(apt, "status", None))
+        if apt.status != normalized:
+            apt.status = normalized
+            apt.updated_at = now
+            await apt.save()
 
 async def _date_bounds(day: Optional[str], date_from: Optional[datetime], date_to: Optional[datetime]) -> tuple[Optional[datetime], Optional[datetime]]:
     now = datetime.now(timezone.utc)
@@ -862,31 +908,21 @@ async def list_appointments_for_doctor(
     if end:
         query = query.find(Appointment.scheduled_at < end)
     
-    now = datetime.now(timezone.utc)
-    
-    if status == "late":
-        # ⭐ المواعيد المتأخرة: 
-        # 1. المواعيد التي حالتها late مباشرة
-        # 2. المواعيد التي عبرت (scheduled_at < now) وحالتها pending أو scheduled
+    normalized_status = (status or "").strip().lower()
+    if normalized_status == "late":
+        now = datetime.now(timezone.utc)
         query = query.find(
-            Or(
-                Appointment.status == "late",
-                And(
-                    Appointment.scheduled_at < now,
-                    In(Appointment.status, ["pending", "scheduled"])
-                )
-            )
+            Appointment.scheduled_at < now,
+            In(Appointment.status, ["pending", "scheduled", "late"]),
         )
-    elif status:
-        # تصفية حسب الحالة المحددة
-        # للتوافق مع البيانات القديمة: إذا طلبنا "pending"، نعرض أيضاً "scheduled"
-        if status == "pending":
-            query = query.find(In(Appointment.status, ["pending", "scheduled"]))
+    elif normalized_status:
+        # للتوافق مع البيانات القديمة: pending يعرض pending + scheduled + late legacy
+        if normalized_status == "pending":
+            query = query.find(In(Appointment.status, ["pending", "scheduled", "late"]))
         else:
-            query = query.find(Appointment.status == status)
+            query = query.find(Appointment.status == normalized_status)
     else:
-        # الافتراضي: استبعاد المواعيد المكتملة والملغية
-        # نعرض فقط: pending, late, scheduled (للتوافق مع البيانات القديمة)
+        # الافتراضي: إخفاء المكتمل والملغي من الجداول
         query = query.find(
             And(
                 Appointment.status != "completed",
@@ -899,19 +935,8 @@ async def list_appointments_for_doctor(
     if limit is not None:
         query = query.limit(limit)
     appointments = await query.to_list()
-    
-    # تحديث المواعيد القديمة من "scheduled" إلى "pending" تلقائياً
-    updated_count = 0
-    for apt in appointments:
-        if apt.status == "scheduled":
-            apt.status = "pending"
-            apt.updated_at = datetime.now(timezone.utc)
-            await apt.save()
-            updated_count += 1
-    
-    if updated_count > 0:
-        print(f"✅ [list_appointments_for_doctor] Updated {updated_count} appointments from 'scheduled' to 'pending'")
-    
+    await _normalize_legacy_appointment_statuses(appointments)
+
     return appointments
 
 async def list_appointments_for_all(
@@ -940,31 +965,19 @@ async def list_appointments_for_all(
     if end:
         query = query.find(Appointment.scheduled_at < end)
     
-    now = datetime.now(timezone.utc)
-    
-    if status == "late":
-        # ⭐ المواعيد المتأخرة: 
-        # 1. المواعيد التي حالتها late مباشرة
-        # 2. المواعيد التي عبرت (scheduled_at < now) وحالتها pending أو scheduled
+    normalized_status = (status or "").strip().lower()
+    if normalized_status == "late":
+        now = datetime.now(timezone.utc)
         query = query.find(
-            Or(
-                Appointment.status == "late",
-                And(
-                    Appointment.scheduled_at < now,
-                    In(Appointment.status, ["pending", "scheduled"])
-                )
-            )
+            Appointment.scheduled_at < now,
+            In(Appointment.status, ["pending", "scheduled", "late"]),
         )
-    elif status:
-        # تصفية حسب الحالة المحددة
-        # للتوافق مع البيانات القديمة: إذا طلبنا "pending"، نعرض أيضاً "scheduled"
-        if status == "pending":
-            query = query.find(In(Appointment.status, ["pending", "scheduled"]))
+    elif normalized_status:
+        if normalized_status == "pending":
+            query = query.find(In(Appointment.status, ["pending", "scheduled", "late"]))
         else:
-            query = query.find(Appointment.status == status)
+            query = query.find(Appointment.status == normalized_status)
     else:
-        # الافتراضي: استبعاد المواعيد المكتملة والملغية
-        # نعرض فقط: pending, late
         query = query.find(
             And(
                 Appointment.status != "completed",
@@ -977,19 +990,8 @@ async def list_appointments_for_all(
     if limit is not None:
         query = query.limit(limit)
     appointments = await query.to_list()
-    
-    # تحديث المواعيد القديمة من "scheduled" إلى "pending" تلقائياً
-    updated_count = 0
-    for apt in appointments:
-        if apt.status == "scheduled":
-            apt.status = "pending"
-            apt.updated_at = datetime.now(timezone.utc)
-            await apt.save()
-            updated_count += 1
-    
-    if updated_count > 0:
-        print(f"✅ [list_appointments_for_all] Updated {updated_count} appointments from 'scheduled' to 'pending'")
-    
+    await _normalize_legacy_appointment_statuses(appointments)
+
     return appointments
 
 async def delete_appointment(*, appointment_id: str, patient_id: str, doctor_id: str) -> bool:
@@ -1024,7 +1026,7 @@ async def update_appointment_status(
 ) -> Appointment | None:
     """
     تحديث حالة الموعد.
-    الحالات: pending, completed, cancelled, late
+    الحالات: pending, completed, cancelled
     - completed: يختفي من الجداول، يبقى في ملف المريض
     - cancelled: يختفي من الجداول، يبقى في ملف المريض
     - pending: يظهر في الجداول وملف المريض
@@ -1044,9 +1046,11 @@ async def update_appointment_status(
         if patient and OID(doctor_id) not in patient.doctor_ids:
             return None
         
-        status_lower = status.lower()
-        # التحقق من صحة الحالة
-        valid_statuses = ["pending", "completed", "cancelled", "late"]
+        status_lower = status.lower().strip()
+        # دعم late من العملاء القديمة: نعيده إلى pending
+        if status_lower == "late":
+            status_lower = "pending"
+        valid_statuses = ["pending", "completed", "cancelled"]
         if status_lower not in valid_statuses:
             return None
         
@@ -1085,11 +1089,8 @@ async def update_appointment_datetime(
         if patient and OID(doctor_id) not in patient.doctor_ids:
             return None
         
-        # التأكد من أن scheduled_at له timezone
-        if scheduled_at.tzinfo is None:
-            scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
-        else:
-            scheduled_at = scheduled_at.astimezone(timezone.utc)
+        # توحيد التخزين على UTC
+        scheduled_at = _to_utc(scheduled_at)
         
         # حفظ التاريخ القديم
         appointment.previous_scheduled_at = appointment.scheduled_at
@@ -1097,10 +1098,8 @@ async def update_appointment_datetime(
         appointment.scheduled_at = scheduled_at
         appointment.updated_at = datetime.now(timezone.utc)
         
-        # إذا كان الموعد متأخراً وأصبح في المستقبل، نعيد الحالة إلى pending
-        now = datetime.now(timezone.utc)
-        if appointment.status == "late" and scheduled_at >= now:
-            appointment.status = "pending"
+        # إلغاء late المخزّن (legacy)
+        appointment.status = _normalize_appointment_status(appointment.status)
 
         await appointment.save()
 
@@ -1115,31 +1114,9 @@ async def update_appointment_datetime(
 
 async def update_late_appointments() -> int:
     """
-    تحديث المواعيد المتأخرة تلقائياً.
-    المواعيد التي عبرت وحالتها لا تزال pending تصبح late.
-    يُستدعى هذه الدالة بشكل دوري (مثلاً كل ساعة).
+    Deprecated: late لا يُخزّن، يتم احتسابه عند العرض فقط.
     """
-    try:
-        now = datetime.now(timezone.utc)
-        # جلب جميع المواعيد التي عبرت وحالتها pending
-        late_appointments = await Appointment.find(
-            And(
-                Appointment.scheduled_at < now,
-                Appointment.status == "pending"
-            )
-        ).to_list()
-        
-        updated_count = 0
-        for appointment in late_appointments:
-            appointment.status = "late"
-            appointment.updated_at = now
-            await appointment.save()
-            updated_count += 1
-        
-        return updated_count
-    except Exception as e:
-        print(f"Error updating late appointments: {e}")
-        return 0
+    return 0
 
 async def list_patient_appointments_grouped(*, patient_id: str) -> tuple[List[Appointment], List[Appointment]]:
     """

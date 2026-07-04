@@ -14,6 +14,15 @@ from beanie import PydanticObjectId as OID
 
 router = APIRouter(prefix="/patient", tags=["patient"], dependencies=[Depends(require_roles([Role.PATIENT]))])
 
+
+def _appointment_status_for_output(raw_status: str | None) -> str:
+    status = (raw_status or "pending").lower().strip()
+    if status in {"scheduled", "late"}:
+        return "pending"
+    if status not in {"pending", "completed", "cancelled"}:
+        return "pending"
+    return status
+
 @router.get("/me", response_model=PatientOut)
 async def my_profile(current=Depends(get_current_user)):
     """بيانات حساب المريض، بما فيها الأطباء المعينون والباركود الخاص به."""
@@ -204,17 +213,28 @@ async def my_appointments(current=Depends(get_current_user)):
         except Exception:
             pass
         
+        normalized_status = _appointment_status_for_output(getattr(a, "status", None))
+        sa = a.scheduled_at if a.scheduled_at else datetime.now(timezone.utc)
+        if sa.tzinfo is None:
+            sa = sa.replace(tzinfo=timezone.utc)
+        else:
+            sa = sa.astimezone(timezone.utc)
+        is_late = normalized_status == "pending" and sa < datetime.now(timezone.utc)
+
         return AppointmentOut(
             id=str(a.id),
             patient_id=str(a.patient_id),
             patient_name=patient_name,
             doctor_id=str(a.doctor_id),
             doctor_name=doctor_name,
-            scheduled_at=a.scheduled_at.isoformat() if a.scheduled_at else datetime.now(timezone.utc).isoformat(),
+            scheduled_at=sa.isoformat(),
             note=a.note,
             image_path=a.image_path,
             image_paths=a.image_paths or [],
-            status=a.status,
+            status=normalized_status,
+            is_late=is_late,
+            kind=getattr(a, "kind", "regular") or "regular",
+            stage_name=getattr(a, "stage_name", None),
         )
     
     # استخدام asyncio.gather لتنفيذ جميع العمليات بشكل متوازي

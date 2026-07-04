@@ -10,11 +10,13 @@ class Appointment(Document):
     doctor_id: Indexed(OID)
     scheduled_at: Indexed(datetime)
     previous_scheduled_at: Optional[datetime] = None  # لتتبع التعديلات على التاريخ/الوقت
+    kind: Indexed(str) = "regular"  # regular | implant
     note: str | None = None
     image_path: str | None = None  # للتوافق مع البيانات القديمة
     image_paths: List[str] = Field(default_factory=list)  # قائمة الصور الجديدة
-    # الحالات الجديدة: pending (قيد الانتظار), completed (مكتمل), cancelled (ملغي), late (متأخر)
-    status: Indexed(str) = "pending"  # pending|completed|cancelled|late
+    # الحالات المعتمدة: pending (قيد الانتظار), completed (مكتمل), cancelled (ملغي)
+    # late لا يُخزَّن في قاعدة البيانات؛ يتم احتسابه عند العرض فقط.
+    status: Indexed(str) = "pending"  # pending|completed|cancelled
     stage_name: str | None = None  # اسم مرحلة الزراعة المرتبطة (إن وجدت)
     remind_3d_sent: bool = False
     remind_1d_sent: bool = False

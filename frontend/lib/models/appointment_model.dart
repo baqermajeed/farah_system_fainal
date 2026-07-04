@@ -36,6 +36,16 @@ class AppointmentModel {
 
   @HiveField(10)
   final List<String> imagePaths; // قائمة الصور الجديدة
+
+  @HiveField(11)
+  final bool isLate;
+
+  @HiveField(12)
+  final String kind;
+
+  @HiveField(13)
+  final String? stageName;
+
   AppointmentModel({
     required this.id,
     required this.patientId,
@@ -48,6 +58,9 @@ class AppointmentModel {
     this.notes,
     this.imagePath,
     this.imagePaths = const [], // Default to empty list
+    this.isLate = false,
+    this.kind = 'regular',
+    this.stageName,
   });
 
   factory AppointmentModel.fromJson(Map<String, dynamic> json) {
@@ -73,10 +86,13 @@ class AppointmentModel {
       doctorName: json['doctor_name'] ?? json['doctorName'] ?? '',
       date: dateTime,
       time: json['time'] ?? _formatTime(dateTime),
-      status: json['status'] ?? 'scheduled',
+      status: json['status'] ?? 'pending',
       notes: json['note'] ?? json['notes'],
       imagePath: json['image_path'],
       imagePaths: finalImagePaths,
+      isLate: (json['is_late'] ?? json['isLate'] ?? false) == true,
+      kind: (json['kind'] ?? 'regular').toString(),
+      stageName: json['stage_name']?.toString() ?? json['stageName']?.toString(),
     );
   }
 
@@ -97,6 +113,9 @@ class AppointmentModel {
       'notes': notes,
       'image_path': imagePath,
       'image_paths': imagePaths,
+      'is_late': isLate,
+      'kind': kind,
+      'stage_name': stageName,
     };
   }
 }

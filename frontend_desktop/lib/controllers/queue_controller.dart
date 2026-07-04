@@ -5,6 +5,7 @@ import 'package:frontend_desktop/core/constants/app_colors.dart';
 import 'package:frontend_desktop/models/queue_entry_model.dart';
 import 'package:frontend_desktop/services/cache_service.dart';
 import 'package:frontend_desktop/services/queue_announcement_service.dart';
+import 'package:frontend_desktop/services/queue_archive_service.dart';
 import 'package:frontend_desktop/services/queue_window_service.dart';
 
 class QueueController extends GetxController {
@@ -12,8 +13,10 @@ class QueueController extends GetxController {
 
   final bool remoteMode;
   final _cacheService = CacheService();
+  final _archiveService = QueueArchiveService();
   final RxList<QueueEntry> entries = <QueueEntry>[].obs;
   final RxInt nextNumber = 1.obs;
+  int _archiveSyncToken = 0;
 
   bool get isEmpty => activeEntries.isEmpty;
 
@@ -127,9 +130,13 @@ class QueueController extends GetxController {
     entries.assignAll(state.entries);
     nextNumber.value = state.nextNumber;
     update();
+    // إعادة دفع أرشيف اليوم عند التشغيل (لا يُستخدم للعرض)
+    if (entries.isNotEmpty) {
+      _syncArchiveToServer();
+    }
   }
 
-  Future<void> _saveToCache() async {
+  Future<void> _saveToCache({bool syncArchive = true}) async {
     if (!remoteMode) {
       await _cacheService.saveQueueState(
         dateKey: _todayKey(),
@@ -140,6 +147,32 @@ class QueueController extends GetxController {
     update();
     if (!remoteMode) {
       await QueueWindowService.notifyDisplayUpdate(toSyncPayload());
+      if (syncArchive) {
+        _syncArchiveToServer();
+      }
+    }
+  }
+
+  /// أرشفة في السيرفر فقط — لا تؤثر على العرض أو النداء المحلي.
+  void _syncArchiveToServer() {
+    final dateKey = _todayKey();
+    final snapshot = entries
+        .map((e) => QueueEntry(id: e.id, number: e.number, name: e.name))
+        .toList(growable: false);
+    final token = ++_archiveSyncToken;
+    unawaited(_pushArchive(dateKey, snapshot, token));
+  }
+
+  Future<void> _pushArchive(
+    String dateKey,
+    List<QueueEntry> snapshot,
+    int token,
+  ) async {
+    try {
+      await _archiveService.syncDay(dateKey: dateKey, entries: snapshot);
+      if (token != _archiveSyncToken) return;
+    } catch (_) {
+      // فشل الأرشفة لا يوقف عمل الطابور المحلي
     }
   }
 
@@ -242,7 +275,8 @@ class QueueController extends GetxController {
         name: next.name,
       ),
     );
-    _saveToCache();
+    // النداء محلي بالكامل — لا حاجة لأرشفة السيرفر (الأسماء والأرقام لم تتغير)
+    _saveToCache(syncArchive: false);
     return true;
   }
 
