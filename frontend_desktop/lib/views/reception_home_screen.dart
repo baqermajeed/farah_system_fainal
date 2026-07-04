@@ -3805,7 +3805,9 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
 
   Widget _buildGalleryTab(PatientModel patient) {
     return Obx(() {
-      final images = _galleryController.galleryImages;
+      final images = _galleryController.galleryImages
+          .where((img) => img.patientId == patient.id)
+          .toList();
       // سبينر كامل فقط عند عدم وجود صور — لا نخفي المحتوى أثناء التحديث
       if (_galleryController.isLoading.value && images.isEmpty) {
         return Container(
@@ -3912,7 +3914,9 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
   /// معرض صور الموظف في ملف المريض (يظهر لموظف الاستقبال فقط فوق الأطباء المعالجون)
   Widget _buildReceptionGallerySection(PatientModel patient) {
     return Obx(() {
-      final images = _galleryController.galleryImages;
+      final images = _galleryController.galleryImages
+          .where((img) => img.patientId == patient.id)
+          .toList();
       if (_galleryController.isLoading.value && images.isEmpty) {
         return Container(
           margin: EdgeInsets.symmetric(horizontal: 16.w),
@@ -8494,8 +8498,8 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                             ),
                             SizedBox(height: 24.h),
                             CustomTextField(
-                              labelText: AppStrings.phoneNumber,
-                              hintText: '0000 000 0000',
+                              labelText: 'رقم الهاتف (ولي الأمر / حساب العائلة)',
+                              hintText: '07xxxxxxxxx — يمكن إضافة أكثر من فرد على نفس الرقم',
                               controller: _phoneController,
                               keyboardType: TextInputType.phone,
                             ),

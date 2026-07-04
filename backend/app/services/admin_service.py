@@ -1,6 +1,7 @@
 from typing import Optional
 
 from fastapi import HTTPException
+from beanie import PydanticObjectId as OID
 
 from app.constants import Role
 from app.models import User, Doctor, Patient
@@ -39,8 +40,46 @@ async def create_staff_user(
     if role == Role.DOCTOR:
         await Doctor(user_id=user.id).insert()
 
-    # لا ننشئ مرضى هنا؛ المرضى يتم إنشاؤهم عبر OTP أو create_patient
     return user
+
+
+async def create_patient_profile_for_user(
+    *,
+    user_id: OID,
+    name: Optional[str],
+    gender: Optional[str],
+    age: Optional[int],
+    city: Optional[str],
+    visit_type: Optional[str] = None,
+    consultation_type: Optional[str] = None,
+    is_primary: bool = False,
+    relationship: Optional[str] = None,
+) -> Patient:
+    """Create a new medical profile under an existing login account (family member)."""
+    from os import urandom
+
+    existing_count = await Patient.find(Patient.user_id == user_id).count()
+    if existing_count == 0:
+        is_primary = True
+        if not relationship:
+            relationship = "self"
+
+    tmp_qr = f"tmp-{urandom(8).hex()}"
+    patient = Patient(
+        user_id=user_id,
+        name=name,
+        gender=gender,
+        age=age,
+        city=city,
+        is_primary=is_primary,
+        relationship=relationship or ("self" if is_primary else "child"),
+        qr_code_data=tmp_qr,
+        visit_type=visit_type,
+        consultation_type=consultation_type,
+    )
+    await patient.insert()
+    await ensure_patient_qr(patient)
+    return patient
 
 
 async def create_patient(
@@ -52,13 +91,30 @@ async def create_patient(
     city: Optional[str],
     visit_type: Optional[str] = None,
     consultation_type: Optional[str] = None,
+    relationship: Optional[str] = None,
 ) -> Patient:
-    """Create a full patient (User + Patient profile) for reception/admin flows."""
-    # تأكد أن رقم الهاتف غير مستخدم
-    if await User.find_one(User.phone == phone):
-        raise HTTPException(status_code=400, detail="Phone already exists")
+    """Create patient profile. If phone exists, add family member; else create User + first profile."""
+    phone = phone.strip()
+    existing_user = await User.find_one(User.phone == phone)
 
-    # أنشئ مستخدمًا بدور مريض
+    if existing_user:
+        if existing_user.role != Role.PATIENT:
+            raise HTTPException(
+                status_code=400,
+                detail="رقم الهاتف مستخدم لحساب موظف/طبيب ولا يمكن إضافة مريض عليه",
+            )
+        return await create_patient_profile_for_user(
+            user_id=existing_user.id,
+            name=name,
+            gender=gender,
+            age=age,
+            city=city,
+            visit_type=visit_type,
+            consultation_type=consultation_type,
+            is_primary=False,
+            relationship=relationship or "child",
+        )
+
     user = User(
         phone=phone,
         name=name,
@@ -69,17 +125,49 @@ async def create_patient(
     )
     await user.insert()
 
-    # أنشئ ملف المريض + QR
-    from os import urandom
-
-    tmp_qr = f"tmp-{urandom(8).hex()}"
-    patient = Patient(
+    return await create_patient_profile_for_user(
         user_id=user.id,
-        qr_code_data=tmp_qr,
+        name=name,
+        gender=gender,
+        age=age,
+        city=city,
         visit_type=visit_type,
         consultation_type=consultation_type,
+        is_primary=True,
+        relationship=relationship or "self",
     )
-    await patient.insert()
-    await ensure_patient_qr(patient)
-    return patient
 
+
+async def migrate_legacy_patient_profiles() -> int:
+    """Copy User profile fields onto Patient documents that lack them (one-time safe migration)."""
+    migrated = 0
+    patients = await Patient.find({}).to_list()
+    for patient in patients:
+        needs_save = False
+        user = await User.get(patient.user_id)
+        if not user:
+            continue
+
+        if patient.name is None and user.name is not None:
+            patient.name = user.name
+            needs_save = True
+        if patient.gender is None and user.gender is not None:
+            patient.gender = user.gender
+            needs_save = True
+        if patient.age is None and user.age is not None:
+            patient.age = user.age
+            needs_save = True
+        if patient.city is None and user.city is not None:
+            patient.city = user.city
+            needs_save = True
+        if patient.imageUrl is None and user.imageUrl is not None:
+            patient.imageUrl = user.imageUrl
+            needs_save = True
+        if getattr(patient, "is_primary", None) is None:
+            patient.is_primary = True
+            needs_save = True
+
+        if needs_save:
+            await patient.save()
+            migrated += 1
+    return migrated

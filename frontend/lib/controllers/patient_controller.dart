@@ -165,9 +165,10 @@ class PatientController extends GetxController {
   Future<void> loadMyProfile({bool showError = false}) async {
     try {
       isLoading.value = true;
-      final profile = await _patientService.getMyProfile();
-      myProfile.value = profile;
       final authController = Get.find<AuthController>();
+      final activeId = authController.patientProfileId.value;
+      final profile = await _patientService.getMyProfile(patientId: activeId);
+      myProfile.value = profile;
       authController.patientProfileId.value = profile.id;
     } on ApiException catch (e) {
       print('❌ [PatientController] Error loading profile: ${e.message}');
@@ -399,7 +400,10 @@ class PatientController extends GetxController {
   // التحقق من وجود طبيب مرتبط بالمريض
   Future<bool> checkDoctorAssignment() async {
     try {
-      final profile = await _patientService.getMyProfile();
+      final authController = Get.find<AuthController>();
+      final profile = await _patientService.getMyProfile(
+        patientId: authController.patientProfileId.value,
+      );
       myProfile.value = profile;
       // التحقق من وجود primary_doctor_id
       return profile.doctorIds.isNotEmpty;
@@ -418,7 +422,9 @@ class PatientController extends GetxController {
   }) async {
     try {
       isLoading.value = true;
+      final authController = Get.find<AuthController>();
       final updatedProfile = await _patientService.updateMyProfile(
+        patientId: authController.patientProfileId.value,
         name: name,
         gender: gender,
         age: age,
@@ -426,11 +432,6 @@ class PatientController extends GetxController {
       );
       myProfile.value = updatedProfile;
       
-      // تحديث بيانات المستخدم أيضاً عبر إعادة جلب البيانات من السيرفر
-      final authController = Get.find<AuthController>();
-      await authController.checkLoggedInUser();
-      
-      // إعادة تحميل الملف الشخصي لضمان التحديث
       await loadMyProfile();
     } catch (e) {
       print('❌ [PatientController] Error updating profile: $e');
@@ -443,7 +444,10 @@ class PatientController extends GetxController {
   Future<void> loadMyDoctor() async {
     try {
       isLoading.value = true;
-      final doctorInfo = await _patientService.getMyDoctor();
+      final authController = Get.find<AuthController>();
+      final doctorInfo = await _patientService.getMyDoctor(
+        patientId: authController.patientProfileId.value,
+      );
       myDoctor.value = doctorInfo;
     } on ApiException catch (e) {
       print('❌ [PatientController] Error loading doctor: ${e.message}');
@@ -461,7 +465,10 @@ class PatientController extends GetxController {
   Future<void> loadMyDoctors() async {
     try {
       isLoading.value = true;
-      final doctorsList = await _patientService.getMyDoctors();
+      final authController = Get.find<AuthController>();
+      final doctorsList = await _patientService.getMyDoctors(
+        patientId: authController.patientProfileId.value,
+      );
       myDoctors.value = doctorsList;
       // أيضاً تحديث myDoctor للأول (للتوافق مع الكود القديم)
       if (doctorsList.isNotEmpty) {

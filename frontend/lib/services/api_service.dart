@@ -214,6 +214,7 @@ class ApiService {
   Future<dio.Response> put(
     String endpoint, {
     Map<String, dynamic>? data,
+    Map<String, dynamic>? queryParameters,
     dio.FormData? formData,
     dio.Options? options,
   }) async {
@@ -221,6 +222,7 @@ class ApiService {
       final response = await _dio.put(
         endpoint,
         data: formData ?? data,
+        queryParameters: queryParameters,
         options: options,
       );
       return response;

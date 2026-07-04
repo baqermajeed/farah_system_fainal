@@ -75,14 +75,15 @@ class GalleryController extends GetxController {
     try {
       errorMessage.value = '';
 
+      // استبدال فوري عند تبديل المريض (كاش الجديد أو قائمة فارغة)
+      // حتى لا تبقى صور المريض السابق ظاهرة
       final cachedImages = _cacheService.getGalleryImages(patientId);
-      if (cachedImages.isNotEmpty) {
-        galleryImages.value = _mergeWithLocalPending(patientId, cachedImages);
-      }
+      galleryImages.value = cachedImages.isNotEmpty
+          ? _mergeWithLocalPending(patientId, cachedImages)
+          : <GalleryImageModel>[];
 
       // لا نُظهر سبينر كامل الشاشة إلا إذا القائمة فارغة فعلاً
-      final showBlockingLoader = galleryImages.isEmpty;
-      if (showBlockingLoader) {
+      if (galleryImages.isEmpty) {
         isLoading.value = true;
       }
 
@@ -97,6 +98,9 @@ class GalleryController extends GetxController {
         images = <GalleryImageModel>[];
       }
 
+      // تجاهل رد متأخر لمريض لم يعد محدداً
+      if (_activePatientId != patientId) return;
+
       galleryImages.value = _mergeWithLocalPending(patientId, images);
 
       try {
@@ -105,19 +109,23 @@ class GalleryController extends GetxController {
         print('❌ [GalleryController] Error updating cache: $e');
       }
     } on ApiException catch (e) {
+      if (_activePatientId != patientId) return;
       errorMessage.value = e.message;
       print('❌ [GalleryController] Error loading gallery: $e');
       if (galleryImages.isEmpty && NetworkUtils.isNetworkError(e)) {
         NetworkUtils.showNetworkErrorDialog();
       }
     } catch (e) {
+      if (_activePatientId != patientId) return;
       errorMessage.value = e.toString();
       print('❌ [GalleryController] Error loading gallery: $e');
       if (galleryImages.isEmpty && NetworkUtils.isNetworkError(e)) {
         NetworkUtils.showNetworkErrorDialog();
       }
     } finally {
-      isLoading.value = false;
+      if (_activePatientId == patientId) {
+        isLoading.value = false;
+      }
     }
   }
 

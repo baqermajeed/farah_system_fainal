@@ -44,7 +44,9 @@ class ApiConstants {
 
   // Patient Endpoints
   static const String patientMe = '/patient/me';
+  static const String patientProfiles = '/patient/profiles';
   static const String patientUpdateMe = '/patient/me';
+  static const String patientUploadImage = '/patient/me/upload-image';
   static const String patientDoctor = '/patient/doctor';
   static const String patientDoctors = '/patient/doctors';
   static const String patientAppointments = '/patient/appointments';
@@ -135,4 +137,5 @@ class ApiConstants {
   static const String tokenKey = 'auth_token';
   static const String refreshTokenKey = 'refresh_token';
   static const String userKey = 'current_user';
+  static const String activePatientIdKey = 'active_patient_id';
 }

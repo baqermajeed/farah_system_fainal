@@ -37,6 +37,7 @@ import 'package:farah_sys_final/views/edit_reception_profile_screen.dart';
 import 'package:farah_sys_final/views/qr_scanner_screen.dart';
 import 'package:farah_sys_final/views/otp_verification_screen.dart';
 import 'package:farah_sys_final/views/patient_registration_screen.dart';
+import 'package:farah_sys_final/views/family_member_selection_screen.dart';
 import 'package:farah_sys_final/views/select_doctor_screen.dart';
 import 'package:farah_sys_final/views/edit_implant_stage_date_screen.dart';
 import 'package:farah_sys_final/models/user_model.dart';
@@ -164,6 +165,10 @@ class MyApp extends StatelessWidget {
                   phoneNumber: args?['phoneNumber'] ?? '',
                 );
               },
+            ),
+            GetPage(
+              name: AppRoutes.familyMemberSelection,
+              page: () => const FamilyMemberSelectionScreen(),
             ),
             GetPage(
               name: AppRoutes.addPatient,

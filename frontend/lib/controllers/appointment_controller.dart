@@ -71,7 +71,9 @@ class AppointmentController extends GetxController {
       } else {
         // المريض: يجلب مواعيده الخاصة من /patient/appointments
         print('📅 [AppointmentController] Loading appointments for patient');
-        final result = await _patientService.getMyAppointments();
+        final result = await _patientService.getMyAppointments(
+          patientId: authController.patientProfileId.value,
+        );
         primaryAppointments.value = result['primary'] ?? [];
         secondaryAppointments.value = result['secondary'] ?? [];
 

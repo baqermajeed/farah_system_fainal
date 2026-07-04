@@ -13,6 +13,11 @@ import 'package:http_parser/http_parser.dart';
 class PatientService {
   final _api = ApiService();
 
+  Map<String, dynamic> _patientQuery(String? patientId) {
+    if (patientId == null || patientId.isEmpty) return {};
+    return {'patient_id': patientId};
+  }
+
   MediaType? _guessImageContentType(String path) {
     final lower = path.toLowerCase();
     if (lower.endsWith('.png')) return MediaType('image', 'png');
@@ -25,10 +30,27 @@ class PatientService {
     return null;
   }
 
-  // جلب بيانات المريض الحالي
-  Future<PatientModel> getMyProfile() async {
+  Future<List<PatientModel>> getFamilyProfiles() async {
     try {
-      final response = await _api.get(ApiConstants.patientMe);
+      final response = await _api.get(ApiConstants.patientProfiles);
+      if (response.statusCode == 200) {
+        final data = response.data as List;
+        return data.map((json) => _mapPatientOutToModel(json)).toList();
+      }
+      throw ApiException('فشل جلب أفراد العائلة');
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('فشل جلب أفراد العائلة: ${e.toString()}');
+    }
+  }
+
+  // جلب بيانات المريض الحالي
+  Future<PatientModel> getMyProfile({String? patientId}) async {
+    try {
+      final response = await _api.get(
+        ApiConstants.patientMe,
+        queryParameters: _patientQuery(patientId),
+      );
 
       if (response.statusCode == 200) {
         final data = response.data;
@@ -46,6 +68,7 @@ class PatientService {
 
   // تحديث ملف المريض الشخصي
   Future<PatientModel> updateMyProfile({
+    String? patientId,
     String? name,
     String? gender,
     int? age,
@@ -58,7 +81,11 @@ class PatientService {
       if (age != null) data['age'] = age;
       if (city != null) data['city'] = city;
 
-      final response = await _api.put(ApiConstants.patientUpdateMe, data: data);
+      final response = await _api.put(
+        ApiConstants.patientUpdateMe,
+        data: data,
+        queryParameters: _patientQuery(patientId),
+      );
 
       if (response.statusCode == 200) {
         return _mapPatientOutToModel(response.data);
@@ -249,13 +276,18 @@ class PatientService {
   }
 
   // جلب مواعيد المريض
-  Future<Map<String, List<AppointmentModel>>> getMyAppointments() async {
+  Future<Map<String, List<AppointmentModel>>> getMyAppointments({
+    String? patientId,
+  }) async {
     try {
       print('📅 [PatientService] getMyAppointments called');
       print(
         '📅 [PatientService] Endpoint: ${ApiConstants.patientAppointments}',
       );
-      final response = await _api.get(ApiConstants.patientAppointments);
+      final response = await _api.get(
+        ApiConstants.patientAppointments,
+        queryParameters: _patientQuery(patientId),
+      );
       print('📅 [PatientService] Response status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
@@ -289,9 +321,12 @@ class PatientService {
   }
 
   // جلب سجلات المريض (Notes)
-  Future<List<MedicalRecordModel>> getMyNotes() async {
+  Future<List<MedicalRecordModel>> getMyNotes({String? patientId}) async {
     try {
-      final response = await _api.get(ApiConstants.patientNotes);
+      final response = await _api.get(
+        ApiConstants.patientNotes,
+        queryParameters: _patientQuery(patientId),
+      );
 
       if (response.statusCode == 200) {
         final data = response.data as List;
@@ -308,9 +343,12 @@ class PatientService {
   }
 
   // جلب معرض الصور
-  Future<List<Map<String, dynamic>>> getMyGallery() async {
+  Future<List<Map<String, dynamic>>> getMyGallery({String? patientId}) async {
     try {
-      final response = await _api.get(ApiConstants.patientGallery);
+      final response = await _api.get(
+        ApiConstants.patientGallery,
+        queryParameters: _patientQuery(patientId),
+      );
 
       if (response.statusCode == 200) {
         final data = response.data as List;
@@ -327,9 +365,12 @@ class PatientService {
   }
 
   // جلب معلومات الطبيب المرتبط بالمريض
-  Future<Map<String, dynamic>> getMyDoctor() async {
+  Future<Map<String, dynamic>> getMyDoctor({String? patientId}) async {
     try {
-      final response = await _api.get(ApiConstants.patientDoctor);
+      final response = await _api.get(
+        ApiConstants.patientDoctor,
+        queryParameters: _patientQuery(patientId),
+      );
 
       if (response.statusCode == 200) {
         final data = response.data;
@@ -351,9 +392,12 @@ class PatientService {
   }
 
   // جلب قائمة الأطباء المرتبطين بالمريض
-  Future<List<Map<String, dynamic>>> getMyDoctors() async {
+  Future<List<Map<String, dynamic>>> getMyDoctors({String? patientId}) async {
     try {
-      final response = await _api.get(ApiConstants.patientDoctors);
+      final response = await _api.get(
+        ApiConstants.patientDoctors,
+        queryParameters: _patientQuery(patientId),
+      );
 
       if (response.statusCode == 200) {
         final data = response.data as List;

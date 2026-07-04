@@ -88,8 +88,29 @@ class AuthService {
       await _storage.delete(key: ApiConstants.tokenKey);
       await _storage.delete(key: ApiConstants.refreshTokenKey);
       await _storage.delete(key: ApiConstants.userKey);
+      await _storage.delete(key: ApiConstants.activePatientIdKey);
     } catch (e) {
       print('⚠️ Warning: Could not clear storage: $e');
+    }
+  }
+
+  Future<void> saveActivePatientId(String patientId) async {
+    try {
+      await _storage.write(
+        key: ApiConstants.activePatientIdKey,
+        value: patientId,
+      );
+    } catch (e) {
+      print('⚠️ Warning: Could not save active patient id: $e');
+    }
+  }
+
+  Future<String?> getActivePatientId() async {
+    try {
+      return await _storage.read(key: ApiConstants.activePatientIdKey);
+    } catch (e) {
+      print('⚠️ Warning: Could not read active patient id: $e');
+      return null;
     }
   }
 

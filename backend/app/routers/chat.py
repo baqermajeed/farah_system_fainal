@@ -9,9 +9,8 @@ from app.models import ChatRoom, ChatMessage, Patient, User, Doctor
 from app.constants import Role
 from app.utils.chat_helpers import ensure_chat_room_user_ids
 from app.utils.r2_clinic import upload_clinic_image
+from app.utils.patient_out import resolve_patient_identity
 from app.utils.logger import get_logger
-
-logger = get_logger("chat_router")
 
 router = APIRouter(prefix="/chat", tags=["chat"]) 
 
@@ -64,16 +63,21 @@ async def _get_or_room_for_user(*, patient_id: str, user: User, doctor_id: str |
     patient_user_id = patient.user_id
     doctor_user_id = selected_doctor.user_id
 
+    # غرفة منفصلة لكل (patient_id + doctor_id) — لا تلابس بين أفراد العائلة
     room = await ChatRoom.find_one(
-        ChatRoom.patient_user_id == patient_user_id,
-        ChatRoom.doctor_user_id == doctor_user_id,
+        ChatRoom.patient_id == patient.id,
+        ChatRoom.doctor_id == selected_doctor.id,
     )
 
     if not room:
-        room = await ChatRoom.find_one(
-            ChatRoom.patient_id == patient.id,
-            ChatRoom.doctor_id == selected_doctor.id,
+        legacy_room = await ChatRoom.find_one(
+            ChatRoom.patient_user_id == patient_user_id,
+            ChatRoom.doctor_user_id == doctor_user_id,
         )
+        if legacy_room and (
+            legacy_room.patient_id is None or legacy_room.patient_id == patient.id
+        ):
+            room = legacy_room
 
     if room:
         room = await ensure_chat_room_user_ids(room)
@@ -126,13 +130,18 @@ async def get_chat_list(current: User = Depends(get_current_user)):
             if room.patient_user_id is None:
                 continue
 
-            patient = await Patient.find_one(Patient.user_id == room.patient_user_id)
+            if room.patient_id:
+                patient = await Patient.get(room.patient_id)
+            else:
+                patient = await Patient.find_one(Patient.user_id == room.patient_user_id)
             if not patient:
                 continue
 
-            patient_user = await User.get(room.patient_user_id)
+            patient_user = await User.get(patient.user_id)
             if not patient_user:
                 continue
+
+            identity = resolve_patient_identity(patient, patient_user)
 
             last_messages = await ChatMessage.find(
                 ChatMessage.room_id == room.id
@@ -156,8 +165,8 @@ async def get_chat_list(current: User = Depends(get_current_user)):
 
             result.append(ChatListItemOut(
                 patient_id=str(patient.id),
-                patient_name=patient_user.name or patient.phone,
-                patient_image_url=patient_user.imageUrl,
+                patient_name=identity["name"] or identity["phone"],
+                patient_image_url=identity["imageUrl"],
                 last_message=last_message_text,
                 last_message_time=last_message_time,
                 unread_count=unread_count,
@@ -168,15 +177,17 @@ async def get_chat_list(current: User = Depends(get_current_user)):
         return result
     
     elif current.role == Role.PATIENT:
-        patient = await Patient.find_one(Patient.user_id == current.id)
-        if not patient:
+        family_patients = await Patient.find(Patient.user_id == current.id).to_list()
+        if not family_patients:
             raise HTTPException(status_code=404, detail="Patient not found")
 
+        family_ids = [p.id for p in family_patients]
         rooms = []
-        primary_rooms = await ChatRoom.find(ChatRoom.patient_user_id == patient.user_id).to_list()
+        primary_rooms = await ChatRoom.find(
+            {"patient_id": {"$in": family_ids}}
+        ).to_list()
         legacy_rooms = await ChatRoom.find(
-            ChatRoom.patient_user_id == None,
-            ChatRoom.patient_id == patient.id,
+            ChatRoom.patient_user_id == current.id,
         ).to_list()
 
         seen_ids: set[str] = set()
@@ -187,6 +198,8 @@ async def get_chat_list(current: User = Depends(get_current_user)):
             seen_ids.add(room_key)
             rooms.append(room)
 
+        patient_map = {p.id: p for p in family_patients}
+
         result = []
         for room in rooms:
             room = await ensure_chat_room_user_ids(room)
@@ -196,6 +209,12 @@ async def get_chat_list(current: User = Depends(get_current_user)):
             doctor_user = await User.get(room.doctor_user_id)
             if not doctor_user:
                 continue
+
+            profile_patient = None
+            if room.patient_id and room.patient_id in patient_map:
+                profile_patient = patient_map[room.patient_id]
+            elif len(family_patients) == 1:
+                profile_patient = family_patients[0]
 
             last_messages = await ChatMessage.find(
                 ChatMessage.room_id == room.id
@@ -218,7 +237,7 @@ async def get_chat_list(current: User = Depends(get_current_user)):
                 last_message_time = last_message.created_at.isoformat()
 
             result.append(ChatListItemOut(
-                patient_id=str(patient.id),
+                patient_id=str(profile_patient.id) if profile_patient else str(family_patients[0].id),
                 patient_name=doctor_user.name or doctor_user.phone,
                 patient_image_url=doctor_user.imageUrl,
                 last_message=last_message_text,

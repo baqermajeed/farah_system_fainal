@@ -72,12 +72,112 @@ class AuthController extends GetxController {
     }
 
     try {
+      final stored = await _authService.getActivePatientId();
+      if (stored != null && stored.isNotEmpty) {
+        patientProfileId.value = stored;
+        print('📋 [AuthController] Restored patientProfileId: $stored');
+        return;
+      }
+
       final patientService = PatientService();
-      final profile = await patientService.getMyProfile();
-      patientProfileId.value = profile.id;
-      print('📋 [AuthController] Synced patientProfileId: ${profile.id}');
+      final members = await patientService.getFamilyProfiles();
+      if (members.length == 1) {
+        patientProfileId.value = members.first.id;
+        await _authService.saveActivePatientId(members.first.id);
+      }
     } catch (e) {
       print('⚠️ [AuthController] Could not sync patientProfileId: $e');
+    }
+  }
+
+  Future<void> _afterPatientAuthSetup({bool showSuccessSnackbar = false}) async {
+    try {
+      final fcmService = Get.find<FcmService>();
+      await fcmService.reRegisterToken();
+    } catch (e) {
+      print('⚠️ [AuthController] Error re-registering FCM token: $e');
+    }
+
+    try {
+      final chatController = Get.find<ChatController>();
+      chatController.connectOnLogin();
+    } catch (e) {
+      print('⚠️ [AuthController] Error connecting Socket.IO: $e');
+    }
+
+    if (showSuccessSnackbar) {
+      Get.snackbar('نجح', 'تم تسجيل الدخول بنجاح');
+    }
+  }
+
+  Future<void> resolveFamilyAndNavigate({
+    bool showSuccessSnackbar = false,
+  }) async {
+    final patientService = PatientService();
+    final members = await patientService.getFamilyProfiles();
+
+    if (members.isEmpty) {
+      Get.offAllNamed(AppRoutes.patientWelcome);
+      return;
+    }
+
+    if (members.length == 1) {
+      await selectFamilyMember(
+        members.first.id,
+        showSuccessSnackbar: showSuccessSnackbar,
+      );
+      return;
+    }
+
+    final stored = await _authService.getActivePatientId();
+    if (stored != null && members.any((m) => m.id == stored)) {
+      await selectFamilyMember(stored, showSuccessSnackbar: showSuccessSnackbar);
+      return;
+    }
+
+    Get.offAllNamed(
+      AppRoutes.familyMemberSelection,
+      arguments: {'members': members},
+    );
+  }
+
+  Future<void> selectFamilyMember(
+    String patientId, {
+    bool showSuccessSnackbar = false,
+  }) async {
+    patientProfileId.value = patientId;
+    await _authService.saveActivePatientId(patientId);
+
+    final patientService = PatientService();
+    final profile = await patientService.getMyProfile(patientId: patientId);
+    final hasDoctor = profile.doctorIds.isNotEmpty;
+
+    await _afterPatientAuthSetup(showSuccessSnackbar: showSuccessSnackbar);
+
+    if (hasDoctor) {
+      Get.offAllNamed(AppRoutes.patientHome);
+    } else {
+      Get.offAllNamed(AppRoutes.patientWelcome);
+    }
+  }
+
+  Future<void> switchFamilyMember() async {
+    try {
+      isLoading.value = true;
+      final patientService = PatientService();
+      final members = await patientService.getFamilyProfiles();
+      if (members.length <= 1) {
+        Get.snackbar('تنبيه', 'لا يوجد أكثر من فرد في العائلة');
+        return;
+      }
+      Get.toNamed(
+        AppRoutes.familyMemberSelection,
+        arguments: {'members': members},
+      );
+    } catch (e) {
+      Get.snackbar('خطأ', 'تعذر تحميل أفراد العائلة');
+    } finally {
+      isLoading.value = false;
     }
   }
 
@@ -112,7 +212,7 @@ class AuthController extends GetxController {
           }
 
           if (user.userType == 'patient') {
-            Get.offAllNamed(AppRoutes.patientHome);
+            await resolveFamilyAndNavigate();
           } else if (user.userType == 'doctor') {
             Get.offAllNamed(AppRoutes.doctorHome);
           } else if (user.userType == 'receptionist') {
@@ -217,56 +317,10 @@ class AuthController extends GetxController {
           currentUser.value = user;
           print('💾 [AuthController] Current user updated in controller');
 
-          // التحقق من وجود طبيب مرتبط
-          print('🔍 [AuthController] Checking doctor assignment...');
-          final patientService = PatientService();
           try {
-            final patientProfile = await patientService.getMyProfile();
-            print('📋 [AuthController] Patient profile loaded:');
-            print('   - Patient ID: ${patientProfile.id}');
-            print('   - Doctor IDs: ${patientProfile.doctorIds}');
-          patientProfileId.value = patientProfile.id;
-
-            final hasDoctor = patientProfile.doctorIds.isNotEmpty;
-
-            print('🔍 [AuthController] Has doctor: $hasDoctor');
-
-            // Register FCM token after successful login
-            try {
-              final fcmService = Get.find<FcmService>();
-              await fcmService.reRegisterToken();
-            } catch (e) {
-              print('⚠️ [AuthController] Error re-registering FCM token: $e');
-            }
-
-            // Connect to Socket.IO after successful login
-            try {
-              final chatController = Get.find<ChatController>();
-              chatController.connectOnLogin();
-            } catch (e) {
-              print(
-                '⚠️ [AuthController] Error connecting Socket.IO on login: $e',
-              );
-            }
-
-            if (hasDoctor) {
-              print(
-                '✅ [AuthController] Patient has doctor assigned (IDs: ${patientProfile.doctorIds}), navigating to home',
-              );
-              Get.offAllNamed(AppRoutes.patientHome);
-              Get.snackbar('نجح', 'تم تسجيل الدخول بنجاح');
-            } else {
-              print(
-                '⚠️ [AuthController] Patient has no doctor assigned, navigating to welcome screen',
-              );
-              Get.offAllNamed(AppRoutes.patientWelcome);
-            }
+            await resolveFamilyAndNavigate(showSuccessSnackbar: true);
           } catch (e) {
-            print('❌ [AuthController] Error checking doctor assignment: $e');
-            print(
-              '❌ [AuthController] Error stack trace: ${StackTrace.current}',
-            );
-            // في حالة الخطأ، نذهب إلى واجهة الترحيب
+            print('❌ [AuthController] Error resolving family profile: $e');
             Get.offAllNamed(AppRoutes.patientWelcome);
           }
         } else {

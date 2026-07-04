@@ -21,8 +21,19 @@ class Patient(Document):
     """ملف المريض.
     - روابط للأطباء عبر قائمة المعرفات.
     - لكل مريض رمز QR ثابت وصورته.
+    - يمكن لعدة ملفات (أفراد العائلة) مشاركة نفس user_id (رقم الهاتف).
     """
     user_id: Indexed(OID)
+
+    # بيانات شخصية لكل فرد (منفصلة عن User الذي يمثل حساب الدخول)
+    name: str | None = None
+    gender: str | None = None
+    age: int | None = None
+    city: str | None = None
+    imageUrl: str | None = None
+    is_primary: bool = True
+    relationship: str | None = None  # self | child | spouse | other
+
     doctor_ids: list[OID] = []  # قائمة معرفات الأطباء المرتبطين
     treatment_type: str | None = None
     doctor_profiles: dict[str, DoctorPatientProfile] = Field(default_factory=dict)

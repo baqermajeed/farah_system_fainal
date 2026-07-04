@@ -7,6 +7,7 @@ from beanie import PydanticObjectId as OID
 
 from app.models import Appointment, Patient, User
 from app.services.notification_service import notify_user
+from app.utils.patient_out import resolve_patient_name
 from app.utils.logger import get_logger
 
 logger = get_logger("appointment_reminder")
@@ -109,6 +110,14 @@ async def _should_send_day_reminder(appointment: Appointment, today_9am: datetim
     return target_date == today_date
 
 
+async def _reminder_body(patient: Patient, suffix: str) -> str:
+    user = await User.get(patient.user_id)
+    name = resolve_patient_name(patient, user)
+    if name:
+        return f"موعد {name} {suffix}"
+    return f"لديك موعد {suffix}"
+
+
 async def _send_3d_reminder(appointment: Appointment):
     """إرسال إشعار قبل 3 أيام."""
     try:
@@ -116,11 +125,11 @@ async def _send_3d_reminder(appointment: Appointment):
         if not patient:
             logger.warning(f"⚠️ Patient not found for appointment {appointment.id}")
             return
-        
+
         await notify_user(
             user_id=patient.user_id,
             title="تذكير موعد",
-            body="لديك موعد بعد 3 أيام"
+            body=await _reminder_body(patient, "بعد 3 أيام"),
         )
         
         appointment.remind_3d_sent = True
@@ -142,7 +151,7 @@ async def _send_1d_reminder(appointment: Appointment):
         await notify_user(
             user_id=patient.user_id,
             title="تذكير موعد",
-            body="لديك موعد غداً"
+            body=await _reminder_body(patient, "غداً"),
         )
         
         appointment.remind_1d_sent = True
@@ -161,13 +170,12 @@ async def _send_day_reminder(appointment: Appointment):
             logger.warning(f"⚠️ Patient not found for appointment {appointment.id}")
             return
         
-        # تنسيق وقت الموعد
         appointment_time = appointment.scheduled_at.strftime("%I:%M %p")
-        
+
         await notify_user(
             user_id=patient.user_id,
             title="تذكير موعد",
-            body=f"لديك موعد اليوم في الساعة {appointment_time}"
+            body=await _reminder_body(patient, f"اليوم في الساعة {appointment_time}"),
         )
         
         appointment.remind_day_sent = True

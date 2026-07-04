@@ -68,6 +68,21 @@ async def init_db() -> None:
             ReceptionQueueDay,
         ],
     )
+    try:
+        from app.services.admin_service import migrate_legacy_patient_profiles
+
+        migrated = await migrate_legacy_patient_profiles()
+        if migrated:
+            from app.utils.logger import get_logger
+
+            get_logger("database").info(
+                "Migrated legacy patient profile fields onto %s patient documents",
+                migrated,
+            )
+    except Exception as exc:
+        from app.utils.logger import get_logger
+
+        get_logger("database").warning("Patient profile migration skipped: %s", exc)
 
 
 async def ping_db() -> bool:

@@ -390,64 +390,70 @@ async def update_patient_by_doctor(*, doctor_id: str, patient_id: str, data: Pat
         raise HTTPException(status_code=404, detail="Patient not found")
     if OID(doctor_id) not in patient.doctor_ids:
         raise HTTPException(status_code=403, detail="Not your patient")
-    u = await User.get(patient.user_id)
     if data.name is not None:
-        u.name = data.name
+        patient.name = data.name
     if data.gender is not None:
-        u.gender = data.gender
+        patient.gender = data.gender
     if data.age is not None:
-        u.age = data.age
+        patient.age = data.age
     if data.city is not None:
-        u.city = data.city
+        patient.city = data.city
     if data.treatment_type is not None:
         patient.treatment_type = data.treatment_type
     if data.consultation_type is not None:
         patient.consultation_type = data.consultation_type
     if data.payment_methods is not None:
         patient.payment_methods = data.payment_methods
-    await u.save()
     await patient.save()
     return patient
 
 async def update_patient_by_admin(*, patient_id: str, data: PatientUpdate) -> Patient:
-    """المدير يعدّل بيانات أي مريض (بما فيها الهاتف مع التحقق من التفرّد)."""
+    """المدير/الاستقبال يعدّل بيانات أي مريض (الهاتف يخص حساب العائلة)."""
     patient = await Patient.get(OID(patient_id))
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
     u = await User.get(patient.user_id)
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
     if data.phone is not None and data.phone != u.phone:
         if await User.find_one(User.phone == data.phone):
             raise HTTPException(status_code=400, detail="Phone already exists")
         u.phone = data.phone
+        await u.save()
     if data.name is not None:
-        u.name = data.name
+        patient.name = data.name
     if data.gender is not None:
-        u.gender = data.gender
+        patient.gender = data.gender
     if data.age is not None:
-        u.age = data.age
+        patient.age = data.age
     if data.city is not None:
-        u.city = data.city
+        patient.city = data.city
     if data.treatment_type is not None:
         patient.treatment_type = data.treatment_type
     if data.consultation_type is not None:
         patient.consultation_type = data.consultation_type
     if data.payment_methods is not None:
         patient.payment_methods = data.payment_methods
-    await u.save()
     await patient.save()
     return patient
 
 async def delete_patient(*, actor_role: Role, patient_id: str, actor_doctor_id: str | None = None) -> None:
-    """حذف مريض: المدير دائمًا، والطبيب فقط إن كان من مرضاه."""
+    """حذف ملف مريض. يُحذف حساب الدخول فقط إذا كان آخر فرد في العائلة."""
     patient = await Patient.get(OID(patient_id))
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
     if actor_role == Role.DOCTOR:
         if actor_doctor_id and OID(actor_doctor_id) not in patient.doctor_ids:
             raise HTTPException(status_code=403, detail="Not your patient")
-    user = await User.get(patient.user_id)
-    if user:
-        await user.delete()
+
+    user_id = patient.user_id
+    await patient.delete()
+
+    remaining = await Patient.find(Patient.user_id == user_id).count()
+    if remaining == 0:
+        user = await User.get(user_id)
+        if user:
+            await user.delete()
     return None
 
 async def assign_patient_doctors(

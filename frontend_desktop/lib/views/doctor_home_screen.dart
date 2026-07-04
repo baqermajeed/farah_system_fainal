@@ -4621,7 +4621,10 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
 
   Widget _buildGalleryTab(PatientModel patient) {
     return Obx(() {
-      final galleryImages = _galleryController.galleryImages.toList();
+      // فلترة حسب المريض الحالي — حماية من عرض صور مريض سابق لحظة التبديل
+      final galleryImages = _galleryController.galleryImages
+          .where((img) => img.patientId == patient.id)
+          .toList();
       final isLoading = _galleryController.isLoading.value;
 
       // سبينر كامل فقط عند عدم وجود أي صور — لا نخفي المحتوى أثناء التحديث
@@ -9173,8 +9176,8 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                             ),
                             SizedBox(height: 24.h),
                             CustomTextField(
-                              labelText: AppStrings.phoneNumber,
-                              hintText: '0000 000 0000',
+                              labelText: 'رقم الهاتف (ولي الأمر / حساب العائلة)',
+                              hintText: '07xxxxxxxxx — يمكن إضافة أكثر من فرد على نفس الرقم',
                               controller: _phoneController,
                               keyboardType: TextInputType.phone,
                             ),

@@ -63,13 +63,12 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                     ),
                     GestureDetector(
                       onTap: () {
-                        final user = authController.currentUser.value;
                         final profile = patientController.myProfile.value;
-                        final patientId =
-                            user?.id ?? profile?.id ?? 'demo_patient_1';
+                        final patientId = profile?.id ??
+                            authController.patientProfileId.value ??
+                            'demo_patient_1';
                         final qrCodeData = profile?.qrCodeData ?? patientId;
-                        final patientName =
-                            user?.name ?? profile?.name ?? 'مريض';
+                        final patientName = profile?.name ?? 'مريض';
                         Get.toNamed(
                           AppRoutes.qrCode,
                           arguments: {
@@ -98,8 +97,8 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
               SizedBox(height: 24.h),
               // Profile Image
               Obx(() {
-                final user = authController.currentUser.value;
-                final imageUrl = user?.imageUrl;
+                final profile = patientController.myProfile.value;
+                final imageUrl = profile?.imageUrl;
                 final validImageUrl = ImageUtils.convertToValidUrl(imageUrl);
 
                 if (validImageUrl != null &&
@@ -174,7 +173,7 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                           borderRadius: BorderRadius.circular(16.r),
                         ),
                         child: Text(
-                          user?.name ?? profile?.name ?? 'غير محدد',
+                          profile?.name ?? 'غير محدد',
                           textAlign: TextAlign.right,
                           style: TextStyle(
                             fontSize: 14.sp,
@@ -332,6 +331,18 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
                         width: double.infinity,
                         icon: Icon(
                           Icons.edit,
+                          color: AppColors.white,
+                          size: 20.sp,
+                        ),
+                      ),
+                      SizedBox(height: 16.h),
+                      CustomButton(
+                        text: 'تبديل فرد العائلة',
+                        onPressed: () => authController.switchFamilyMember(),
+                        backgroundColor: AppColors.secondary,
+                        width: double.infinity,
+                        icon: Icon(
+                          Icons.switch_account,
                           color: AppColors.white,
                           size: 20.sp,
                         ),

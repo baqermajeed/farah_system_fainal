@@ -29,6 +29,7 @@ from app.utils.r2_clinic import upload_clinic_image
 from app.models import Doctor, User, Patient
 from app.utils.logger import get_logger
 from app.utils.patient_profile import build_doctor_profile_map, get_doctor_profile
+from app.utils.patient_out import build_patient_out, resolve_patient_name, build_patient_out_from_agg
 from beanie.operators import In
 from beanie import PydanticObjectId as OID
 
@@ -53,10 +54,10 @@ router = APIRouter(prefix="/doctor", tags=["doctor"], dependencies=[Depends(requ
 
 async def _get_patient_user_name(patient_id: str) -> str | None:
     patient = await Patient.get(OID(patient_id))
-    if not patient or not patient.user_id:
+    if not patient:
         return None
-    user = await User.get(patient.user_id)
-    return user.name if user else None
+    user = await User.get(patient.user_id) if patient.user_id else None
+    return resolve_patient_name(patient, user)
 
 
 async def _get_current_doctor_id(current) -> str:
@@ -129,93 +130,11 @@ def _build_appointment_out(
 
 
 def _build_doctor_patient_out(patient: Patient, user: User, doctor_id: str) -> PatientOut:
-    doctor_profiles = build_doctor_profile_map(patient, doctor_id=doctor_id)
-    doctor_profile = get_doctor_profile(patient, doctor_id=doctor_id, profiles=doctor_profiles)
-    
-    # نوع العلاج للطبيب الحالي فقط:
-    # إذا لم يُحدد الطبيب نوع العلاج لمريضه بعد، نظهر None بدلاً من أخذ نوع علاج طبيب آخر.
-    treatment_type = doctor_profile.treatment_type if doctor_profile else None
-    payment_methods = doctor_profile.payment_methods if doctor_profile else None
-    
-    return PatientOut(
-        id=str(patient.id),
-        user_id=str(patient.user_id),
-        name=user.name,
-        phone=user.phone,
-        gender=user.gender,
-        age=user.age,
-        city=user.city,
-        treatment_type=treatment_type,
-        visit_type=getattr(patient, "visit_type", None),
-        consultation_type=getattr(patient, "consultation_type", None),
-        payment_methods=payment_methods,
-        activity_status=getattr(patient, "activity_status", "pending"),
-        doctor_ids=[str(did) for did in patient.doctor_ids],
-        doctor_profiles=doctor_profiles,
-        qr_code_data=patient.qr_code_data,
-        qr_image_path=patient.qr_image_path,
-        imageUrl=user.imageUrl,
-        created_at=patient.created_at.isoformat() if getattr(patient, "created_at", None) else None,
-    )
+    return build_patient_out(patient, user, doctor_id=doctor_id)
 
 
 def _build_doctor_patient_out_from_agg(patient_doc: dict, user_doc: dict, doctor_id: str) -> PatientOut:
-    """Build PatientOut directly from aggregation result (no Beanie re-fetch)."""
-
-    from app.schemas import DoctorPatientProfileOut
-
-    doctor_key = str(doctor_id)
-    doctor_profiles_raw = patient_doc.get("doctor_profiles", {}) or {}
-
-    doctor_profiles_out: Dict[str, DoctorPatientProfileOut] = {}
-
-    profile = doctor_profiles_raw.get(doctor_key)
-    if profile:
-        def parse_dt(v):
-            if isinstance(v, str):
-                try:
-                    return datetime.fromisoformat(v.replace("Z", "+00:00"))
-                except Exception:
-                    return None
-            return v
-
-        doctor_profiles_out[doctor_key] = DoctorPatientProfileOut(
-            treatment_type=profile.get("treatment_type"),
-            assigned_at=parse_dt(profile.get("assigned_at")),
-            last_action_at=parse_dt(profile.get("last_action_at")),
-            payment_methods=profile.get("payment_methods"),
-        )
-
-    treatment_type = None
-    payment_methods = None
-    if profile:
-        treatment_type = profile.get("treatment_type")
-        payment_methods = profile.get("payment_methods")
-
-    return PatientOut(
-        id=str(patient_doc["_id"]),
-        user_id=str(patient_doc.get("user_id")),
-        name=user_doc.get("name"),
-        phone=user_doc.get("phone", ""),
-        gender=user_doc.get("gender"),
-        age=user_doc.get("age"),
-        city=user_doc.get("city"),
-        treatment_type=treatment_type,
-        visit_type=patient_doc.get("visit_type"),
-        consultation_type=patient_doc.get("consultation_type"),
-        payment_methods=payment_methods,
-        activity_status=patient_doc.get("activity_status", "pending"),
-        doctor_ids=[str(d) for d in patient_doc.get("doctor_ids", [])],
-        doctor_profiles=doctor_profiles_out,
-        qr_code_data=patient_doc.get("qr_code_data", ""),
-        qr_image_path=patient_doc.get("qr_image_path"),
-        imageUrl=user_doc.get("imageUrl"),
-        created_at=(
-            patient_doc.get("created_at").isoformat()
-            if isinstance(patient_doc.get("created_at"), datetime)
-            else str(patient_doc.get("created_at")) if patient_doc.get("created_at") else None
-        ),
-    )
+    return build_patient_out_from_agg(patient_doc, user_doc, doctor_id=doctor_id)
 
 
 @router.post("/patients", response_model=PatientOut)
@@ -232,31 +151,8 @@ async def add_patient(
             detail="رقم الهاتف يجب أن يكون 11 رقم ويبدأ بـ 07",
         )
     
-    # التحقق من وجود رقم الهاتف مسبقاً
-    existing_user = await User.find_one(User.phone == payload.phone)
-    if existing_user:
-        # إذا كان المستخدم موجوداً، نحاول ربطه بالطبيب
-        patient = await Patient.find_one(Patient.user_id == existing_user.id)
-        if patient:
-            # ربط المريض بالطبيب
-            existing_doctor_ids = [str(did) for did in patient.doctor_ids]
-            if doctor_id not in existing_doctor_ids:
-                existing_doctor_ids.append(doctor_id)
-            await assign_patient_doctors(
-                patient_id=str(patient.id),
-                doctor_ids=existing_doctor_ids,
-                assigned_by_user_id=str(current.id),
-            )
-            # جلب المريض المحدث
-            patient = await Patient.get(patient.id)
-            u = existing_user
-            return _build_doctor_patient_out(patient, u, doctor_id)
-        else:
-            raise HTTPException(status_code=400, detail="User exists but is not a patient")
-    
-    # إنشاء مريض جديد
     patient = await create_patient(
-        phone=payload.phone,
+        phone=payload.phone.strip(),
         name=payload.name,
         gender=payload.gender,
         age=payload.age,
@@ -485,20 +381,17 @@ async def upload_patient_profile_image(
         raise HTTPException(status_code=404, detail="User not found")
 
     file_bytes = await image.read()
-    patient_name_hint = u.name
+    patient_name_hint = resolve_patient_name(p, u)
     image_path = await upload_clinic_image(
-        patient_id=str(u.id),  # نخزنها تحت user_id مثل /auth/me/upload-image
+        patient_id=str(p.id),
         folder="profile",
         file_bytes=file_bytes,
         content_type=image.content_type,
         name_hint=patient_name_hint,
     )
 
-    # upload_clinic_image now returns a direct /media/... URL
-
-    u.imageUrl = image_path
-    u.updated_at = datetime.now(timezone.utc)
-    await u.save()
+    p.imageUrl = image_path
+    await p.save()
 
     return _build_doctor_patient_out(p, u, doctor_id)
 
@@ -544,6 +437,7 @@ async def my_patients(
             {
                 "$match": {
                     "$or": [
+                        {"name": {"$regex": search_lower, "$options": "i"}},
                         {"user_data.name": {"$regex": search_lower, "$options": "i"}},
                         {"user_data.phone": {"$regex": search_lower, "$options": "i"}},
                     ]
@@ -1071,7 +965,7 @@ async def list_my_appointments(
                     if patient:
                         user = await User.get(patient.user_id)
                         if user:
-                            patient_name = user.name
+                            patient_name = resolve_patient_name(patient, user)
                             patient_phone = user.phone  # ⭐ إضافة رقم الهاتف
                 except Exception as e:
                     logger.warning(f"Could not fetch patient name for appointment {a.id}: {e}")
@@ -1187,7 +1081,7 @@ async def list_patient_appointments(
                 if patient:
                     user = await User.get(patient.user_id)
                     if user:
-                        patient_name = user.name
+                        patient_name = resolve_patient_name(patient, user)
                         patient_phone = user.phone  # ⭐ إضافة رقم الهاتف
                 doctor = await Doctor.get(ap.doctor_id)
                 if doctor:
@@ -1289,7 +1183,7 @@ async def update_appointment_status(
         if patient:
             user = await User.get(patient.user_id)
             if user:
-                patient_name = user.name
+                patient_name = resolve_patient_name(patient, user)
         doctor = await Doctor.get(appointment.doctor_id)
         if doctor:
             user = await User.get(doctor.user_id)
@@ -1337,7 +1231,7 @@ async def update_appointment_datetime(
         if patient:
             user = await User.get(patient.user_id)
             if user:
-                patient_name = user.name
+                patient_name = resolve_patient_name(patient, user)
         doctor = await Doctor.get(appointment.doctor_id)
         if doctor:
             user = await User.get(doctor.user_id)

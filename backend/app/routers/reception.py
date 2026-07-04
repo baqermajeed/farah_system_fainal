@@ -30,6 +30,7 @@ from app.services.admin_service import create_patient
 from app.services.doctor_working_hours_service import DoctorWorkingHoursService
 from app.utils.r2_clinic import upload_clinic_image
 from app.utils.patient_profile import build_doctor_profile_map
+from app.utils.patient_out import build_patient_out
 
 PHONE_PATTERN = re.compile(r"^07\d{9}$")
 IMAGE_TYPES = (
@@ -89,6 +90,7 @@ async def list_patients(
         pipeline.insert(-1, {
             "$match": {
                 "$or": [
+                    {"name": {"$regex": search_lower, "$options": "i"}},
                     {"user_data.name": {"$regex": search_lower, "$options": "i"}},
                     {"user_data.phone": {"$regex": search_lower, "$options": "i"}},
                 ]
@@ -98,7 +100,7 @@ async def list_patients(
     # إضافة الترتيب والـ pagination
     pipeline.extend([
         {
-            "$sort": {"user_data.created_at": -1}  # الأحدث أولاً
+            "$sort": {"created_at": -1}
         },
         {
             "$skip": skip
@@ -126,35 +128,8 @@ async def list_patients(
             continue
             
         user_data = item.get("user_data", {})
-        # محاولة الحصول على treatment_type من doctor_profiles إذا كان p.treatment_type None
-        treatment_type = p.treatment_type
-        if not treatment_type and p.doctor_profiles:
-            # نأخذ treatment_type من أول doctor_profile موجود
-            for profile in p.doctor_profiles.values():
-                if profile and profile.treatment_type:
-                    treatment_type = profile.treatment_type
-                    break
-        
-        out.append(PatientOut(
-            id=str(p.id),
-            user_id=str(p.user_id),
-            name=user_data.get("name") if user_data else None,
-            phone=user_data.get("phone") if user_data else "",
-            gender=user_data.get("gender") if user_data else None,
-            age=user_data.get("age") if user_data else None,
-            city=user_data.get("city") if user_data else None,
-            treatment_type=treatment_type,
-            visit_type=getattr(p, "visit_type", None),
-            consultation_type=getattr(p, "consultation_type", None),
-            payment_methods=getattr(p, "payment_methods", None),
-            activity_status=getattr(p, "activity_status", "pending"),
-            doctor_ids=[str(did) for did in p.doctor_ids],
-            doctor_profiles=build_doctor_profile_map(p),
-            qr_code_data=p.qr_code_data,
-            qr_image_path=p.qr_image_path,
-            imageUrl=user_data.get("imageUrl") if user_data else None,
-            created_at=p.created_at.isoformat() if getattr(p, "created_at", None) else None,
-        ))
+        u = await User.get(p.user_id) if p.user_id else None
+        out.append(build_patient_out(p, u))
     return out
 
 
@@ -269,28 +244,8 @@ async def create_patient_reception(payload: PatientCreate):
         visit_type=payload.visit_type,
         consultation_type=payload.consultation_type,
     )
-    from app.models import User
     u = await User.get(p.user_id)
-    return PatientOut(
-        id=str(p.id),
-        user_id=str(p.user_id),
-        name=u.name if u else None,
-        phone=u.phone if u else "",
-        gender=u.gender if u else None,
-        age=u.age if u else None,
-        city=u.city if u else None,
-        treatment_type=p.treatment_type,
-        visit_type=getattr(p, "visit_type", None),
-        consultation_type=getattr(p, "consultation_type", None),
-        payment_methods=getattr(p, "payment_methods", None),
-        activity_status=getattr(p, "activity_status", "pending"),
-        doctor_ids=[str(did) for did in p.doctor_ids],
-        doctor_profiles=build_doctor_profile_map(p),
-        qr_code_data=p.qr_code_data,
-        qr_image_path=p.qr_image_path,
-        imageUrl=u.imageUrl if u else None,
-        created_at=p.created_at.isoformat() if getattr(p, "created_at", None) else None,
-    )
+    return build_patient_out(p, u)
 
 
 @router.post("/patients/{patient_id}/upload-image", response_model=PatientOut)
@@ -316,37 +271,17 @@ async def upload_patient_profile_image(
 
     file_bytes = await image.read()
     image_path = await upload_clinic_image(
-        patient_id=str(u.id),
+        patient_id=str(p.id),
         folder="profile",
         file_bytes=file_bytes,
         content_type=image.content_type,
-        name_hint=u.name,
+        name_hint=p.name or u.name,
     )
-    # upload_clinic_image now returns a direct /media/... URL
 
-    u.imageUrl = image_path
-    u.updated_at = datetime.now(timezone.utc)
-    await u.save()
+    p.imageUrl = image_path
+    await p.save()
 
-    return PatientOut(
-        id=str(p.id),
-        user_id=str(p.user_id),
-        name=u.name,
-        phone=u.phone,
-        gender=u.gender,
-        age=u.age,
-        city=u.city,
-        treatment_type=p.treatment_type,
-        visit_type=getattr(p, "visit_type", None),
-        consultation_type=getattr(p, "consultation_type", None),
-        activity_status=getattr(p, "activity_status", "pending"),
-        doctor_ids=[str(did) for did in p.doctor_ids],
-        doctor_profiles=build_doctor_profile_map(p),
-        qr_code_data=p.qr_code_data,
-        qr_image_path=p.qr_image_path,
-        imageUrl=u.imageUrl,
-        created_at=p.created_at.isoformat() if getattr(p, "created_at", None) else None,
-    )
+    return build_patient_out(p, u)
 
 
 @router.post("/patients/{patient_id}/activate", response_model=PatientOut)
@@ -354,26 +289,7 @@ async def activate_patient(patient_id: str):
     """تنشيط مريض (pending -> active) من قبل موظف الاستقبال/المدير."""
     p = await patient_service.activate_patient_by_reception(patient_id=patient_id)
     u = await User.get(p.user_id)
-    return PatientOut(
-        id=str(p.id),
-        user_id=str(p.user_id),
-        name=u.name if u else None,
-        phone=u.phone if u else "",
-        gender=u.gender if u else None,
-        age=u.age if u else None,
-        city=u.city if u else None,
-        treatment_type=p.treatment_type,
-        visit_type=getattr(p, "visit_type", None),
-        consultation_type=getattr(p, "consultation_type", None),
-        payment_methods=getattr(p, "payment_methods", None),
-        activity_status=getattr(p, "activity_status", "pending"),
-        doctor_ids=[str(did) for did in p.doctor_ids],
-        doctor_profiles=build_doctor_profile_map(p),
-        qr_code_data=p.qr_code_data,
-        qr_image_path=p.qr_image_path,
-        imageUrl=u.imageUrl if u else None,
-        created_at=p.created_at.isoformat() if getattr(p, "created_at", None) else None,
-    )
+    return build_patient_out(p, u)
 
 
 @router.patch("/patients/{patient_id}/activity-status", response_model=PatientOut)
@@ -387,26 +303,7 @@ async def update_patient_activity_status(
         status=status,
     )
     u = await User.get(p.user_id)
-    return PatientOut(
-        id=str(p.id),
-        user_id=str(p.user_id),
-        name=u.name if u else None,
-        phone=u.phone if u else "",
-        gender=u.gender if u else None,
-        age=u.age if u else None,
-        city=u.city if u else None,
-        treatment_type=p.treatment_type,
-        visit_type=getattr(p, "visit_type", None),
-        consultation_type=getattr(p, "consultation_type", None),
-        payment_methods=getattr(p, "payment_methods", None),
-        activity_status=getattr(p, "activity_status", "pending"),
-        doctor_ids=[str(did) for did in p.doctor_ids],
-        doctor_profiles=build_doctor_profile_map(p),
-        qr_code_data=p.qr_code_data,
-        qr_image_path=p.qr_image_path,
-        imageUrl=u.imageUrl if u else None,
-        created_at=p.created_at.isoformat() if getattr(p, "created_at", None) else None,
-    )
+    return build_patient_out(p, u)
 
 
 @router.patch("/patients/{patient_id}", response_model=PatientOut)
@@ -428,26 +325,7 @@ async def update_patient_profile_by_reception(
     u = await User.get(p.user_id)
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
-    return PatientOut(
-        id=str(p.id),
-        user_id=str(p.user_id),
-        name=u.name,
-        phone=u.phone,
-        gender=u.gender,
-        age=u.age,
-        city=u.city,
-        treatment_type=p.treatment_type,
-        visit_type=getattr(p, "visit_type", None),
-        consultation_type=getattr(p, "consultation_type", None),
-        payment_methods=getattr(p, "payment_methods", None),
-        activity_status=getattr(p, "activity_status", "pending"),
-        doctor_ids=[str(did) for did in p.doctor_ids],
-        doctor_profiles=build_doctor_profile_map(p),
-        qr_code_data=p.qr_code_data,
-        qr_image_path=p.qr_image_path,
-        imageUrl=u.imageUrl,
-        created_at=p.created_at.isoformat() if getattr(p, "created_at", None) else None,
-    )
+    return build_patient_out(p, u)
 
 
 @router.post("/patients/{patient_id}/gallery", response_model=GalleryOut)

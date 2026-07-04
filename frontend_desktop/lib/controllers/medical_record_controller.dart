@@ -82,10 +82,11 @@ class MedicalRecordController extends GetxController {
   Future<void> loadPatientRecords(String patientId) async {
     _activePatientId = patientId;
     try {
+      // استبدال فوري عند تبديل المريض حتى لا تبقى سجلات السابق ظاهرة
       final cachedRecords = _cacheService.getMedicalRecords(patientId);
-      if (cachedRecords.isNotEmpty) {
-        records.value = _sortRecords(cachedRecords);
-      }
+      records.value = cachedRecords.isNotEmpty
+          ? _sortRecords(cachedRecords)
+          : <MedicalRecordModel>[];
 
       // سبينر فقط عند عدم وجود بيانات معروضة
       if (records.isEmpty) {
@@ -96,6 +97,8 @@ class MedicalRecordController extends GetxController {
         final recordsList = await _doctorService.getPatientNotes(
           patientId: patientId,
         );
+        if (_activePatientId != patientId) return;
+
         records.value = _mergeWithLocalPending(patientId, recordsList);
 
         try {
@@ -104,16 +107,17 @@ class MedicalRecordController extends GetxController {
           print('❌ [MedicalRecordController] Error updating cache: $e');
         }
       } on ApiException catch (e) {
-        if (cachedRecords.isEmpty) {
+        if (_activePatientId != patientId) return;
+        if (records.isEmpty) {
           if (NetworkUtils.isNetworkError(e)) {
             NetworkUtils.showNetworkErrorDialog();
           } else {
             Get.snackbar('خطأ', 'خطا');
           }
         }
-        // مع وجود كاش محلي نكمل العمل بدون حظر
       } catch (e) {
-        if (cachedRecords.isEmpty) {
+        if (_activePatientId != patientId) return;
+        if (records.isEmpty) {
           if (NetworkUtils.isNetworkError(e)) {
             NetworkUtils.showNetworkErrorDialog();
           } else {
@@ -122,7 +126,9 @@ class MedicalRecordController extends GetxController {
         }
       }
     } finally {
-      isLoading.value = false;
+      if (_activePatientId == patientId) {
+        isLoading.value = false;
+      }
     }
   }
 

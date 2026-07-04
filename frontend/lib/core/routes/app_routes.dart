@@ -31,6 +31,7 @@ class AppRoutes {
   static const String workingHours = '/working-hours';
   static const String patientWelcome = '/patient-welcome';
   static const String patientRegistration = '/patient-registration';
+  static const String familyMemberSelection = '/family-member-selection';
   static const String selectDoctor = '/select-doctor';
   static const String editImplantStageDate = '/edit-implant-stage-date';
   static const String patientBrowse = '/patient-browse';
