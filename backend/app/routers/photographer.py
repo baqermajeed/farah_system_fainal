@@ -8,7 +8,7 @@ from app.constants import Role
 from app.services.patient_service import create_gallery_image
 from app.utils.r2_clinic import upload_clinic_image
 from app.models import Patient, User
-from app.utils.patient_profile import build_doctor_profile_map
+from app.utils.patient_out import build_patient_out
 
 IMAGE_TYPES = ("image/jpeg", "image/png", "image/webp")
 MAX_IMAGE_MB = 10
@@ -29,25 +29,7 @@ async def list_patients(
     out: list[PatientOut] = []
     for p in patients:
         u = user_map.get(p.user_id)
-        out.append(PatientOut(
-            id=str(p.id),
-            user_id=str(p.user_id),
-            name=u.name if u else None,
-            phone=u.phone if u else "",
-            gender=u.gender if u else None,
-            age=u.age if u else None,
-            city=u.city if u else None,
-            treatment_type=p.treatment_type,
-            visit_type=getattr(p, "visit_type", None),
-            consultation_type=getattr(p, "consultation_type", None),
-            payment_methods=getattr(p, "payment_methods", None),
-            doctor_ids=[str(did) for did in p.doctor_ids],
-            doctor_profiles=build_doctor_profile_map(p),
-            qr_code_data=p.qr_code_data,
-            qr_image_path=p.qr_image_path,
-            imageUrl=u.imageUrl if u else None,
-            created_at=p.created_at.isoformat() if getattr(p, "created_at", None) else None,
-        ))
+        out.append(build_patient_out(p, u))
     return out
 
 @router.post("/patients/{patient_id}/gallery", response_model=GalleryOut)

@@ -2069,29 +2069,8 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
       final isSelected =
           _patientController.selectedPatient.value?.id == patient.id;
       return GestureDetector(
-        onTap: () async {
-          // جلب بيانات المريض المحدثة من الـ API عند فتح ملفه
-          try {
-            final result = await _patientService.getPatientByQrCodeWithDoctors(
-              patient.qrCodeData ?? '',
-            );
-            if (result != null && result['patient'] != null) {
-              final updatedPatient = result['patient'] as PatientModel;
-              // تحديث المريض في القائمة
-              final index = _patientController.patients.indexWhere(
-                (p) => p.id == updatedPatient.id,
-              );
-              if (index != -1) {
-                _patientController.patients[index] = updatedPatient;
-              }
-              _patientController.selectPatient(updatedPatient);
-            } else {
-              _patientController.selectPatient(patient);
-            }
-          } catch (e) {
-            // في حالة الخطأ، نستخدم المريض من القائمة
-            _patientController.selectPatient(patient);
-          }
+        onTap: () {
+          _patientController.selectPatient(patient);
           _showAppointments.value = false;
         },
         child: Container(

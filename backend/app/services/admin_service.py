@@ -139,10 +139,15 @@ async def create_patient(
 
 
 async def migrate_legacy_patient_profiles() -> int:
-    """Copy User profile fields onto Patient documents that lack them (one-time safe migration)."""
+    """Copy User profile fields onto primary Patient documents that lack them."""
     migrated = 0
     patients = await Patient.find({}).to_list()
     for patient in patients:
+        is_primary = getattr(patient, "is_primary", True)
+        relationship = (getattr(patient, "relationship", None) or "").lower()
+        if not is_primary and relationship not in {"", "self"}:
+            continue
+
         needs_save = False
         user = await User.get(patient.user_id)
         if not user:

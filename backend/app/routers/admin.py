@@ -12,7 +12,7 @@ from app.services.patient_service import update_patient_by_admin, delete_patient
 from app.models import Patient, Doctor, AssignmentLog, User
 from app.services import patient_service
 from app.schemas import AppointmentOut, NoteOut, GalleryOut
-from app.utils.patient_profile import build_doctor_profile_map
+from app.utils.patient_out import build_patient_out
 from datetime import datetime, timezone
 from typing import Optional
 from beanie import PydanticObjectId as OID
@@ -212,28 +212,7 @@ async def admin_doctor_patients(
     end = start + max(1, min(limit, 100))
     page = filtered[start:end]
 
-    return [
-        PatientOut(
-            id=str(p.id),
-            user_id=str(p.user_id),
-            name=u.name,
-            phone=u.phone,
-            gender=u.gender,
-            age=u.age,
-            city=u.city,
-            treatment_type=p.treatment_type,
-            visit_type=getattr(p, "visit_type", None),
-            consultation_type=getattr(p, "consultation_type", None),
-            payment_methods=getattr(p, "payment_methods", None),
-            doctor_ids=[str(did) for did in (p.doctor_ids or [])],
-            doctor_profiles=build_doctor_profile_map(p),
-            qr_code_data=p.qr_code_data,
-            qr_image_path=p.qr_image_path,
-            imageUrl=u.imageUrl,
-            created_at=p.created_at.isoformat() if getattr(p, "created_at", None) else None,
-        )
-        for (p, u) in page
-    ]
+    return [build_patient_out(p, u) for (p, u) in page]
 
 @router.post("/patients", response_model=PatientOut)
 async def create_patient_admin(payload: PatientCreate):
@@ -252,25 +231,7 @@ async def create_patient_admin(payload: PatientCreate):
     from app.models import User
 
     u = await User.get(p.user_id)
-    return PatientOut(
-        id=str(p.id),
-        user_id=str(p.user_id),
-        name=u.name if u else None,
-        phone=u.phone if u else "",
-        gender=u.gender if u else None,
-        age=u.age if u else None,
-        city=u.city if u else None,
-        treatment_type=p.treatment_type,
-        visit_type=getattr(p, "visit_type", None),
-        consultation_type=getattr(p, "consultation_type", None),
-        payment_methods=getattr(p, "payment_methods", None),
-        doctor_ids=[str(did) for did in p.doctor_ids],
-        doctor_profiles=build_doctor_profile_map(p),
-        qr_code_data=p.qr_code_data,
-        qr_image_path=p.qr_image_path,
-        imageUrl=u.imageUrl if u else None,
-        created_at=p.created_at.isoformat() if getattr(p, "created_at", None) else None,
-    )
+    return build_patient_out(p, u)
 
 # تم نقل الإحصائيات إلى /stats router
 # هذه endpoints للتوافق مع الإصدارات القديمة
@@ -301,25 +262,7 @@ async def update_patient_admin(patient_id: str, payload: PatientUpdate):
     u = await User.get(p.user_id)
     if not u:
         raise HTTPException(status_code=404, detail="User not found")
-    return PatientOut(
-        id=str(p.id),
-        user_id=str(p.user_id),
-        name=u.name,
-        phone=u.phone,
-        gender=u.gender,
-        age=u.age,
-        city=u.city,
-        treatment_type=p.treatment_type,
-        visit_type=getattr(p, "visit_type", None),
-        consultation_type=getattr(p, "consultation_type", None),
-        payment_methods=getattr(p, "payment_methods", None),
-        doctor_ids=[str(did) for did in p.doctor_ids],
-        doctor_profiles=build_doctor_profile_map(p),
-        qr_code_data=p.qr_code_data,
-        qr_image_path=p.qr_image_path,
-        imageUrl=u.imageUrl,
-        created_at=p.created_at.isoformat() if getattr(p, "created_at", None) else None,
-    )
+    return build_patient_out(p, u)
 
 @router.delete("/patients/{patient_id}", status_code=204)
 async def delete_patient_admin(patient_id: str):
