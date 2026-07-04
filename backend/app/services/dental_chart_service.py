@@ -37,6 +37,7 @@ DENTAL_STATUSES = {
     "جسر",
     "قص لثة",
     "فينير",
+    "ابتسامة",
     "تسوس",
 }
 
@@ -49,6 +50,8 @@ DENTAL_SUB_STATUSES = {
     "زركون",
     "سيراميك",
     "اي ماكس",
+    "فك علوي",
+    "فك سفلي",
 }
 
 ALLOWED_STATUSES = DENTAL_STATUSES | DENTAL_SUB_STATUSES

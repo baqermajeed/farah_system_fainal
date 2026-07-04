@@ -2374,18 +2374,20 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
     );
   }
 
-  Widget _buildPatientStatusSwitch(BuildContext context, PatientModel patient) {
+  Widget _buildPatientStatusSwitch(
+    BuildContext context,
+    PatientModel patient, {
+    bool inline = false,
+  }) {
     final options = _statusOptionsForPatient(patient);
     String selected = _effectivePatientStatus(patient);
     if (!options.contains(selected)) {
       selected = options.first;
     }
 
-    return Padding(
-      padding: EdgeInsets.only(left: 10.w, top: 6.h),
-      child: Container(
-        width: 120.w,
-        height: 34.h,
+    final statusSwitch = Container(
+        width: inline ? null : 120.w,
+        height: inline ? 32.h : 34.h,
         padding: EdgeInsets.symmetric(horizontal: 4.w),
         decoration: BoxDecoration(
           color: _patientStatusColor(selected).withOpacity(0.1),
@@ -2422,7 +2424,18 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
             },
           ),
         ),
-      ),
+      );
+
+    if (inline) {
+      return SizedBox(
+        width: 90.w,
+        child: statusSwitch,
+      );
+    }
+
+    return Padding(
+      padding: EdgeInsets.only(left: 10.w, top: 6.h),
+      child: statusSwitch,
     );
   }
 
@@ -2502,90 +2515,96 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                               ),
                             ),
                             if (isReceptionist) ...[
-                              SizedBox(height: 3.h),
-                              Padding(
-                                padding: EdgeInsets.only(left: 10.w),
-                                child: SizedBox(
-                                  width: 120.w,
-                                  height: 32.h,
-                                  child: ElevatedButton.icon(
-                                    onPressed: () {
-                                      _showEditPatientProfileDialog(
-                                        context,
-                                        patient,
-                                      );
-                                    },
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppColors.primaryLight,
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: 4.w,
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(
-                                          8.r,
+                              SizedBox(height: 6.h),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  SizedBox(
+                                    height: 32.h,
+                                    child: ElevatedButton.icon(
+                                      onPressed: () {
+                                        _showEditPatientProfileDialog(
+                                          context,
+                                          patient,
+                                        );
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppColors.primaryLight,
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: 8.w,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            8.r,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                    icon: Icon(
-                                      Icons.edit,
-                                      color: AppColors.primary,
-                                      size: 16.sp,
-                                    ),
-                                    label: FittedBox(
-                                      fit: BoxFit.scaleDown,
-                                      child: Text(
-                                        'تعديل المعلومات',
-                                        style: TextStyle(
-                                          fontSize: 11.sp,
-                                          fontWeight: FontWeight.w600,
-                                          color: AppColors.primary,
-                                        ),
+                                      icon: Icon(
+                                        Icons.edit,
+                                        color: AppColors.primary,
+                                        size: 16.sp,
                                       ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              SizedBox(height: 3.h),
-                              Padding(
-                                padding: EdgeInsets.only(left: 10.w),
-                                child: SizedBox(
-                                  width: 120.w,
-                                  height: 32.h,
-                                  child: ElevatedButton.icon(
-                                    onPressed: () {
-                                      _showAddImageDialog(context, patient.id);
-                                    },
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppColors.primary,
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: 4.w,
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(
-                                          8.r,
-                                        ),
-                                      ),
-                                    ),
-                                    icon: Icon(
-                                      Icons.add_a_photo_outlined,
-                                      color: Colors.white,
-                                      size: 16.sp,
-                                    ),
-                                    label: FittedBox(
-                                      fit: BoxFit.scaleDown,
-                                      child: Text(
-                                        'إضافة صورة',
-                                        style: TextStyle(
-                                          fontSize: 12.sp,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.white,
+                                      label: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Text(
+                                          'تعديل المعلومات',
+                                          style: TextStyle(
+                                            fontSize: 11.sp,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppColors.primary,
+                                          ),
                                         ),
                                       ),
                                     ),
                                   ),
-                                ),
+                                  SizedBox(width: 6.w),
+                                  SizedBox(
+                                    height: 32.h,
+                                    child: ElevatedButton.icon(
+                                      onPressed: () {
+                                        _showAddImageDialog(
+                                          context,
+                                          patient.id,
+                                        );
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: AppColors.primary,
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: 8.w,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            8.r,
+                                          ),
+                                        ),
+                                      ),
+                                      icon: Icon(
+                                        Icons.add_a_photo_outlined,
+                                        color: Colors.white,
+                                        size: 16.sp,
+                                      ),
+                                      label: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Text(
+                                          'إضافة صورة',
+                                          style: TextStyle(
+                                            fontSize: 12.sp,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(width: 6.w),
+                                  _buildPatientStatusSwitch(
+                                    context,
+                                    patient,
+                                    inline: true,
+                                  ),
+                                ],
                               ),
-                              _buildPatientStatusSwitch(context, patient),
                             ],
                           ],
                         ),

@@ -468,7 +468,15 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
     'جسر',
     'قص لثة',
     'فينير',
+    'ابتسامة',
     'تسوس',
+  ];
+
+  static const String _smileStatus = 'ابتسامة';
+
+  static const List<String> _smileJawSubs = [
+    'فك علوي',
+    'فك سفلي',
   ];
 
   static const Map<String, List<String>> _dentalSubStatuses = {
@@ -482,6 +490,10 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
       'زركون',
       'سيراميك',
       'اي ماكس',
+    ],
+    'ابتسامة': [
+      'فك علوي',
+      'فك سفلي',
     ],
   };
 
@@ -2641,10 +2653,10 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                       ),
                       child: Row(
                         children: [
-                          // QR Code (on the left)
-                          Row(
+                          // QR Code + action buttons (on the left)
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // QR Code (clickable)
                               GestureDetector(
                                 onTap: () {
                                   _showQrCodeDialog(context, patient.id);
@@ -2665,100 +2677,115 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                   ),
                                 ),
                               ),
-                              SizedBox(width: 8.w),
-                              // Edit patient profile button
-                              GestureDetector(
-                                onTap: () {
-                                  _showEditPatientProfileDialog(
-                                    context,
-                                    patient,
-                                  );
-                                },
-                                child: Container(
-                                  width: 40.w,
-                                  height: 40.w,
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primaryLight,
-                                    borderRadius: BorderRadius.circular(8.r),
+                              SizedBox(height: 8.h),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  GestureDetector(
+                                    onTap: () {
+                                      _showEditPatientProfileDialog(
+                                        context,
+                                        patient,
+                                      );
+                                    },
+                                    child: Container(
+                                      width: 40.w,
+                                      height: 40.w,
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primaryLight,
+                                        borderRadius: BorderRadius.circular(8.r),
+                                      ),
+                                      child: Icon(
+                                        Icons.person_outline,
+                                        color: AppColors.primary,
+                                        size: 20.sp,
+                                      ),
+                                    ),
                                   ),
-                                  child: Icon(
-                                    Icons.person_outline,
-                                    color: AppColors.primary,
-                                    size: 20.sp,
+                                  SizedBox(width: 8.w),
+                                  Tooltip(
+                                    message: 'نوع العلاج',
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        _showTreatmentTypeDialog(
+                                          context,
+                                          patient,
+                                        );
+                                      },
+                                      child: Container(
+                                        width: 40.w,
+                                        height: 40.w,
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primaryLight,
+                                          borderRadius: BorderRadius.circular(
+                                            8.r,
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          Icons.edit,
+                                          color: AppColors.primary,
+                                          size: 20.sp,
+                                        ),
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                  SizedBox(width: 8.w),
+                                  Tooltip(
+                                    message: 'نوع الدفع',
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        _showPaymentMethodsDialog(
+                                          context,
+                                          patient,
+                                        );
+                                      },
+                                      child: Container(
+                                        width: 40.w,
+                                        height: 40.w,
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primaryLight,
+                                          borderRadius: BorderRadius.circular(
+                                            8.r,
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          Icons.payments_outlined,
+                                          color: AppColors.primary,
+                                          size: 20.sp,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  if ((_authController
+                                          .currentUser
+                                          .value
+                                          ?.isDoctorManager ??
+                                      false)) ...[
+                                    SizedBox(width: 8.w),
+                                    GestureDetector(
+                                      onTap: () => _showTransferPatientDialog(
+                                        context,
+                                        patient,
+                                      ),
+                                      child: Container(
+                                        width: 40.w,
+                                        height: 40.w,
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primaryLight,
+                                          borderRadius: BorderRadius.circular(
+                                            8.r,
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          Icons.swap_horiz,
+                                          color: AppColors.primary,
+                                          size: 22.sp,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
                               ),
-                              SizedBox(width: 8.w),
-                              Tooltip(
-                                message: 'نوع العلاج',
-                                child: GestureDetector(
-                                  onTap: () {
-                                    _showTreatmentTypeDialog(context, patient);
-                                  },
-                                  child: Container(
-                                    width: 40.w,
-                                    height: 40.w,
-                                    decoration: BoxDecoration(
-                                      color: AppColors.primaryLight,
-                                      borderRadius: BorderRadius.circular(8.r),
-                                    ),
-                                    child: Icon(
-                                      Icons.edit,
-                                      color: AppColors.primary,
-                                      size: 20.sp,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              SizedBox(width: 8.w),
-                              Tooltip(
-                                message: 'نوع الدفع',
-                                child: GestureDetector(
-                                  onTap: () {
-                                    _showPaymentMethodsDialog(context, patient);
-                                  },
-                                  child: Container(
-                                    width: 40.w,
-                                    height: 40.w,
-                                    decoration: BoxDecoration(
-                                      color: AppColors.primaryLight,
-                                      borderRadius: BorderRadius.circular(8.r),
-                                    ),
-                                    child: Icon(
-                                      Icons.payments_outlined,
-                                      color: AppColors.primary,
-                                      size: 20.sp,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              if ((_authController
-                                      .currentUser
-                                      .value
-                                      ?.isDoctorManager ??
-                                  false)) ...[
-                                SizedBox(width: 8.w),
-                                // Transfer patient (doctor manager only)
-                                GestureDetector(
-                                  onTap: () => _showTransferPatientDialog(
-                                    context,
-                                    patient,
-                                  ),
-                                  child: Container(
-                                    width: 40.w,
-                                    height: 40.w,
-                                    decoration: BoxDecoration(
-                                      color: AppColors.primaryLight,
-                                      borderRadius: BorderRadius.circular(8.r),
-                                    ),
-                                    child: Icon(
-                                      Icons.swap_horiz,
-                                      color: AppColors.primary,
-                                      size: 22.sp,
-                                    ),
-                                  ),
-                                ),
-                              ],
                             ],
                           ),
                           Spacer(),
@@ -5536,6 +5563,20 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                   color: const Color(0xFF1CB7D8),
                 ),
               ),
+            if (_hasStatus(statuses, _smileStatus))
+              Positioned(
+                left: 7.w,
+                right: 7.w,
+                bottom: isUpper ? 5.h : 7.h,
+                top: isUpper ? null : null,
+                child: Container(
+                  height: 8.h,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFF6B9D).withOpacity(0.85),
+                    borderRadius: BorderRadius.circular(10.r),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -6100,11 +6141,12 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                 ),
                                 onPressed: () async {
                                   setState(() {
-                                    if (temp.isEmpty) {
-                                      chart.remove(toothNo);
-                                    } else {
-                                      chart[toothNo] = Set<String>.from(temp);
-                                    }
+                                    _saveDentalToothStatuses(
+                                      chart: chart,
+                                      toothNo: toothNo,
+                                      previous: current,
+                                      selected: temp,
+                                    );
                                     if (currentNotes.isEmpty) {
                                       notesByTooth.remove(toothNo);
                                     } else {
@@ -6157,10 +6199,97 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
         return const Color(0xFFE25555);
       case 'فينير':
         return const Color(0xFF9A7CF2);
+      case 'ابتسامة':
+        return const Color(0xFFFF6B9D);
       case 'تسوس':
         return const Color(0xFF3A3F46);
       default:
         return const Color(0xFF8C95A3);
+    }
+  }
+
+  bool _isSmileStatus(String token) {
+    return token == _smileStatus || token.startsWith('$_smileStatus::');
+  }
+
+  List<String> _teethForSmileJawSub(String jawSub) {
+    return jawSub == 'فك علوي' ? _upperTeethFdi : _lowerTeethFdi;
+  }
+
+  void _applySmileJawToChart({
+    required Map<String, Set<String>> chart,
+    required String jawSub,
+    required String currentToothNo,
+    required Set<String> nonSmileStatuses,
+  }) {
+    for (final tooth in _teethForSmileJawSub(jawSub)) {
+      final existing = Set<String>.from(chart[tooth] ?? {});
+      final preserved = existing.where((s) => !_isSmileStatus(s)).toSet();
+      _removeStatusWithSubs(existing, _smileStatus);
+      existing
+        ..add(_smileStatus)
+        ..add(_statusToken(_smileStatus, jawSub))
+        ..addAll(preserved);
+      if (tooth == currentToothNo) {
+        existing.removeWhere((s) => !_isSmileStatus(s));
+        existing.addAll(nonSmileStatuses);
+      }
+      chart[tooth] = existing;
+    }
+  }
+
+  void _removeSmileJawFromChart(
+    Map<String, Set<String>> chart,
+    String jawSub,
+  ) {
+    for (final tooth in _teethForSmileJawSub(jawSub)) {
+      final existing = Set<String>.from(chart[tooth] ?? {});
+      _removeStatusWithSubs(existing, _smileStatus);
+      if (existing.isEmpty) {
+        chart.remove(tooth);
+      } else {
+        chart[tooth] = existing;
+      }
+    }
+  }
+
+  void _saveDentalToothStatuses({
+    required Map<String, Set<String>> chart,
+    required String toothNo,
+    required Set<String> previous,
+    required Set<String> selected,
+  }) {
+    final hasSmile = _hasStatus(selected, _smileStatus);
+    final nonSmile = selected.where((s) => !_isSmileStatus(s)).toSet();
+
+    for (final jawSub in _smileJawSubs) {
+      final token = _statusToken(_smileStatus, jawSub);
+      final nowSelected = hasSmile && selected.contains(token);
+      final wasSelected = previous.contains(token);
+
+      if (nowSelected) {
+        _applySmileJawToChart(
+          chart: chart,
+          jawSub: jawSub,
+          currentToothNo: toothNo,
+          nonSmileStatuses: nonSmile,
+        );
+      } else if (wasSelected) {
+        _removeSmileJawFromChart(chart, jawSub);
+      }
+    }
+
+    final anyJawSmileSelected = hasSmile &&
+        _smileJawSubs.any(
+          (j) => selected.contains(_statusToken(_smileStatus, j)),
+        );
+
+    if (!anyJawSmileSelected) {
+      if (selected.isEmpty) {
+        chart.remove(toothNo);
+      } else {
+        chart[toothNo] = Set<String>.from(selected);
+      }
     }
   }
 

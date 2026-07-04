@@ -243,5 +243,9 @@ async def dental_chart_meta(current=Depends(get_current_user)):
                 "سيراميك",
                 "اي ماكس",
             ],
+            "ابتسامة": [
+                "فك علوي",
+                "فك سفلي",
+            ],
         },
     }
