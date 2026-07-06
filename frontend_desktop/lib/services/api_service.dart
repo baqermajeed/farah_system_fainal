@@ -59,6 +59,11 @@ class ApiService {
           if (error.response?.statusCode == 401) {
             final requestOptions = error.requestOptions;
 
+            // تجنب حلقة لا نهائية إذا فشلت إعادة المحاولة بعد تجديد التوكن
+            if (requestOptions.extra['auth_retry'] == true) {
+              return handler.next(error);
+            }
+
             // طلب مرسل لـ API آخر (مثل الكندي) — لا نجدد التوكن ولا نعيد المحاولة (نتجنب حلقة لا نهائية)
             if (!_isRequestToMainBackend(requestOptions)) {
               return handler.next(error);
@@ -67,6 +72,11 @@ class ApiService {
             // إذا كان الطلب هو refresh token نفسه، لا نعيد المحاولة
             if (requestOptions.path.contains('/auth/refresh')) {
               await _handleUnauthorized();
+              return handler.next(error);
+            }
+
+            // FormData لا يمكن إعادة إرساله بعد الاستهلاك
+            if (requestOptions.data is dio.FormData) {
               return handler.next(error);
             }
 
@@ -85,13 +95,12 @@ class ApiService {
               await _retryPendingRequests();
               
               // إعادة المحاولة للطلب الأصلي
-              final opts = requestOptions;
-              final newToken = await getToken();
-              if (newToken != null && newToken.isNotEmpty) {
-                opts.headers['Authorization'] = 'Bearer $newToken';
+              try {
+                final response = await _retryRequestAfterRefresh(requestOptions);
+                return handler.resolve(response);
+              } on DioException catch (e) {
+                return handler.reject(e);
               }
-              final response = await _dio.fetch(opts);
-              return handler.resolve(response);
             } else if (refreshResult == _RefreshResult.invalidToken) {
               // فشل حقيقي في التجديد (refresh token منتهي/غير صالح)
               _isRefreshing = false;
@@ -162,9 +171,10 @@ class ApiService {
 
     for (final pending in _pendingRequests) {
       try {
-        pending.requestOptions.headers['Authorization'] = 'Bearer $token';
-        final response = await _dio.fetch(pending.requestOptions);
+        final response = await _retryRequestAfterRefresh(pending.requestOptions);
         pending.handler.resolve(response);
+      } on DioException catch (e) {
+        pending.handler.reject(e);
       } catch (e) {
         pending.handler.reject(
           DioException(
@@ -175,6 +185,47 @@ class ApiService {
       }
     }
     _pendingRequests.clear();
+  }
+
+  /// إعادة إرسال الطلب بعد تجديد التوكن — نبني طلباً جديداً بدلاً من إعادة استخدام
+  /// RequestOptions الأصلي لتجنب أخطاء 400 من جسم/معاملات مُستهلكة (Dio 5).
+  Future<dio.Response> _retryRequestAfterRefresh(
+    RequestOptions requestOptions,
+  ) async {
+    final token = await getToken();
+    final headers = Map<String, dynamic>.from(requestOptions.headers);
+    if (token != null && token.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+
+    final extra = Map<String, dynamic>.from(requestOptions.extra);
+    extra['auth_retry'] = true;
+
+    return _dio.request(
+      requestOptions.path,
+      data: requestOptions.data,
+      queryParameters: requestOptions.queryParameters,
+      cancelToken: requestOptions.cancelToken,
+      onSendProgress: requestOptions.onSendProgress,
+      onReceiveProgress: requestOptions.onReceiveProgress,
+      options: dio.Options(
+        method: requestOptions.method,
+        sendTimeout: requestOptions.sendTimeout,
+        receiveTimeout: requestOptions.receiveTimeout,
+        extra: extra,
+        headers: headers,
+        responseType: requestOptions.responseType,
+        contentType: requestOptions.contentType,
+        validateStatus: requestOptions.validateStatus,
+        receiveDataWhenStatusError: requestOptions.receiveDataWhenStatusError,
+        followRedirects: requestOptions.followRedirects,
+        maxRedirects: requestOptions.maxRedirects,
+        persistentConnection: requestOptions.persistentConnection,
+        requestEncoder: requestOptions.requestEncoder,
+        responseDecoder: requestOptions.responseDecoder,
+        listFormat: requestOptions.listFormat,
+      ),
+    );
   }
 
   void _rejectPendingRequests(Object error) {

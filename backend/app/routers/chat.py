@@ -9,7 +9,7 @@ from app.models import ChatRoom, ChatMessage, Patient, User, Doctor
 from app.constants import Role
 from app.utils.chat_helpers import ensure_chat_room_user_ids
 from app.utils.r2_clinic import upload_clinic_image
-from app.utils.patient_out import resolve_patient_identity
+from app.utils.patient_out import resolve_patient_identity, patient_name_hint_for_id
 from app.utils.logger import get_logger
 
 router = APIRouter(prefix="/chat", tags=["chat"]) 
@@ -311,12 +311,13 @@ async def send_message(
             raise HTTPException(status_code=400, detail="نوع الملف غير مدعوم. فقط JPEG, PNG, WEBP")
         
         file_bytes = await image.read()
-        # استخدام room_id كمعرف فريد لصورة الرسالة
+        patient_name_hint = await patient_name_hint_for_id(patient_id)
         image_path = await upload_clinic_image(
-            patient_id=str(room.id),
-            folder="chat_images",
+            patient_id=patient_id,
+            folder="chat",
             file_bytes=file_bytes,
             content_type=image.content_type,
+            name_hint=patient_name_hint,
         )
         # upload_clinic_image now returns a direct /media/... URL
         image_url = image_path

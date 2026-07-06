@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Optional
 
 from app.models import Patient, User
@@ -41,6 +41,60 @@ def resolve_patient_name(patient: Patient, user: User | None = None) -> str | No
     return identity.get("name")
 
 
+async def patient_name_hint_for_id(patient_id: str) -> str | None:
+    """Resolve display name for R2 folder naming from a patient document id."""
+    from beanie import PydanticObjectId as OID
+
+    try:
+        patient = await Patient.get(OID(patient_id))
+    except Exception:
+        return None
+    if not patient:
+        return None
+    user = await User.get(patient.user_id) if patient.user_id else None
+    return resolve_patient_name(patient, user)
+
+
+def _parse_dt(value):
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+    if isinstance(value, str):
+        try:
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+        except Exception:
+            return None
+    return None
+
+
+def _resolve_created_at_iso(
+    *,
+    patient_created_at,
+    user_created_at,
+    is_primary: bool = True,
+) -> str | None:
+    """تاريخ الإنشاء الحقيقي — يتجنب default Beanie عند غياب الحقل في Mongo."""
+    patient_dt = _parse_dt(patient_created_at)
+    user_dt = _parse_dt(user_created_at)
+
+    if not is_primary and patient_dt:
+        chosen = patient_dt
+    elif patient_dt and user_dt:
+        chosen = min(patient_dt, user_dt)
+    elif user_dt:
+        chosen = user_dt
+    elif patient_dt:
+        chosen = patient_dt
+    else:
+        return None
+
+    return chosen.isoformat()
+
+
 def build_patient_out(
     patient: Patient,
     user: User | None,
@@ -64,7 +118,11 @@ def build_patient_out(
                 treatment_type = profile.treatment_type
                 break
 
-    created_at = patient.created_at.isoformat() if getattr(patient, "created_at", None) else None
+    created_at = _resolve_created_at_iso(
+        patient_created_at=getattr(patient, "created_at", None),
+        user_created_at=user.created_at if user else None,
+        is_primary=bool(getattr(patient, "is_primary", True)),
+    )
 
     return PatientOut(
         id=str(patient.id),
@@ -89,15 +147,6 @@ def build_patient_out(
         imageUrl=identity["imageUrl"],
         created_at=created_at,
     )
-
-
-def _parse_dt(value):
-    if isinstance(value, str):
-        try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except Exception:
-            return None
-    return value
 
 
 def build_patient_out_from_agg(
@@ -127,13 +176,11 @@ def build_patient_out_from_agg(
             treatment_type = profile.get("treatment_type")
             payment_methods = profile.get("payment_methods")
 
-    created_at_raw = patient_doc.get("created_at")
-    if isinstance(created_at_raw, datetime):
-        created_at = created_at_raw.isoformat()
-    elif created_at_raw:
-        created_at = str(created_at_raw)
-    else:
-        created_at = None
+    created_at = _resolve_created_at_iso(
+        patient_created_at=patient_doc.get("created_at"),
+        user_created_at=user_doc.get("created_at"),
+        is_primary=bool(patient_doc.get("is_primary", True)),
+    )
 
     return PatientOut(
         id=str(patient_doc["_id"]),

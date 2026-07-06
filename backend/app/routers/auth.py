@@ -316,13 +316,14 @@ async def route_upload_profile_image(
         )
     
     file_bytes = await image.read()
-    
-    # رفع الصورة باستخدام user_id بدلاً من patient_id
+
+    # رفع الصورة باستخدام user_id بدلاً من patient_id (صور موظفين)
     image_path = await upload_clinic_image(
-        patient_id=str(current.id),  # استخدام user_id كمعرف
+        patient_id=str(current.id),
         folder="profile",
         file_bytes=file_bytes,
         content_type=image.content_type,
+        name_hint=current.name,
     )
     
     # تحديث imageUrl في User

@@ -35,6 +35,7 @@ async def ensure_patient_qr(patient: Patient) -> None:
             folder="qr",
             file_bytes=file_bytes,
             content_type="image/png",
+            name_hint=patient.name,
         )
         patient.qr_image_path = url
     except Exception as e:

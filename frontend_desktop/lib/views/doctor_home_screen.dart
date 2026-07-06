@@ -103,21 +103,7 @@ class _ToothShapePainter extends CustomPainter {
       canvas.scale(1, -1);
     }
 
-    final Path path;
-    switch (toothKind) {
-      case 'incisor':
-        path = _incisorPath(size);
-        break;
-      case 'canine':
-        path = _caninePath(size);
-        break;
-      case 'premolar':
-        path = _premolarPath(size);
-        break;
-      default:
-        path = _molarPath(size);
-        break;
-    }
+    final Path path = buildPath(toothKind: toothKind, size: size);
 
     final fill = Paint()
       ..color = Colors.white
@@ -131,6 +117,22 @@ class _ToothShapePainter extends CustomPainter {
     canvas.drawPath(path, stroke);
   }
 
+  static Path buildPath({
+    required String toothKind,
+    required Size size,
+  }) {
+    switch (toothKind) {
+      case 'incisor':
+        return _incisorPath(size);
+      case 'canine':
+        return _caninePath(size);
+      case 'premolar':
+        return _premolarPath(size);
+      default:
+        return _molarPath(size);
+    }
+  }
+
   @override
   bool shouldRepaint(covariant _ToothShapePainter oldDelegate) {
     return oldDelegate.borderColor != borderColor ||
@@ -139,7 +141,7 @@ class _ToothShapePainter extends CustomPainter {
         oldDelegate.toothKind != toothKind;
   }
 
-  Path _incisorPath(Size size) {
+  static Path _incisorPath(Size size) {
     return Path()
       ..moveTo(size.width * 0.30, size.height * 0.15)
       ..quadraticBezierTo(
@@ -187,7 +189,7 @@ class _ToothShapePainter extends CustomPainter {
       ..close();
   }
 
-  Path _caninePath(Size size) {
+  static Path _caninePath(Size size) {
     return Path()
       ..moveTo(size.width * 0.26, size.height * 0.18)
       ..quadraticBezierTo(
@@ -241,7 +243,7 @@ class _ToothShapePainter extends CustomPainter {
       ..close();
   }
 
-  Path _premolarPath(Size size) {
+  static Path _premolarPath(Size size) {
     return Path()
       ..moveTo(size.width * 0.22, size.height * 0.18)
       ..quadraticBezierTo(
@@ -295,7 +297,7 @@ class _ToothShapePainter extends CustomPainter {
       ..close();
   }
 
-  Path _molarPath(Size size) {
+  static Path _molarPath(Size size) {
     return Path()
       ..moveTo(size.width * 0.18, size.height * 0.20)
       ..quadraticBezierTo(
@@ -353,6 +355,120 @@ class _ToothShapePainter extends CustomPainter {
         size.height * 0.20,
       )
       ..close();
+  }
+}
+
+/// طبقة تغليف ابتسامة تتبع شكل السن — ألوان مينا/عاج طبيعية.
+class _ToothSmileCoatingPainter extends CustomPainter {
+  final bool isUpper;
+  final String toothKind;
+
+  _ToothSmileCoatingPainter({
+    required this.isUpper,
+    required this.toothKind,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (!isUpper) {
+      canvas.translate(0, size.height);
+      canvas.scale(1, -1);
+    }
+
+    final path = _ToothShapePainter.buildPath(
+      toothKind: toothKind,
+      size: size,
+    );
+    final bounds = path.getBounds();
+
+    // تغليف أساسي — تدرج مينا طبيعي (عاجي فاتح → دافئ عند القاعدة)
+    final coatingPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: const [
+          Color(0xFFFFFFF8),
+          Color(0xFFF8F4EC),
+          Color(0xFFEDE4D4),
+          Color(0xFFD9CCB8),
+        ],
+        stops: const [0.0, 0.28, 0.62, 1.0],
+      ).createShader(bounds.inflate(4));
+    canvas.drawPath(path, coatingPaint);
+
+    canvas.save();
+    canvas.clipPath(path);
+
+    // لمعة علوية — تأثير خزف/فينير
+    final shineRect = Rect.fromLTWH(
+      bounds.left + bounds.width * 0.14,
+      bounds.top + bounds.height * 0.06,
+      bounds.width * 0.72,
+      bounds.height * 0.34,
+    );
+    final shinePaint = Paint()
+      ..shader = RadialGradient(
+        center: const Alignment(0, -0.55),
+        radius: 0.95,
+        colors: [
+          Colors.white.withOpacity(0.82),
+          Colors.white.withOpacity(0.28),
+          Colors.white.withOpacity(0.0),
+        ],
+        stops: const [0.0, 0.42, 1.0],
+      ).createShader(shineRect);
+    canvas.drawOval(shineRect, shinePaint);
+
+    // خط ضوء جانبي خفيف
+    final sideGloss = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+        colors: [
+          Colors.white.withOpacity(0.0),
+          Colors.white.withOpacity(0.35),
+          Colors.white.withOpacity(0.0),
+        ],
+        stops: const [0.0, 0.5, 1.0],
+      ).createShader(bounds);
+    canvas.drawRect(bounds, sideGloss);
+
+    // عمق خفيف عند القاعدة — ظل دافئ طبيعي
+    final depthPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Colors.transparent,
+          const Color(0xFFA89578).withOpacity(0.2),
+        ],
+        stops: const [0.55, 1.0],
+      ).createShader(bounds);
+    canvas.drawRect(bounds, depthPaint);
+
+    canvas.restore();
+
+    // حافة خارجية — لون مينا دافئ
+    final outerEdge = Paint()
+      ..color = const Color(0xFFC4B5A0).withOpacity(0.92)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.35;
+    canvas.drawPath(path, outerEdge);
+
+    // حافة داخلية خفيفة — إحساس بالسُمك
+    final innerEdge = Paint()
+      ..color = Colors.white.withOpacity(0.55)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.7;
+    canvas.drawPath(
+      path,
+      innerEdge,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _ToothSmileCoatingPainter oldDelegate) {
+    return oldDelegate.isUpper != isUpper || oldDelegate.toothKind != toothKind;
   }
 }
 
@@ -2654,8 +2770,9 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                       child: Row(
                         children: [
                           // QR Code + action buttons (on the left)
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
                               GestureDetector(
                                 onTap: () {
@@ -2677,7 +2794,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                   ),
                                 ),
                               ),
-                              SizedBox(height: 8.h),
+                              SizedBox(width: 8.w),
                               Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
@@ -5446,6 +5563,19 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                 ),
               ),
             ),
+            if (_hasStatus(statuses, _smileStatus))
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: RepaintBoundary(
+                    child: CustomPaint(
+                      painter: _ToothSmileCoatingPainter(
+                        isUpper: isUpper,
+                        toothKind: kind,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             if (isSelected)
               Positioned.fill(
                 child: IgnorePointer(
@@ -5561,20 +5691,6 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                   Icons.hardware,
                   size: 16.sp,
                   color: const Color(0xFF1CB7D8),
-                ),
-              ),
-            if (_hasStatus(statuses, _smileStatus))
-              Positioned(
-                left: 7.w,
-                right: 7.w,
-                bottom: isUpper ? 5.h : 7.h,
-                top: isUpper ? null : null,
-                child: Container(
-                  height: 8.h,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFF6B9D).withOpacity(0.85),
-                    borderRadius: BorderRadius.circular(10.r),
-                  ),
                 ),
               ),
           ],
@@ -6200,7 +6316,7 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
       case 'فينير':
         return const Color(0xFF9A7CF2);
       case 'ابتسامة':
-        return const Color(0xFFFF6B9D);
+        return const Color(0xFFC9B896);
       case 'تسوس':
         return const Color(0xFF3A3F46);
       default:

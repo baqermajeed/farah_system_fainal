@@ -11,6 +11,16 @@ from app.utils.logger import get_logger
 settings = get_settings()
 logger = get_logger("r2")
 
+# Internal folder keys → R2 display folder names
+PATIENT_MEDIA_FOLDERS: dict[str, str] = {
+    "qr": "QRcode",
+    "profile": "profile photo",
+    "gallery": "Gallery",
+    "appointments": "appointment",
+    "notes": "not",
+    "chat": "chat",
+}
+
 
 def _ext_from_content_type(content_type: Optional[str]) -> str:
     if not content_type:
@@ -34,8 +44,28 @@ def _ext_from_content_type(content_type: Optional[str]) -> str:
 def _sanitize_name_hint(name_hint: Optional[str]) -> str:
     if not name_hint:
         return ""
-    cleaned = "".join(ch if ch.isalnum() else "_" for ch in name_hint.strip().replace(" ", "_"))
+    cleaned = "".join(
+        ch if ch.isalnum() else "_" for ch in name_hint.strip().replace(" ", "_")
+    )
     return cleaned.strip("_")
+
+
+def _patient_id_suffix(patient_id: str) -> str:
+    return str(patient_id).replace("-", "")[-6:].lower()
+
+
+def build_patient_dir_label(name_hint: Optional[str], patient_id: str) -> str:
+    """Build R2 folder name: {patient_name}_{last_6_of_id}."""
+    sanitized = _sanitize_name_hint(name_hint)
+    suffix = _patient_id_suffix(patient_id)
+    if sanitized:
+        return f"{sanitized}_{suffix}"
+    return f"patient_{suffix}"
+
+
+def resolve_media_folder(folder: str) -> str:
+    """Map internal folder key to R2 subfolder name."""
+    return PATIENT_MEDIA_FOLDERS.get(folder, folder)
 
 
 def _get_r2_client():
@@ -70,10 +100,10 @@ async def upload_clinic_image(
 
     ts = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
     ext = _ext_from_content_type(content_type)
-    prefix = _sanitize_name_hint(name_hint)
-    file_name = f"{prefix + '_' if prefix else ''}{ts}{ext}"
-    dir_label = f"{prefix or 'patient'}_{patient_id}"
-    key = f"patients/{dir_label}/{folder}/{file_name}"
+    dir_label = build_patient_dir_label(name_hint, patient_id)
+    media_folder = resolve_media_folder(folder)
+    file_name = f"{ts}{ext}"
+    key = f"patients/{dir_label}/{media_folder}/{file_name}"
 
     client = _get_r2_client()
     if client:
@@ -103,5 +133,3 @@ async def upload_clinic_image(
     except Exception as e:
         logger.error(f"Failed to save file locally: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to save media file")
-
-

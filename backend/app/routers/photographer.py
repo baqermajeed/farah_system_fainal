@@ -8,7 +8,7 @@ from app.constants import Role
 from app.services.patient_service import create_gallery_image
 from app.utils.r2_clinic import upload_clinic_image
 from app.models import Patient, User
-from app.utils.patient_out import build_patient_out
+from app.utils.patient_out import build_patient_out, patient_name_hint_for_id
 
 IMAGE_TYPES = ("image/jpeg", "image/png", "image/webp")
 MAX_IMAGE_MB = 10
@@ -46,11 +46,13 @@ async def upload_patient_image(
             detail=f"Unsupported file type. Allowed types: {', '.join(IMAGE_TYPES)}",
         )
     file_bytes = await image.read()
+    patient_name_hint = await patient_name_hint_for_id(patient_id)
     image_path = await upload_clinic_image(
         patient_id=patient_id,
         folder="gallery",
         file_bytes=file_bytes,
         content_type=image.content_type,
+        name_hint=patient_name_hint,
     )
     gi = await create_gallery_image(
         patient_id=patient_id,

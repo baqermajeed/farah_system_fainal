@@ -30,7 +30,7 @@ from app.services.admin_service import create_patient
 from app.services.doctor_working_hours_service import DoctorWorkingHoursService
 from app.utils.r2_clinic import upload_clinic_image
 from app.utils.patient_profile import build_doctor_profile_map
-from app.utils.patient_out import build_patient_out
+from app.utils.patient_out import build_patient_out, patient_name_hint_for_id, build_patient_out_from_agg
 
 PHONE_PATTERN = re.compile(r"^07\d{9}$")
 IMAGE_TYPES = (
@@ -100,7 +100,7 @@ async def list_patients(
     # إضافة الترتيب والـ pagination
     pipeline.extend([
         {
-            "$sort": {"created_at": -1}
+            "$sort": {"user_data.created_at": -1}
         },
         {
             "$skip": skip
@@ -114,22 +114,10 @@ async def list_patients(
     
     out: List[PatientOut] = []
     for item in patients_with_users:
-        # تحويل _id من dict إلى Patient object
-        from beanie import PydanticObjectId as OID
-        patient_id = item.get("_id")
-        if not patient_id:
-            continue
-            
-        try:
-            p = await Patient.get(OID(patient_id))
-            if not p:
-                continue
-        except Exception:
-            continue
-            
         user_data = item.get("user_data", {})
-        u = await User.get(p.user_id) if p.user_id else None
-        out.append(build_patient_out(p, u))
+        if not user_data:
+            continue
+        out.append(build_patient_out_from_agg(item, user_data))
     return out
 
 
@@ -349,11 +337,13 @@ async def upload_patient_gallery_image(
         )
 
     file_bytes = await image.read()
+    patient_name_hint = await patient_name_hint_for_id(patient_id)
     image_path = await upload_clinic_image(
         patient_id=patient_id,
         folder="gallery",
         file_bytes=file_bytes,
         content_type=image.content_type,
+        name_hint=patient_name_hint,
     )
     gi = await patient_service.create_gallery_image(
         patient_id=patient_id,
