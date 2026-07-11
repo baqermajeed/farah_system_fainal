@@ -157,6 +157,19 @@ class SyncWorker {
       }
       return false;
     } catch (e, st) {
+      if (_isUnassignedPatientError(e)) {
+        final patientId = OutboxStore.patientIdFromEntry(entry);
+        if (patientId != null && patientId.isNotEmpty) {
+          final removed = await clearOutboxForUnassignedPatient(patientId);
+          print(
+            '🗑️ [SyncWorker] Patient unassigned — cleared $removed outbox entries for $patientId',
+          );
+        } else {
+          await _outbox.remove(entry.id);
+        }
+        return false;
+      }
+
       print('❌ [SyncWorker] Upload failed (will retry forever): $e');
       print('❌ [SyncWorker] $st');
       final latest = _outbox.getById(entry.id) ?? entry;
@@ -168,6 +181,22 @@ class SyncWorker {
       }
       return false;
     }
+  }
+
+  /// مسح كل أوامر المزامنة المعلّقة لمريض بعد إلغاء تعيينه.
+  Future<int> clearOutboxForUnassignedPatient(String patientId) async {
+    await _outbox.init();
+    final removed = await _outbox.removeAllForPatient(patientId);
+    if (removed > 0) {
+      _publishPendingCount();
+    }
+    return removed;
+  }
+
+  bool _isUnassignedPatientError(Object error) {
+    if (error is! ApiException || error.statusCode != 403) return false;
+    final message = error.message.toLowerCase();
+    return message.contains('not your patient');
   }
 
   Future<void> _processAddNote(SyncOutboxEntry entry) async {

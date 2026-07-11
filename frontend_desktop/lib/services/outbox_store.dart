@@ -292,6 +292,53 @@ class OutboxStore {
   static String dentalChartEntityKey(String patientId) =>
       'dental_chart:$patientId';
 
+  /// استخراج معرف المريض من أمر outbox (payload أو entityKey).
+  static String? patientIdFromEntry(SyncOutboxEntry entry) {
+    final payloadId = entry.payload['patientId']?.toString().trim();
+    if (payloadId != null && payloadId.isNotEmpty) return payloadId;
+
+    final key = entry.entityKey;
+    if (key.startsWith('dental_chart:')) {
+      final id = key.substring('dental_chart:'.length);
+      return id.isNotEmpty ? id : null;
+    }
+    if (key.startsWith('note:') || key.startsWith('gallery:')) {
+      final parts = key.split(':');
+      if (parts.length >= 2 && parts[1].isNotEmpty) return parts[1];
+    }
+    return null;
+  }
+
+  static bool belongsToPatient(SyncOutboxEntry entry, String patientId) {
+    if (patientId.isEmpty) return false;
+    return patientIdFromEntry(entry) == patientId;
+  }
+
+  /// كل معرفات المرضى الموجودة في طابور المزامنة.
+  Set<String> collectPatientIds() {
+    final ids = <String>{};
+    for (final entry in getAll()) {
+      final patientId = patientIdFromEntry(entry);
+      if (patientId != null && patientId.isNotEmpty) {
+        ids.add(patientId);
+      }
+    }
+    return ids;
+  }
+
+  /// حذف كل أوامر المزامنة المرتبطة بمريض (عند إلغاء التعيين).
+  Future<int> removeAllForPatient(String patientId) async {
+    if (patientId.isEmpty) return 0;
+    await init();
+
+    final toRemove =
+        getAll().where((entry) => belongsToPatient(entry, patientId)).toList();
+    for (final entry in toRemove) {
+      await remove(entry.id);
+    }
+    return toRemove.length;
+  }
+
   static String _newId() {
     final rand = Random.secure();
     final a = DateTime.now().microsecondsSinceEpoch.toRadixString(16);

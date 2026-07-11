@@ -730,6 +730,42 @@ class DoctorService {
     }
   }
 
+  // جلب مواعيد الأطباء (لمركز الاتصالات) — نفس فلاتر الاستقبال
+  Future<List<AppointmentModel>> getAllAppointmentsForCallCenter({
+    String? day,
+    String? dateFrom,
+    String? dateTo,
+    String? status,
+    int skip = 0,
+    int limit = 50,
+  }) async {
+    try {
+      final queryParams = <String, dynamic>{'skip': skip, 'limit': limit};
+      if (day != null) queryParams['day'] = day;
+      if (dateFrom != null) queryParams['date_from'] = dateFrom;
+      if (dateTo != null) queryParams['date_to'] = dateTo;
+      if (status != null) queryParams['status'] = status;
+
+      final response = await _api.get(
+        ApiConstants.callCenterDoctorAppointments,
+        queryParameters: queryParams,
+      );
+
+      if (response.statusCode == 200) {
+        final data = response.data as List;
+        return data
+            .map(
+              (json) => AppointmentModel.fromJson(json as Map<String, dynamic>),
+            )
+            .toList();
+      }
+      throw ApiException('فشل جلب مواعيد الأطباء');
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('فشل جلب مواعيد الأطباء: ${e.toString()}');
+    }
+  }
+
   // جلب قائمة صور معرض المريض
   Future<List<GalleryImageModel>> getPatientGallery(
     String patientId, {

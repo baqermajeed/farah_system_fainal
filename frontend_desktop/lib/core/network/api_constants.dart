@@ -102,6 +102,8 @@ class ApiConstants {
 
   // Call Center Endpoints
   static const String callCenterAppointments = '/call-center/appointments';
+  static const String callCenterDoctorAppointments =
+      '/call-center/doctor-appointments';
   static const String callCenterAppointmentsStats =
       '/call-center/appointments/stats';
   static String callCenterAppointment(String id) =>

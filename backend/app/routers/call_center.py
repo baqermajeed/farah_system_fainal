@@ -5,9 +5,15 @@ from beanie import PydanticObjectId as OID
 
 from app.constants import Role
 from app.security import require_roles, get_current_user
-from app.schemas import CallCenterAppointmentCreate, CallCenterAppointmentOut, CallCenterAppointmentUpdate
+from app.schemas import (
+    CallCenterAppointmentCreate,
+    CallCenterAppointmentOut,
+    CallCenterAppointmentUpdate,
+    ReceptionAppointmentOut,
+)
 from app.models import CallCenterAppointment
 from app.services.stats_service import parse_dates
+from app.services.staff_appointment_service import list_staff_appointments
 
 
 router = APIRouter(
@@ -120,6 +126,31 @@ async def delete_call_center_appointment(
         raise HTTPException(status_code=404, detail="الموعد غير موجود")
     await doc.delete()
     return {"ok": True}
+
+
+@router.get("/doctor-appointments", response_model=List[ReceptionAppointmentOut])
+async def list_doctor_appointments_for_call_center(
+    day: Optional[str] = Query(None, description="today | month"),
+    date_from: Optional[str] = Query(None, description="تاريخ البداية (ISO)"),
+    date_to: Optional[str] = Query(None, description="تاريخ النهاية (ISO)"),
+    status: Optional[str] = Query(None, description="late | pending | completed | cancelled"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1),
+):
+    """جداول مواعيد الأطباء لمركز الاتصالات (نفس عرض الاستقبال)."""
+    try:
+        return await list_staff_appointments(
+            day=day,
+            date_from=date_from,
+            date_to=date_to,
+            status=status,
+            skip=skip,
+            limit=limit,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @router.get("/appointments", response_model=List[CallCenterAppointmentOut])

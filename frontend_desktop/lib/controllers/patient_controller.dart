@@ -9,6 +9,8 @@ import 'package:frontend_desktop/core/network/api_exception.dart';
 import 'package:frontend_desktop/core/logging/app_logger.dart';
 import 'package:frontend_desktop/controllers/auth_controller.dart';
 import 'package:frontend_desktop/core/utils/network_utils.dart';
+import 'package:frontend_desktop/services/sync_worker.dart';
+import 'package:frontend_desktop/services/outbox_store.dart';
 
 class PatientController extends GetxController {
   final _patientService = PatientService();
@@ -150,6 +152,11 @@ class PatientController extends GetxController {
         '✅ [PatientController] Loaded ${patientsList.length} patients from API (total: ${patients.length})',
       );
 
+      // تنظيف outbox للمرضى غير المعيّنين بعد تحميل القائمة كاملة
+      if (userType?.toLowerCase() == 'doctor' && !hasMorePatients.value) {
+        unawaited(_pruneOutboxForUnassignedPatients());
+      }
+
       // 3) تحديث الكاش بعد نجاح الجلب من API - بنفس طريقة eversheen
       // تشغيل في الخلفية بدون انتظار لتجنب blocking UI thread
       unawaited(
@@ -210,6 +217,40 @@ class PatientController extends GetxController {
 
   void selectPatient(PatientModel? patient) {
     selectedPatient.value = patient;
+  }
+
+  /// بعد إلغاء تعيين المريض للطبيب الحالي — مسح outbox والبيانات المحلية المعلّقة.
+  Future<int> handlePatientUnassigned(String patientId) async {
+    if (patientId.isEmpty) return 0;
+
+    final removed =
+        await SyncWorker.instance.clearOutboxForUnassignedPatient(patientId);
+
+    patients.removeWhere((p) => p.id == patientId);
+    searchResults.removeWhere((p) => p.id == patientId);
+    if (selectedPatient.value?.id == patientId) {
+      selectedPatient.value = null;
+    }
+
+    if (removed > 0) {
+      AppLogger.info(
+        'Cleared $removed outbox entries for unassigned patient $patientId',
+        scope: 'PatientController',
+      );
+    }
+    return removed;
+  }
+
+  Future<void> _pruneOutboxForUnassignedPatients() async {
+    final assignedIds = patients.map((p) => p.id).toSet();
+    final outbox = OutboxStore();
+    await outbox.init();
+
+    for (final patientId in outbox.collectPatientIds()) {
+      if (!assignedIds.contains(patientId)) {
+        await handlePatientUnassigned(patientId);
+      }
+    }
   }
 
   Future<void> setTreatmentType({

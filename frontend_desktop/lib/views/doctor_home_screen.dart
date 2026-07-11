@@ -11940,6 +11940,12 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                                   },
                                 );
 
+                                if (mode == 'move') {
+                                  await _patientController.handlePatientUnassigned(
+                                    patient.id,
+                                  );
+                                }
+
                                 // تحديث القائمة بعد التحويل
                                 await _patientController.loadPatients(
                                   isInitial: false,

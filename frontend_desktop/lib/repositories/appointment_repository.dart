@@ -36,6 +36,17 @@ class AppointmentRepository {
       );
     }
 
+    if (userType == 'call_center') {
+      return _doctorService.getAllAppointmentsForCallCenter(
+        day: day,
+        dateFrom: dateFrom,
+        dateTo: dateTo,
+        status: status,
+        skip: skip,
+        limit: limit,
+      );
+    }
+
     return _doctorService.getMyAppointments(
       day: day,
       dateFrom: dateFrom,

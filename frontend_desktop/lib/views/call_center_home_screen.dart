@@ -8,10 +8,12 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import '../controllers/auth_controller.dart';
 import '../controllers/call_center_appointments_controller.dart';
+import '../controllers/appointment_controller.dart';
 import '../core/constants/app_colors.dart';
 import '../core/network/api_constants.dart';
 import '../models/call_center_appointment_model.dart';
 import '../core/utils/image_utils.dart';
+import 'widgets/staff_doctor_appointments_view.dart';
 
 /// محافظات العراق
 const List<String> _iraqGovernorates = [
@@ -61,8 +63,11 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
   final AuthController _authController = Get.put(AuthController());
   final CallCenterAppointmentsController _appointmentsController =
       Get.put(CallCenterAppointmentsController());
+  final AppointmentController _doctorAppointmentController =
+      Get.put(AppointmentController());
   final TextEditingController _searchController = TextEditingController();
   Timer? _searchDebounce;
+  bool _showDoctorAppointments = false;
   DateTime? _rangeStart;
   DateTime? _rangeEnd;
   /// فترة المواعيد المقبولة (إذا null تُعرض مواعيد هذا الشهر)
@@ -128,22 +133,29 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                               right: 16.w,
                               left: 16.w,
                             ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                SizedBox(
-                                  width: 140.w,
-                                  child: _buildStatsPanel(),
-                                ),
-                                SizedBox(width: 16.w),
-                                Expanded(
-                                  child: Align(
-                                    alignment: Alignment.centerRight,
-                                    child: _buildAppointmentsTable(),
+                            child: _showDoctorAppointments
+                                ? StaffDoctorAppointmentsView(
+                                    appointmentController:
+                                        _doctorAppointmentController,
+                                    readOnly: true,
+                                  )
+                                : Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      SizedBox(
+                                        width: 140.w,
+                                        child: _buildStatsPanel(),
+                                      ),
+                                      SizedBox(width: 16.w),
+                                      Expanded(
+                                        child: Align(
+                                          alignment: Alignment.centerRight,
+                                          child: _buildAppointmentsTable(),
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                              ],
-                            ),
                           ),
                         ),
                       ],
@@ -174,7 +186,9 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                ' 📞 📆 لوحــــة تحكم مركــــز الاتصــــالات ',
+                _showDoctorAppointments
+                    ? ' 📅 مواعيد الأطباء '
+                    : ' 📞 📆 لوحــــة تحكم مركــــز الاتصــــالات ',
                 style: TextStyle(
                   fontSize: 24.sp,
                   fontWeight: FontWeight.w800,
@@ -188,7 +202,48 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
 
           SizedBox(width: 20.w),
 
-          // Add Appointment Button (Inverted Style)
+          // تبديل: مواعيد مركز الاتصال ↔ مواعيد الأطباء
+          Tooltip(
+            message: _showDoctorAppointments
+                ? 'العودة لمواعيد مركز الاتصال'
+                : 'مواعيد الأطباء',
+            child: GestureDetector(
+              onTap: () {
+                setState(() {
+                  _showDoctorAppointments = !_showDoctorAppointments;
+                });
+              },
+              child: Container(
+                width: 44.w,
+                height: 44.h,
+                decoration: BoxDecoration(
+                  color: _showDoctorAppointments
+                      ? AppColors.primary.withValues(alpha: 0.15)
+                      : Colors.white,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withValues(alpha: 0.15),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  _showDoctorAppointments
+                      ? Icons.headset_mic_outlined
+                      : Icons.calendar_month_outlined,
+                  color: AppColors.primary,
+                  size: 22.sp,
+                ),
+              ),
+            ),
+          ),
+
+          SizedBox(width: 20.w),
+
+          // Add Appointment Button (Inverted Style) — مخفي في عرض مواعيد الأطباء
+          if (!_showDoctorAppointments)
           GestureDetector(
             onTap: () => _showCreateAppointmentDialog(context),
             child: Container(
@@ -246,9 +301,10 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
             ),
           ),
 
-          SizedBox(width: 20.w),
+          if (!_showDoctorAppointments) SizedBox(width: 20.w),
 
-          // Search
+          // Search — مخفي في عرض مواعيد الأطباء
+          if (!_showDoctorAppointments)
           Container(
             width: 400.w,
             height: 50.h,
@@ -320,7 +376,7 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
             ),
           ),
 
-          SizedBox(width: 20.w),
+          if (!_showDoctorAppointments) SizedBox(width: 20.w),
 
           // User Profile
           _buildUserProfile(),
