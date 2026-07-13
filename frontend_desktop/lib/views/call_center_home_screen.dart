@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -67,7 +69,6 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
       Get.put(AppointmentController());
   final TextEditingController _searchController = TextEditingController();
   Timer? _searchDebounce;
-  bool _showDoctorAppointments = false;
   DateTime? _rangeStart;
   DateTime? _rangeEnd;
   /// فترة المواعيد المقبولة (إذا null تُعرض مواعيد هذا الشهر)
@@ -133,29 +134,22 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
                               right: 16.w,
                               left: 16.w,
                             ),
-                            child: _showDoctorAppointments
-                                ? StaffDoctorAppointmentsView(
-                                    appointmentController:
-                                        _doctorAppointmentController,
-                                    readOnly: true,
-                                  )
-                                : Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
-                                    children: [
-                                      SizedBox(
-                                        width: 140.w,
-                                        child: _buildStatsPanel(),
-                                      ),
-                                      SizedBox(width: 16.w),
-                                      Expanded(
-                                        child: Align(
-                                          alignment: Alignment.centerRight,
-                                          child: _buildAppointmentsTable(),
-                                        ),
-                                      ),
-                                    ],
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                SizedBox(
+                                  width: 140.w,
+                                  child: _buildStatsPanel(),
+                                ),
+                                SizedBox(width: 16.w),
+                                Expanded(
+                                  child: Align(
+                                    alignment: Alignment.centerRight,
+                                    child: _buildAppointmentsTable(),
                                   ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],
@@ -174,213 +168,204 @@ class _CallCenterHomeScreenState extends State<CallCenterHomeScreen> {
 
   Widget _buildTopBar() {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 20.h),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          const Spacer(),
-
-          // Title
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                _showDoctorAppointments
-                    ? ' 📅 مواعيد الأطباء '
-                    : ' 📞 📆 لوحــــة تحكم مركــــز الاتصــــالات ',
+      padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 16.h),
+      child: Directionality(
+        textDirection: ui.TextDirection.rtl,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            _buildUserProfile(),
+            SizedBox(width: 20.w),
+            Expanded(
+              flex: 4,
+              child: _buildSearchField(),
+            ),
+            SizedBox(width: 20.w),
+            Flexible(
+              flex: 3,
+              child: Text(
+                '📞 📆 لوحة تحكم مركز الاتصالات',
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+                textAlign: TextAlign.right,
                 style: TextStyle(
-                  fontSize: 24.sp,
+                  fontSize: 22.sp,
                   fontWeight: FontWeight.w800,
                   color: AppColors.primary,
                   height: 1.2,
                 ),
               ),
-              
+            ),
+            SizedBox(width: 12.w),
+            _buildDoctorAppointmentsDialogButton(),
+            SizedBox(width: 12.w),
+            _buildNewAppointmentButton(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDoctorAppointmentsDialogButton() {
+    return Tooltip(
+      message: 'مواعيد الأطباء',
+      child: GestureDetector(
+        onTap: () {
+          StaffDoctorAppointmentsView.showInDialog(
+            context,
+            appointmentController: _doctorAppointmentController,
+          );
+        },
+        child: Container(
+          width: 44.w,
+          height: 44.h,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withValues(alpha: 0.15),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
             ],
           ),
+          child: Icon(
+            Icons.calendar_month_outlined,
+            color: AppColors.primary,
+            size: 22.sp,
+          ),
+        ),
+      ),
+    );
+  }
 
-          SizedBox(width: 20.w),
-
-          // تبديل: مواعيد مركز الاتصال ↔ مواعيد الأطباء
-          Tooltip(
-            message: _showDoctorAppointments
-                ? 'العودة لمواعيد مركز الاتصال'
-                : 'مواعيد الأطباء',
-            child: GestureDetector(
-              onTap: () {
-                setState(() {
-                  _showDoctorAppointments = !_showDoctorAppointments;
-                });
-              },
-              child: Container(
-                width: 44.w,
-                height: 44.h,
-                decoration: BoxDecoration(
-                  color: _showDoctorAppointments
-                      ? AppColors.primary.withValues(alpha: 0.15)
-                      : Colors.white,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.primary.withValues(alpha: 0.15),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Icon(
-                  _showDoctorAppointments
-                      ? Icons.headset_mic_outlined
-                      : Icons.calendar_month_outlined,
-                  color: AppColors.primary,
-                  size: 22.sp,
-                ),
+  Widget _buildNewAppointmentButton() {
+    return GestureDetector(
+      onTap: () => _showCreateAppointmentDialog(context),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
+        height: 50.h,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [AppColors.primary, Color(0xFF4A88B8)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(40.r),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primary.withValues(alpha: 0.3),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'موعد جديد',
+              style: TextStyle(
+                fontSize: 14.sp,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
               ),
             ),
-          ),
-
-          SizedBox(width: 20.w),
-
-          // Add Appointment Button (Inverted Style) — مخفي في عرض مواعيد الأطباء
-          if (!_showDoctorAppointments)
-          GestureDetector(
-            onTap: () => _showCreateAppointmentDialog(context),
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-              height: 50.h,
+            SizedBox(width: 10.w),
+            Container(
+              width: 34.r,
+              height: 34.r,
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [AppColors.primary, Color(0xFF4A88B8)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(40.r),
+                color: Colors.white,
+                shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.primary.withValues(alpha: 0.3),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
                   ),
                 ],
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'موعد جديد',
-                    style: TextStyle(
-                      fontSize: 14.sp,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  SizedBox(width: 12.w),
-                  Container(
-                    width: 36.r,
-                    height: 36.r,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.1),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Icon(
-                      Icons.add_rounded,
-                      color: AppColors.primary,
-                      size: 20.sp,
-                    ),
-                  ),
-                ],
+              child: Icon(
+                Icons.add_rounded,
+                color: AppColors.primary,
+                size: 20.sp,
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchField() {
+    return Container(
+      height: 50.h,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(30.r),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.1),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
           ),
-
-          if (!_showDoctorAppointments) SizedBox(width: 20.w),
-
-          // Search — مخفي في عرض مواعيد الأطباء
-          if (!_showDoctorAppointments)
-          Container(
-            width: 400.w,
-            height: 50.h,
+        ],
+        border: Border.all(
+          color: Colors.grey.withValues(alpha: 0.1),
+          width: 1,
+        ),
+      ),
+      child: TextField(
+        controller: _searchController,
+        textAlign: TextAlign.right,
+        style: TextStyle(
+          fontSize: 15.sp,
+          fontWeight: FontWeight.w500,
+          color: AppColors.textPrimary,
+        ),
+        decoration: InputDecoration(
+          filled: false,
+          hintText: 'ابحث عن اسم المريض أو رقم الهاتف...',
+          hintStyle: TextStyle(
+            color: Colors.grey[400],
+            fontSize: 13.sp,
+          ),
+          suffixIcon: Container(
+            margin: EdgeInsets.all(5.r),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(30.r),
+              gradient: const LinearGradient(
+                colors: [AppColors.primary, Color(0xFF4A88B8)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.1),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8),
+                  color: AppColors.primary.withValues(alpha: 0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
                 ),
               ],
-              border: Border.all(
-                color: Colors.grey.withValues(alpha: 0.1),
-                width: 1,
-              ),
             ),
-            child: TextField(
-              controller: _searchController,
-              textAlign: TextAlign.right,
-              style: TextStyle(
-                fontSize: 15.sp,
-                fontWeight: FontWeight.w500,
-                color: AppColors.textPrimary,
-              ),
-              decoration: InputDecoration(
-                filled: false, // Prevent double background with global theme
-                hintText: 'ابحث عن اسم المريض أو رقم الهاتف...',
-                hintStyle: TextStyle(
-                  color: Colors.grey[400],
-                  fontSize: 13.sp,
-                ),
-                // Search Icon on the right (start of Arabic text)
-                suffixIcon: Container(
-                  margin: EdgeInsets.all(5.r),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [AppColors.primary, Color(0xFF4A88B8)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primary.withValues(alpha: 0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    Icons.search_rounded,
-                    color: Colors.white,
-                    size: 22.sp,
-                  ),
-                ),
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                errorBorder: InputBorder.none,
-                focusedErrorBorder: InputBorder.none,
-                contentPadding: EdgeInsets.symmetric(
-                  horizontal: 20.w,
-                  vertical: 14.h,
-                ),
-              ),
-              onChanged: (value) => setState(() {}),
+            child: Icon(
+              Icons.search_rounded,
+              color: Colors.white,
+              size: 22.sp,
             ),
           ),
-
-          if (!_showDoctorAppointments) SizedBox(width: 20.w),
-
-          // User Profile
-          _buildUserProfile(),
-        ],
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          errorBorder: InputBorder.none,
+          focusedErrorBorder: InputBorder.none,
+          contentPadding: EdgeInsets.symmetric(
+            horizontal: 16.w,
+            vertical: 14.h,
+          ),
+        ),
+        onChanged: (value) => setState(() {}),
       ),
     );
   }

@@ -10,29 +10,51 @@ from app.schemas import DoctorPatientProfileOut, PatientOut
 from app.utils.patient_profile import build_doctor_profile_map, get_doctor_profile
 
 
+def _resolve_image_url(
+    *,
+    patient_image_url,
+    user_image_url,
+    is_primary: bool,
+):
+    """Use profile photo only; account photo fallback is for primary members only."""
+    if patient_image_url is not None:
+        return patient_image_url
+    if is_primary:
+        return user_image_url
+    return None
+
+
 def resolve_patient_identity(patient: Patient, user: User | None) -> dict:
     """Return display fields for one family member; Patient fields take precedence."""
+    is_primary = bool(getattr(patient, "is_primary", True))
     return {
         "name": patient.name if patient.name is not None else (user.name if user else None),
         "gender": patient.gender if patient.gender is not None else (user.gender if user else None),
         "age": patient.age if patient.age is not None else (user.age if user else None),
         "city": patient.city if patient.city is not None else (user.city if user else None),
         "phone": user.phone if user else "",
-        "imageUrl": patient.imageUrl if patient.imageUrl is not None else (user.imageUrl if user else None),
+        "imageUrl": _resolve_image_url(
+            patient_image_url=patient.imageUrl,
+            user_image_url=user.imageUrl if user else None,
+            is_primary=is_primary,
+        ),
     }
 
 
 def resolve_patient_identity_from_docs(patient_doc: dict, user_doc: dict) -> dict:
     """Aggregation-friendly variant of resolve_patient_identity."""
+    is_primary = bool(patient_doc.get("is_primary", True))
     return {
         "name": patient_doc.get("name") if patient_doc.get("name") is not None else user_doc.get("name"),
         "gender": patient_doc.get("gender") if patient_doc.get("gender") is not None else user_doc.get("gender"),
         "age": patient_doc.get("age") if patient_doc.get("age") is not None else user_doc.get("age"),
         "city": patient_doc.get("city") if patient_doc.get("city") is not None else user_doc.get("city"),
         "phone": user_doc.get("phone", ""),
-        "imageUrl": patient_doc.get("imageUrl")
-        if patient_doc.get("imageUrl") is not None
-        else user_doc.get("imageUrl"),
+        "imageUrl": _resolve_image_url(
+            patient_image_url=patient_doc.get("imageUrl"),
+            user_image_url=user_doc.get("imageUrl"),
+            is_primary=is_primary,
+        ),
     }
 
 

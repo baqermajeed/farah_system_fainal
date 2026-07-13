@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
@@ -13,6 +14,8 @@ class UserSelectionScreen extends StatefulWidget {
 }
 
 class _UserSelectionScreenState extends State<UserSelectionScreen> {
+  static const Color _actionNavy = Color(0xFF032252);
+
   String? selectedUserType;
 
   @override
@@ -79,7 +82,7 @@ class _UserSelectionScreenState extends State<UserSelectionScreen> {
                     Text(
                       AppStrings.selectUserType,
                       style: TextStyle(
-                        fontFamily: 'Expo Arabic',
+                        fontFamily: AppFonts.family,
                         fontSize: 20.sp,
                         fontWeight: FontWeight.w600,
                         color: AppColors.textSecondary,
@@ -148,7 +151,7 @@ class _UserSelectionScreenState extends State<UserSelectionScreen> {
                       width: double.infinity,
                       height: 56.h,
                       decoration: BoxDecoration(
-                        color: AppColors.secondary,
+                        color: _actionNavy,
                         borderRadius: BorderRadius.circular(16.r),
                       ),
                       child: Stack(
@@ -158,7 +161,7 @@ class _UserSelectionScreenState extends State<UserSelectionScreen> {
                           Text(
                             AppStrings.next,
                             style: TextStyle(
-                              fontFamily: 'Expo Arabic',
+                              fontFamily: AppFonts.family,
                               fontSize: 18.sp,
                               fontWeight: FontWeight.w600,
                               color: AppColors.white,
@@ -171,15 +174,13 @@ class _UserSelectionScreenState extends State<UserSelectionScreen> {
                               width: 40.w,
                               height: 40.h,
                               decoration: BoxDecoration(
-                                color: AppColors.primaryLight.withValues(
-                                  alpha: 0.8,
-                                ),
+                                color: Colors.white,
                                 borderRadius: BorderRadius.circular(8.r),
                               ),
                               child: Center(
                                 child: Icon(
                                   Icons.arrow_forward,
-                                  color: AppColors.white,
+                                  color: _actionNavy,
                                   size: 20.sp,
                                 ),
                               ),
@@ -211,7 +212,7 @@ class _UserSelectionScreenState extends State<UserSelectionScreen> {
         padding: EdgeInsets.symmetric(vertical: 18.h, horizontal: 20.w),
         decoration: BoxDecoration(
           color: isSelected
-              ? AppColors.secondary
+              ? _actionNavy.withValues(alpha: 0.7)
               : AppColors.primaryLight.withValues(alpha: 0.4),
           borderRadius: BorderRadius.circular(16.r),
         ),
@@ -219,11 +220,11 @@ class _UserSelectionScreenState extends State<UserSelectionScreen> {
           label,
           textAlign: TextAlign.center,
           style: TextStyle(
-            fontFamily: 'Expo Arabic',
+            fontFamily: AppFonts.family,
             fontSize: 18.sp,
             fontWeight: FontWeight.w600,
             color: isSelected
-                ? AppColors.textPrimary
+                ? Colors.white
                 : AppColors.textSecondary.withValues(alpha: 0.6),
           ),
         ),

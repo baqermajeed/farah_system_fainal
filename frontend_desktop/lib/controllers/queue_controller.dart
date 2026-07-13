@@ -16,6 +16,8 @@ class QueueController extends GetxController {
   final _archiveService = QueueArchiveService();
   final RxList<QueueEntry> entries = <QueueEntry>[].obs;
   final RxInt nextNumber = 1.obs;
+  /// آخر مريض تم استدعاؤه فعلياً (للعرض حتى مع وجود أكثر من called)
+  final RxnString lastCalledId = RxnString();
   int _archiveSyncToken = 0;
 
   bool get isEmpty => activeEntries.isEmpty;
@@ -37,6 +39,14 @@ class QueueController extends GetxController {
   }
 
   QueueEntry? get currentEntry {
+    final id = lastCalledId.value;
+    if (id != null) {
+      for (final entry in entries) {
+        if (entry.id == id && entry.status == QueueEntryStatus.called) {
+          return entry;
+        }
+      }
+    }
     for (var i = entries.length - 1; i >= 0; i--) {
       if (entries[i].status == QueueEntryStatus.called) {
         return entries[i];
@@ -69,6 +79,7 @@ class QueueController extends GetxController {
     return {
       'date': _todayKey(),
       'nextNumber': nextNumber.value,
+      'lastCalledId': lastCalledId.value,
       'entries': entries.map((e) => e.toJson()).toList(),
     };
   }
@@ -79,13 +90,10 @@ class QueueController extends GetxController {
     if (date != today) {
       entries.clear();
       nextNumber.value = 1;
+      lastCalledId.value = null;
       update();
       return;
     }
-
-    nextNumber.value = data['nextNumber'] is int
-        ? data['nextNumber'] as int
-        : int.tryParse('${data['nextNumber']}') ?? 1;
 
     final parsed = <QueueEntry>[];
     final entriesRaw = data['entries'];
@@ -96,8 +104,16 @@ class QueueController extends GetxController {
         }
       }
     }
-
     entries.assignAll(parsed);
+    final remoteNext = data['nextNumber'];
+    if (remoteNext is int) {
+      nextNumber.value = remoteNext;
+    } else {
+      nextNumber.value = int.tryParse('$remoteNext') ?? nextNumber.value;
+    }
+    final remoteLast = data['lastCalledId']?.toString();
+    lastCalledId.value =
+        (remoteLast != null && remoteLast.isNotEmpty) ? remoteLast : null;
     update();
   }
 
@@ -120,6 +136,7 @@ class QueueController extends GetxController {
     if (state == null || state.date != today) {
       entries.clear();
       nextNumber.value = 1;
+      lastCalledId.value = null;
       if (state != null && state.date != today) {
         await _cacheService.clearQueueState();
       }
@@ -129,6 +146,15 @@ class QueueController extends GetxController {
 
     entries.assignAll(state.entries);
     nextNumber.value = state.nextNumber;
+    // استعادة آخر مستدعى من الحالات المحفوظة إن وُجد
+    QueueEntry? lastCalled;
+    for (var i = state.entries.length - 1; i >= 0; i--) {
+      if (state.entries[i].status == QueueEntryStatus.called) {
+        lastCalled = state.entries[i];
+        break;
+      }
+    }
+    lastCalledId.value = lastCalled?.id;
     update();
     // إعادة دفع أرشيف اليوم عند التشغيل (لا يُستخدم للعرض)
     if (entries.isNotEmpty) {
@@ -253,6 +279,9 @@ class QueueController extends GetxController {
 
   void deletePatient(String id) {
     entries.removeWhere((e) => e.id == id);
+    if (lastCalledId.value == id) {
+      lastCalledId.value = null;
+    }
     _saveToCache();
   }
 
@@ -264,18 +293,32 @@ class QueueController extends GetxController {
     }
 
     final next = waiting.first;
-    final index = entries.indexWhere((e) => e.id == next.id);
-    if (index == -1) return false;
+    return recallPatient(next.id);
+  }
 
-    entries[index] = entries[index].copyWith(status: QueueEntryStatus.called);
+  /// استدعاء مريض محدد مجدداً (أو لأول مرة من القائمة)
+  bool recallPatient(String id) {
+    final index = entries.indexWhere((e) => e.id == id);
+    if (index == -1) {
+      _showValidationError('المريض غير موجود في الطابور');
+      return false;
+    }
+
+    final entry = entries[index];
+    if (entry.status == QueueEntryStatus.done) {
+      _showValidationError('لا يمكن استدعاء مريض مكتمل');
+      return false;
+    }
+
+    entries[index] = entry.copyWith(status: QueueEntryStatus.called);
+    lastCalledId.value = entry.id;
 
     unawaited(
       QueueAnnouncementService.instance.announcePatient(
-        number: next.number,
-        name: next.name,
+        number: entry.number,
+        name: entry.name,
       ),
     );
-    // النداء محلي بالكامل — لا حاجة لأرشفة السيرفر (الأسماء والأرقام لم تتغير)
     _saveToCache(syncArchive: false);
     return true;
   }

@@ -73,6 +73,7 @@ class ApiConstants {
 
   // Reception Endpoints
   static const String receptionPatients = '/reception/patients';
+  static const String receptionFamilyByPhone = '/reception/family-by-phone';
   static const String receptionCreatePatient = '/reception/patients';
   static const String receptionAppointments = '/reception/appointments';
   static const String receptionDoctors = '/reception/doctors';

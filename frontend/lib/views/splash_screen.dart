@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/services/auth_service.dart';
@@ -80,16 +81,25 @@ class _SplashScreenState extends State<SplashScreen> {
 
       final retry = await Get.dialog<bool>(
         AlertDialog(
-          title: const Text('لا يوجد اتصال بالإنترنت'),
-          content: const Text('تحقق من اتصالك بشبكة الإنترنت ثم حاول مرة أخرى.'),
+          title: Text(
+            'لا يوجد اتصال بالإنترنت',
+            style: AppFonts.lamaSans(fontWeight: FontWeight.w700),
+          ),
+          content: Text(
+            'تحقق من اتصالك بشبكة الإنترنت ثم حاول مرة أخرى.',
+            style: AppFonts.lamaSans(),
+          ),
           actions: [
             TextButton(
               onPressed: () => Get.back(result: false),
-              child: const Text('إلغاء'),
+              child: Text('إلغاء', style: AppFonts.lamaSans()),
             ),
             TextButton(
               onPressed: () => Get.back(result: true),
-              child: const Text('إعادة المحاولة'),
+              child: Text(
+                'إعادة المحاولة',
+                style: AppFonts.lamaSans(fontWeight: FontWeight.w600),
+              ),
             ),
           ],
         ),

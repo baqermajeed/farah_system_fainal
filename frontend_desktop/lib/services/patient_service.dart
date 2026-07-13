@@ -142,6 +142,24 @@ class PatientService {
     }
   }
 
+  /// التحقق إن كان رقم الهاتف حساب عائلة موجوداً
+  Future<Map<String, dynamic>> lookupFamilyByPhone(String phoneNumber) async {
+    try {
+      final response = await _api.get(
+        ApiConstants.receptionFamilyByPhone,
+        queryParameters: {'phone': phoneNumber},
+      );
+
+      if (response.statusCode == 200 && response.data is Map) {
+        return (response.data as Map).cast<String, dynamic>();
+      }
+      return {'exists': false, 'family_member_count': 0, 'members': []};
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('فشل التحقق من رقم الهاتف: ${e.toString()}');
+    }
+  }
+
   // رفع صورة بروفايل للمريض (للاستقبال)
   // بعض نسخ الباك-إند ترجع المريض بعد الرفع، وبعضها ترجع 200 بدون جسم.
   Future<PatientModel?> uploadPatientImageForReception({

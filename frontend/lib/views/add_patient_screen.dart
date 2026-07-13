@@ -1,7 +1,8 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
@@ -18,6 +19,7 @@ import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/core/network/api_exception.dart';
 import 'package:farah_sys_final/core/utils/operation_dialog.dart';
 import 'package:farah_sys_final/controllers/patient_controller.dart';
+import 'package:farah_sys_final/core/constants/iraq_governorates.dart';
 
 class AddPatientScreen extends StatefulWidget {
   const AddPatientScreen({super.key});
@@ -46,26 +48,7 @@ class _AddPatientScreenState extends State<AddPatientScreen> {
     return RegExp(r'^07\d{9}$').hasMatch(cleaned);
   }
 
-  final List<String> cities = [
-    'بغداد',
-    'البصرة',
-    'النجف الاشرف',
-    'كربلاء',
-    'الموصل',
-    'أربيل',
-    'السليمانية',
-    'ديالى',
-    'الديوانية',
-    'المثنى',
-    'كركوك',
-     'واسط',
-     'ميسان',
-     'الأنبار',
-     'ذي قار',
-     'بابل',
-     'دهوك',
-     'صلاح الدين',
-  ];
+  List<String> get cities => IraqGovernorates.arabicNames;
 
   @override
   void initState() {
@@ -566,7 +549,7 @@ class _AddPatientScreenState extends State<AddPatientScreen> {
                                   : Text(
                                       AppStrings.addButton,
                                       style: TextStyle(
-                                        fontFamily: 'Expo Arabic',
+                                        fontFamily: AppFonts.family,
                                         fontSize: 16.sp,
                                         fontWeight: FontWeight.w600,
                                         color: AppColors.white,

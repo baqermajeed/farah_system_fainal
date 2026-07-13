@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
@@ -7,6 +8,7 @@ import 'package:farah_sys_final/core/widgets/custom_text_field.dart';
 import 'package:farah_sys_final/core/widgets/gender_selector.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
+import 'package:farah_sys_final/core/constants/iraq_governorates.dart';
 
 class PatientRegistrationScreen extends StatefulWidget {
   final String phoneNumber;
@@ -27,15 +29,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
   String? selectedGender;
   String? selectedCity;
 
-  final List<String> cities = [
-    'بغداد',
-    'البصرة',
-    'النجف الاشرف',
-    'كربلاء',
-    'الموصل',
-    'أربيل',
-    'السليمانية',
-  ];
+  List<String> get cities => IraqGovernorates.arabicNames;
 
   @override
   void dispose() {
@@ -229,7 +223,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                                   : Text(
                                       'إنشاء حساب',
                                       style: TextStyle(
-                                        fontFamily: 'Expo Arabic',
+                                        fontFamily: AppFonts.family,
                                         fontSize: 16.sp,
                                         fontWeight: FontWeight.w600,
                                         color: AppColors.white,

@@ -1844,7 +1844,19 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
               : _patientController.patients.toList();
 
           // ترتيب المرضى من الأحدث إلى الأقدم حسب الـ id
-          patientsList.sort((a, b) => b.id.compareTo(a.id));
+          patientsList.sort((a, b) {
+            final aDate = DateTime.tryParse(a.createdAt ?? '');
+            final bDate = DateTime.tryParse(b.createdAt ?? '');
+            if (aDate != null && bDate != null) {
+              final byDate = bDate.compareTo(aDate);
+              if (byDate != 0) return byDate;
+            } else if (aDate != null) {
+              return -1;
+            } else if (bDate != null) {
+              return 1;
+            }
+            return b.id.compareTo(a.id);
+          });
 
           if (isSearching || (isLoading && query.isEmpty && patientsList.isEmpty)) {
             return ListView(
@@ -2491,8 +2503,20 @@ class _DoctorHomeScreenState extends State<DoctorHomeScreen>
                     p.phoneNumber.contains(query);
               }).toList();
 
-              // ترتيب المرضى من الأحدث إلى الأقدم حسب الـ id
-              filteredPatients.sort((a, b) => b.id.compareTo(a.id));
+              // ترتيب المرضى من الأحدث إلى الأقدم حسب تاريخ إنشاء الملف
+              filteredPatients.sort((a, b) {
+                final aDate = DateTime.tryParse(a.createdAt ?? '');
+                final bDate = DateTime.tryParse(b.createdAt ?? '');
+                if (aDate != null && bDate != null) {
+                  final byDate = bDate.compareTo(aDate);
+                  if (byDate != 0) return byDate;
+                } else if (aDate != null) {
+                  return -1;
+                } else if (bDate != null) {
+                  return 1;
+                }
+                return b.id.compareTo(a.id);
+              });
 
               if (filteredPatients.isEmpty) {
                 return Center(

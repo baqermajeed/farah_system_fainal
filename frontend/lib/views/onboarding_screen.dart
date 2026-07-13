@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
@@ -14,6 +15,8 @@ class OnboardingScreen extends StatefulWidget {
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
+  static const Color _nextActionColor = Color(0xFF032252);
+
   final PageController _pageController = PageController();
   int _currentIndex = 0;
 
@@ -86,7 +89,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     child: Text(
                       AppStrings.skip,
                       style: TextStyle(
-                        fontFamily: 'Expo Arabic',
+                        fontFamily: AppFonts.family,
                         color: AppColors.textSecondary,
                         fontSize: 16.sp,
                         fontWeight: FontWeight.w600,
@@ -143,7 +146,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   TextButton.icon(
                     onPressed: _currentIndex == 0 ? null : _goBack,
                     style: TextButton.styleFrom(
-                      foregroundColor: AppColors.onboardingButton,
+                      foregroundColor: _nextActionColor,
                       padding: EdgeInsets.symmetric(
                         horizontal: 12.w,
                         vertical: 8.h,
@@ -154,17 +157,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       size: 22.sp,
                       color: _currentIndex == 0
                           ? AppColors.textHint
-                          : AppColors.onboardingButton,
+                          : _nextActionColor,
                     ),
                     label: Text(
                       AppStrings.back,
                       style: TextStyle(
-                        fontFamily: 'Expo Arabic',
+                        fontFamily: AppFonts.family,
                         fontSize: 18.sp,
                         fontWeight: FontWeight.w700,
                         color: _currentIndex == 0
                             ? AppColors.textHint
-                            : AppColors.onboardingButton,
+                            : _nextActionColor,
                       ),
                     ),
                   ),
@@ -173,7 +176,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       ? TextButton(
                           onPressed: _goNext,
                           style: TextButton.styleFrom(
-                            foregroundColor: AppColors.onboardingButton,
+                            foregroundColor: _nextActionColor,
                             padding: EdgeInsets.symmetric(
                               horizontal: 12.w,
                               vertical: 8.h,
@@ -189,17 +192,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                   child: Icon(
                                     Icons.chevron_right,
                                     size: 22.sp,
-                                    color: AppColors.onboardingButton,
+                                    color: _nextActionColor,
                                   ),
                                 ),
                                 SizedBox(width: 6.w),
                                 Text(
                                   AppStrings.start,
                                   style: TextStyle(
-                                    fontFamily: 'Expo Arabic',
+                                    fontFamily: AppFonts.family,
                                     fontSize: 18.sp,
                                     fontWeight: FontWeight.w700,
-                                    color: AppColors.onboardingButton,
+                                    color: _nextActionColor,
                                   ),
                                 ),
                               ],
@@ -209,7 +212,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       : TextButton(
                           onPressed: _goNext,
                           style: TextButton.styleFrom(
-                            foregroundColor: AppColors.onboardingButton,
+                            foregroundColor: _nextActionColor,
                             padding: EdgeInsets.symmetric(
                               horizontal: 12.w,
                               vertical: 8.h,
@@ -222,17 +225,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                 AppStrings.next,
                                 
                                 style: TextStyle(
-                                  fontFamily: 'Expo Arabic',
+                                  fontFamily: AppFonts.family,
                                   fontSize: 18.sp,
                                   fontWeight: FontWeight.w700,
-                                  color: AppColors.onboardingButton,
+                                  color: _nextActionColor,
                                 ),
                               ),
                               SizedBox(width: 8.w),
                               Icon(
                                 Icons.chevron_right,
                                 size: 22.sp,
-                                color: AppColors.onboardingButton,
+                                color: _nextActionColor,
                               ),
                             ],
                           ),
@@ -348,7 +351,7 @@ class _OnboardingSlide extends StatelessWidget {
                   title,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontFamily: 'Expo Arabic',
+                    fontFamily: AppFonts.family,
                     fontSize: 26.sp,
                     fontWeight: FontWeight.w800,
                     color: AppColors.onboardingTitle,
@@ -363,7 +366,7 @@ class _OnboardingSlide extends StatelessWidget {
                   description,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontFamily: 'Expo Arabic',
+                    fontFamily: AppFonts.family,
                     fontSize: 18.sp,
                     height: 1.6,
                     color: AppColors.textSecondary,

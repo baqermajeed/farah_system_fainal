@@ -29,6 +29,9 @@ import 'package:frontend_desktop/controllers/implant_stage_controller.dart';
 import 'package:frontend_desktop/controllers/presence_controller.dart';
 import 'package:frontend_desktop/widgets/doctor_online_indicator.dart';
 import 'package:frontend_desktop/views/queue_management_dialog.dart';
+import 'package:frontend_desktop/controllers/queue_controller.dart';
+import 'package:frontend_desktop/models/queue_entry_model.dart';
+import 'package:frontend_desktop/services/queue_ticket_print_service.dart';
 import 'package:frontend_desktop/services/working_hours_service.dart';
 import 'package:frontend_desktop/models/patient_model.dart';
 import 'package:frontend_desktop/models/appointment_model.dart';
@@ -1319,8 +1322,20 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
               ? _patientController.searchResults.toList()
               : _patientController.patients.toList();
 
-          // ترتيب المرضى من الأحدث إلى الأقدم حسب الـ id
-          patientsList.sort((a, b) => b.id.compareTo(a.id));
+          // ترتيب المرضى من الأحدث إلى الأقدم حسب تاريخ إنشاء الملف
+          patientsList.sort((a, b) {
+            final aDate = DateTime.tryParse(a.createdAt ?? '');
+            final bDate = DateTime.tryParse(b.createdAt ?? '');
+            if (aDate != null && bDate != null) {
+              final byDate = bDate.compareTo(aDate);
+              if (byDate != 0) return byDate;
+            } else if (aDate != null) {
+              return -1;
+            } else if (bDate != null) {
+              return 1;
+            }
+            return b.id.compareTo(a.id);
+          });
 
           if (isSearching ||
               (isLoading && query.isEmpty && patientsList.isEmpty)) {
@@ -2387,7 +2402,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
 
     final statusSwitch = Container(
         width: inline ? null : 120.w,
-        height: inline ? 32.h : 34.h,
+        height: inline ? null : 34.h,
         padding: EdgeInsets.symmetric(horizontal: 4.w),
         decoration: BoxDecoration(
           color: _patientStatusColor(selected).withOpacity(0.1),
@@ -2400,10 +2415,11 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
           child: DropdownButton<String>(
             value: selected,
             isExpanded: true,
+            isDense: inline,
             dropdownColor: Colors.white,
-            icon: Icon(Icons.swap_vert, size: 16.sp, color: AppColors.primary),
+            icon: Icon(Icons.swap_vert, size: 14.sp, color: AppColors.primary),
             style: TextStyle(
-              fontSize: 11.sp,
+              fontSize: inline ? 9.sp : 11.sp,
               fontWeight: FontWeight.w700,
               color: _patientStatusColor(selected),
             ),
@@ -2414,6 +2430,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                     child: Text(
                       _patientStatusLabel(status),
                       textAlign: TextAlign.center,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 )
@@ -2427,10 +2444,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
       );
 
     if (inline) {
-      return SizedBox(
-        width: 90.w,
-        child: statusSwitch,
-      );
+      return statusSwitch;
     }
 
     return Padding(
@@ -2488,12 +2502,12 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                         ),
                       ],
                     ),
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // QR Code + add-image button (left side)
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        Row(
                           children: [
+                            // QR Code (left side)
                             GestureDetector(
                               onTap: () {
                                 _showQrCodeDialog(context, patient.id);
@@ -2514,101 +2528,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                                 ),
                               ),
                             ),
-                            if (isReceptionist) ...[
-                              SizedBox(height: 6.h),
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  SizedBox(
-                                    height: 32.h,
-                                    child: ElevatedButton.icon(
-                                      onPressed: () {
-                                        _showEditPatientProfileDialog(
-                                          context,
-                                          patient,
-                                        );
-                                      },
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: AppColors.primaryLight,
-                                        padding: EdgeInsets.symmetric(
-                                          horizontal: 8.w,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            8.r,
-                                          ),
-                                        ),
-                                      ),
-                                      icon: Icon(
-                                        Icons.edit,
-                                        color: AppColors.primary,
-                                        size: 16.sp,
-                                      ),
-                                      label: FittedBox(
-                                        fit: BoxFit.scaleDown,
-                                        child: Text(
-                                          'تعديل المعلومات',
-                                          style: TextStyle(
-                                            fontSize: 11.sp,
-                                            fontWeight: FontWeight.w600,
-                                            color: AppColors.primary,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(width: 6.w),
-                                  SizedBox(
-                                    height: 32.h,
-                                    child: ElevatedButton.icon(
-                                      onPressed: () {
-                                        _showAddImageDialog(
-                                          context,
-                                          patient.id,
-                                        );
-                                      },
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: AppColors.primary,
-                                        padding: EdgeInsets.symmetric(
-                                          horizontal: 8.w,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            8.r,
-                                          ),
-                                        ),
-                                      ),
-                                      icon: Icon(
-                                        Icons.add_a_photo_outlined,
-                                        color: Colors.white,
-                                        size: 16.sp,
-                                      ),
-                                      label: FittedBox(
-                                        fit: BoxFit.scaleDown,
-                                        child: Text(
-                                          'إضافة صورة',
-                                          style: TextStyle(
-                                            fontSize: 12.sp,
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(width: 6.w),
-                                  _buildPatientStatusSwitch(
-                                    context,
-                                    patient,
-                                    inline: true,
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ],
-                        ),
-                        const Spacer(),
+                            const Spacer(),
                         // Patient Details (Text only)
                         Padding(
                           padding: EdgeInsets.symmetric(vertical: 4.h),
@@ -2774,6 +2694,164 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                           ),
                         ),
                       ],
+                        ),
+                        if (isReceptionist)
+                          Padding(
+                            padding: EdgeInsets.fromLTRB(8.w, 2.h, 8.w, 8.h),
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                final compact = constraints.maxWidth < 560;
+                                final gap = compact ? 4.w : 6.w;
+                                final btnH = compact ? 26.h : 28.h;
+                                final iconSize = compact ? 12.sp : 14.sp;
+                                final fontSize = compact ? 9.sp : 10.sp;
+                                final hPad = compact ? 4.w : 6.w;
+
+                                Widget actionBtn({
+                                  required VoidCallback onPressed,
+                                  required Color bg,
+                                  required Color fg,
+                                  required IconData icon,
+                                  required String label,
+                                }) {
+                                  return SizedBox(
+                                    height: btnH,
+                                    child: ElevatedButton(
+                                      onPressed: onPressed,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: bg,
+                                        foregroundColor: fg,
+                                        elevation: 0,
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: hPad,
+                                        ),
+                                        minimumSize: Size(0, btnH),
+                                        tapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
+                                        visualDensity: VisualDensity.compact,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(7.r),
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            icon,
+                                            size: iconSize,
+                                            color: fg,
+                                          ),
+                                          SizedBox(width: 3.w),
+                                          Flexible(
+                                            child: Text(
+                                              label,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: fontSize,
+                                                fontWeight: FontWeight.w600,
+                                                color: fg,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                }
+
+                                return Obx(() {
+                                  final queueEntry =
+                                      _findActiveQueueEntryForPatient(
+                                        patient.name,
+                                      );
+                                  final inQueue = queueEntry != null;
+
+                                  return Row(
+                                  children: [
+                                    Expanded(
+                                      child: actionBtn(
+                                        onPressed: () {
+                                          _showEditPatientProfileDialog(
+                                            context,
+                                            patient,
+                                          );
+                                        },
+                                        bg: AppColors.primaryLight,
+                                        fg: AppColors.primary,
+                                        icon: Icons.edit,
+                                        label: compact
+                                            ? 'تعديل'
+                                            : 'تعديل المعلومات',
+                                      ),
+                                    ),
+                                    SizedBox(width: gap),
+                                    Expanded(
+                                      child: actionBtn(
+                                        onPressed: () {
+                                          _showAddImageDialog(
+                                            context,
+                                            patient.id,
+                                          );
+                                        },
+                                        bg: AppColors.primary,
+                                        fg: Colors.white,
+                                        icon: Icons.add_a_photo_outlined,
+                                        label:
+                                            compact ? 'صورة' : 'إضافة صورة',
+                                      ),
+                                    ),
+                                    SizedBox(width: gap),
+                                    Expanded(
+                                      child: actionBtn(
+                                        onPressed: () =>
+                                            _addPatientToQueue(patient),
+                                        bg: const Color(0xFF2E5F7C),
+                                        fg: Colors.white,
+                                        icon: Icons.person_add_rounded,
+                                        label: compact
+                                            ? 'طابور'
+                                            : 'إضافة للطابور',
+                                      ),
+                                    ),
+                                    if (inQueue) ...[
+                                      SizedBox(width: gap),
+                                      Expanded(
+                                        child: actionBtn(
+                                          onPressed: () => _printQueueTicket(
+                                            name: queueEntry.name,
+                                            number: queueEntry.number,
+                                          ),
+                                          bg: const Color(0xFF1B7A4E),
+                                          fg: Colors.white,
+                                          icon: Icons.print_rounded,
+                                          label: compact
+                                              ? 'طباعة'
+                                              : 'طباعة الرقم',
+                                        ),
+                                      ),
+                                    ],
+                                    SizedBox(width: gap),
+                                    Expanded(
+                                      child: SizedBox(
+                                        height: btnH,
+                                        child: _buildPatientStatusSwitch(
+                                          context,
+                                          patient,
+                                          inline: true,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                                });
+                              },
+                            ),
+                          ),
+                      ],
                     ),
                   ),
 
@@ -2793,68 +2871,33 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
           if (isReceptionist)
             Padding(
               padding: EdgeInsets.all(24.w),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: double.infinity,
-                    padding: EdgeInsets.symmetric(
-                      vertical: 10.h,
-                      horizontal: 12.w,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _patientStatusColor(
-                        _effectivePatientStatus(patient),
-                      ).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12.r),
-                      border: Border.all(
-                        color: _patientStatusColor(
-                          _effectivePatientStatus(patient),
-                        ).withOpacity(0.5),
-                      ),
-                    ),
-                    child: Text(
-                      'حالة المريض: ${_patientStatusLabel(_effectivePatientStatus(patient))}',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 14.sp,
-                        fontWeight: FontWeight.w700,
-                        color: _patientStatusColor(
-                          _effectivePatientStatus(patient),
-                        ),
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: 12.h),
-                  Container(
-                    width: double.infinity,
-                    height: 56.h,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
+              child: Container(
+                width: double.infinity,
+                height: 56.h,
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  borderRadius: BorderRadius.circular(16.r),
+                ),
+                child: ElevatedButton(
+                  onPressed: () {
+                    _showSelectDoctorDialog(context, patient);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    shadowColor: Colors.transparent,
+                    shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16.r),
                     ),
-                    child: ElevatedButton(
-                      onPressed: () {
-                        _showSelectDoctorDialog(context, patient);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.transparent,
-                        shadowColor: Colors.transparent,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16.r),
-                        ),
-                      ),
-                      child: Text(
-                        'تحويل',
-                        style: TextStyle(
-                          fontSize: 16.sp,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
+                  ),
+                  child: Text(
+                    'تحويل',
+                    style: TextStyle(
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
                     ),
                   ),
-                ],
+                ),
               ),
             ),
         ],
@@ -7437,6 +7480,80 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
     );
   }
 
+  Future<void> _addPatientToQueue(PatientModel patient) async {
+    if (!Get.isRegistered<QueueController>()) {
+      Get.snackbar(
+        'تنبيه',
+        'نظام الطابور غير جاهز حالياً',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: AppColors.error,
+        colorText: AppColors.white,
+      );
+      return;
+    }
+
+    final queue = Get.find<QueueController>();
+    final assignedNumber = queue.nextNumber.value;
+    final ok = queue.addPatient(patient.name);
+    if (!ok) return;
+
+    Get.snackbar(
+      'تمت الإضافة',
+      'تمت إضافة ${patient.name} إلى الطابور برقم $assignedNumber',
+      snackPosition: SnackPosition.BOTTOM,
+      backgroundColor: AppColors.success,
+      colorText: AppColors.white,
+      duration: const Duration(seconds: 2),
+    );
+
+    await QueueTicketPrintService.showPrintPrompt(
+      name: patient.name.trim(),
+      number: assignedNumber,
+    );
+  }
+
+  QueueEntry? _findActiveQueueEntryForPatient(String patientName) {
+    if (!Get.isRegistered<QueueController>()) return null;
+    final queue = Get.find<QueueController>();
+    // قراءة قائمة الطابور حتى يعمل Obx
+    final entries = queue.entries;
+    final trimmed = patientName.trim();
+    for (final entry in entries) {
+      if (entry.status == QueueEntryStatus.done) continue;
+      if (entry.name.trim() == trimmed) return entry;
+    }
+    return null;
+  }
+
+  Future<void> _printQueueTicket({
+    required String name,
+    required int number,
+  }) async {
+    try {
+      final method = await QueueTicketPrintService.printTicket(
+        name: name.trim(),
+        number: number,
+      );
+      Get.snackbar(
+        'تمت الطباعة',
+        'تم الإرسال عبر: $method',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: AppColors.success,
+        colorText: AppColors.white,
+        duration: const Duration(seconds: 4),
+      );
+    } catch (e) {
+      Get.snackbar(
+        'تنبيه',
+        'فشلت طباعة التذكرة\n$e',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: AppColors.error,
+        colorText: AppColors.white,
+        duration: const Duration(seconds: 6),
+      );
+    }
+  }
+
   void _showSelectDoctorDialog(
     BuildContext context,
     PatientModel patient, {
@@ -8225,6 +8342,64 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
               });
 
               try {
+                // تنبيه عند إدخال رقم عائلة موجود
+                final familyLookup = await _patientService.lookupFamilyByPhone(
+                  trimmedPhone,
+                );
+                final phoneExists = familyLookup['exists'] == true;
+                if (phoneExists) {
+                  final members =
+                      (familyLookup['members'] as List?) ?? const [];
+                  final memberNames = members
+                      .map((m) {
+                        if (m is Map && m['name'] != null) {
+                          return m['name'].toString();
+                        }
+                        return null;
+                      })
+                      .whereType<String>()
+                      .where((n) => n.trim().isNotEmpty)
+                      .toList();
+                  final namesText = memberNames.isEmpty
+                      ? ''
+                      : '\n\nالأفراد الحاليون:\n• ${memberNames.join('\n• ')}';
+
+                  if (!dialogContext.mounted) return;
+                  final confirmed = await showDialog<bool>(
+                    context: dialogContext,
+                    builder: (ctx) {
+                      return Directionality(
+                        textDirection: TextDirection.rtl,
+                        child: AlertDialog(
+                          title: const Text('رقم عائلة موجود'),
+                          content: Text(
+                            'هذا رقم عائلة — راح ينضاف فرد جديد.$namesText',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(ctx).pop(false),
+                              child: const Text('إلغاء'),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.of(ctx).pop(true),
+                              child: const Text('متابعة الإضافة'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  );
+
+                  if (confirmed != true) {
+                    if (dialogContext.mounted) {
+                      setDialogState(() {
+                        _isLoading = false;
+                      });
+                    }
+                    return;
+                  }
+                }
+
                 // إضافة المريض
                 var createdPatient = await runWithOperationDialog(
                   context: dialogContext,

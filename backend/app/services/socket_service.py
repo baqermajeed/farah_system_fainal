@@ -482,6 +482,10 @@ async def emit_message_to_room(room_id: str, message_data: dict):
 
 
 def get_socket_app():
-    """Get Socket.IO ASGI app."""
-    return socketio.ASGIApp(sio, socketio_path='socket.io')
+    """Get Socket.IO ASGI app.
+
+    Mounted at /socket.io in main.py, so socketio_path must be '/' here.
+    Using 'socket.io' would expect /socket.io/socket.io/ and break clients.
+    """
+    return socketio.ASGIApp(sio, socketio_path='/')
 

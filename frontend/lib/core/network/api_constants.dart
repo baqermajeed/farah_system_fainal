@@ -129,6 +129,18 @@ class ApiConstants {
       baseUrl.replaceFirst('http://', '').replaceFirst('https://', '');
   static const String socketNamespace = '/socket.io';
 
+  /// Full origin for Socket.IO (avoids :0 port bug on some clients).
+  static String get socketOrigin {
+    final uri = Uri.parse(baseUrl);
+    final isHttps = uri.scheme == 'https';
+    final port = uri.hasPort ? uri.port : (isHttps ? 443 : 80);
+    final omitPort = (isHttps && port == 443) || (!isHttps && port == 80);
+    if (omitPort) {
+      return '${uri.scheme}://${uri.host}';
+    }
+    return '${uri.scheme}://${uri.host}:$port';
+  }
+
   // Timeout
   static const int connectionTimeout = 30000; // 30 seconds
   static const int receiveTimeout = 30000;

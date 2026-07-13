@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
@@ -20,6 +22,69 @@ class StaffDoctorAppointmentsView extends StatefulWidget {
   final bool readOnly;
   final void Function(AppointmentModel appointment)? onOpenPatient;
 
+  /// فتح مواعيد الأطباء في نافذة منبثقة (مركز الاتصالات).
+  static Future<void> showInDialog(
+    BuildContext context, {
+    required AppointmentController appointmentController,
+  }) {
+    const double dialogWidth = 980;
+    const double dialogHeight = 580;
+
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24.r),
+        ),
+        child: SizedBox(
+          width: dialogWidth.w,
+          height: dialogHeight.h,
+          child: Column(
+            children: [
+              Padding(
+                padding: EdgeInsets.fromLTRB(20.w, 16.h, 20.w, 8.h),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      icon: const Icon(Icons.close),
+                      tooltip: 'إغلاق',
+                    ),
+                    const Spacer(),
+                    Text(
+                      'مواعيد الأطباء',
+                      style: TextStyle(
+                        fontSize: 20.sp,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                    SizedBox(width: 8.w),
+                    Icon(
+                      Icons.calendar_month_outlined,
+                      color: AppColors.primary,
+                      size: 24.sp,
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 16.h),
+                  child: StaffDoctorAppointmentsView(
+                    appointmentController: appointmentController,
+                    readOnly: true,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   State<StaffDoctorAppointmentsView> createState() =>
       _StaffDoctorAppointmentsViewState();
@@ -33,10 +98,18 @@ class _StaffDoctorAppointmentsViewState extends State<StaffDoctorAppointmentsVie
 
   AppointmentController get _controller => widget.appointmentController;
 
+  List<String> get _filters => widget.readOnly
+      ? ['اليوم', 'هذا الشهر', 'تصفية مخصصة']
+      : ['اليوم', 'هذا الشهر', 'المتأخرون', 'تصفية مخصصة'];
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this, initialIndex: 1);
+    _tabController = TabController(
+      length: _filters.length,
+      vsync: this,
+      initialIndex: 1,
+    );
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
         _onTabChanged(_tabController.index);
@@ -58,21 +131,7 @@ class _StaffDoctorAppointmentsViewState extends State<StaffDoctorAppointmentsVie
   }
 
   void _onTabChanged(int index) {
-    String? filter;
-    switch (index) {
-      case 0:
-        filter = 'اليوم';
-        break;
-      case 1:
-        filter = 'هذا الشهر';
-        break;
-      case 2:
-        filter = 'المتأخرون';
-        break;
-      case 3:
-        filter = 'تصفية مخصصة';
-        break;
-    }
+    final filter = _filters[index];
     _controller.appointments.clear();
     _controller.loadDoctorAppointments(
       isInitial: false,
@@ -117,7 +176,9 @@ class _StaffDoctorAppointmentsViewState extends State<StaffDoctorAppointmentsVie
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return Directionality(
+      textDirection: ui.TextDirection.rtl,
+      child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Container(
@@ -147,27 +208,18 @@ class _StaffDoctorAppointmentsViewState extends State<StaffDoctorAppointmentsVie
             labelStyle: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold),
             unselectedLabelStyle:
                 TextStyle(fontSize: 16.sp, fontWeight: FontWeight.bold),
-            tabs: const [
-              Tab(text: 'اليوم'),
-              Tab(text: 'هذا الشهر'),
-              Tab(text: 'المتأخرون'),
-              Tab(text: 'تصفية مخصصة'),
-            ],
+            tabs: _filters.map((f) => Tab(text: f)).toList(),
           ),
         ),
         SizedBox(height: 12.h),
         Expanded(
           child: TabBarView(
             controller: _tabController,
-            children: [
-              _buildTable('اليوم'),
-              _buildTable('هذا الشهر'),
-              _buildTable('المتأخرون'),
-              _buildTable('تصفية مخصصة'),
-            ],
+            children: _filters.map(_buildTable).toList(),
           ),
         ),
       ],
+    ),
     );
   }
 
@@ -277,45 +329,25 @@ class _StaffDoctorAppointmentsViewState extends State<StaffDoctorAppointmentsVie
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
       child: Row(
         children: [
-          if (!widget.readOnly) ...[
-            SizedBox(width: 90.w),
-            SizedBox(width: 16.w),
-          ],
-          SizedBox(
-            width: 120.w,
-            child: Text(
-              'رقم الهاتف',
-              textAlign: TextAlign.center,
-              style: _headerStyle(),
-            ),
-          ),
-          SizedBox(width: 16.w),
-          SizedBox(
-            width: 120.w,
-            child: Text(
-              'الموعد',
-              textAlign: TextAlign.center,
-              style: _headerStyle(),
-            ),
-          ),
-          SizedBox(width: 16.w),
-          SizedBox(
-            width: 100.w,
-            child: Text(
-              'اسم الطبيب',
-              textAlign: TextAlign.center,
-              style: _headerStyle(),
-            ),
-          ),
-          SizedBox(width: 16.w),
-          Expanded(
-            child: Text(
-              'اسم المريض',
-              textAlign: TextAlign.right,
-              style: _headerStyle(),
-            ),
-          ),
+          _headerCell('اسم المريض'),
+          _headerCell('رقم الهاتف'),
+          _headerCell('اسم الطبيب'),
+          _headerCell('تاريخ الموعد'),
+          if (!widget.readOnly) SizedBox(width: 80.w),
         ],
+      ),
+    );
+  }
+
+  Widget _headerCell(String label) {
+    return Expanded(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 6.w),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: _headerStyle(),
+        ),
       ),
     );
   }
@@ -347,9 +379,20 @@ class _StaffDoctorAppointmentsViewState extends State<StaffDoctorAppointmentsVie
       margin: EdgeInsets.symmetric(vertical: 4.h),
       child: Row(
         children: [
-          if (!widget.readOnly) ...[
+          _dataCell(
+            appointment.patientName,
+            fontWeight: FontWeight.w600,
+          ),
+          _dataCell(appointment.patientPhone ?? '—'),
+          _dataCell(appointment.doctorName),
+          _dataCell(
+            appointmentText,
+            color: isLate ? Colors.red : AppColors.textPrimary,
+            fontWeight: isLate ? FontWeight.bold : FontWeight.normal,
+          ),
+          if (!widget.readOnly)
             SizedBox(
-              width: 90.w,
+              width: 80.w,
               height: 30.h,
               child: ElevatedButton(
                 onPressed: widget.onOpenPatient == null
@@ -366,47 +409,30 @@ class _StaffDoctorAppointmentsViewState extends State<StaffDoctorAppointmentsVie
                 child: Text('عرض', style: TextStyle(fontSize: 12.sp)),
               ),
             ),
-            SizedBox(width: 16.w),
-          ],
-          SizedBox(
-            width: 120.w,
-            child: Text(
-              appointment.patientPhone ?? '—',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13.sp),
-            ),
-          ),
-          SizedBox(width: 16.w),
-          SizedBox(
-            width: 120.w,
-            child: Text(
-              appointmentText,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 13.sp,
-                color: isLate ? Colors.red : AppColors.textPrimary,
-                fontWeight: isLate ? FontWeight.bold : FontWeight.normal,
-              ),
-            ),
-          ),
-          SizedBox(width: 16.w),
-          SizedBox(
-            width: 100.w,
-            child: Text(
-              appointment.doctorName,
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13.sp),
-            ),
-          ),
-          SizedBox(width: 16.w),
-          Expanded(
-            child: Text(
-              appointment.patientName,
-              textAlign: TextAlign.right,
-              style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600),
-            ),
-          ),
         ],
+      ),
+    );
+  }
+
+  Widget _dataCell(
+    String text, {
+    Color? color,
+    FontWeight? fontWeight,
+  }) {
+    return Expanded(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 6.w),
+        child: Text(
+          text,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 13.sp,
+            color: color ?? AppColors.textPrimary,
+            fontWeight: fontWeight ?? FontWeight.normal,
+          ),
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
+        ),
       ),
     );
   }

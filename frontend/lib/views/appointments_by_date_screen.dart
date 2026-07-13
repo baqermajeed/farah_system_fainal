@@ -1,5 +1,6 @@
-import 'dart:ui' as ui;
+﻿import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -13,7 +14,6 @@ import 'package:farah_sys_final/core/widgets/empty_state_widget.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class AppointmentsByDateScreen extends StatefulWidget {
   const AppointmentsByDateScreen({super.key});
@@ -74,8 +74,8 @@ class _AppointmentsByDateScreenState extends State<AppointmentsByDateScreen> {
 
     final baseTheme = Theme.of(context);
     final cairoTheme = baseTheme.copyWith(
-      textTheme: GoogleFonts.cairoTextTheme(baseTheme.textTheme),
-      primaryTextTheme: GoogleFonts.cairoTextTheme(baseTheme.primaryTextTheme),
+      textTheme: AppFonts.textTheme(baseTheme.textTheme),
+      primaryTextTheme: AppFonts.textTheme(baseTheme.primaryTextTheme),
     );
 
     return Theme(
@@ -96,7 +96,7 @@ class _AppointmentsByDateScreenState extends State<AppointmentsByDateScreen> {
                     child: Center(
                       child: Text(
                         'مواعيد $formattedDate',
-                        style: GoogleFonts.cairo(
+                        style: AppFonts.lamaSans(
                           fontSize: 20.sp,
                           fontWeight: FontWeight.bold,
                           color: AppColors.textPrimary,
@@ -340,7 +340,7 @@ class _AppointmentsByDateScreenState extends State<AppointmentsByDateScreen> {
               Expanded(
                 child: RichText(
                   text: TextSpan(
-                    style: GoogleFonts.cairo(
+                    style: AppFonts.lamaSans(
                       fontSize: 16.sp,
                       fontWeight: FontWeight.w600,
                       color: AppColors.textPrimary,
@@ -351,7 +351,7 @@ class _AppointmentsByDateScreenState extends State<AppointmentsByDateScreen> {
                             const TextSpan(text: 'موعد المريض "'),
                             TextSpan(
                               text: patientName,
-                              style: GoogleFonts.cairo(
+                              style: AppFonts.lamaSans(
                                 fontWeight: FontWeight.w600,
                                 color:
                                     AppColors.primary.withValues(alpha: 0.8),
@@ -360,7 +360,7 @@ class _AppointmentsByDateScreenState extends State<AppointmentsByDateScreen> {
                             const TextSpan(text: '" مع الطبيب "'),
                             TextSpan(
                               text: doctorName,
-                              style: GoogleFonts.cairo(
+                              style: AppFonts.lamaSans(
                                 fontWeight: FontWeight.w600,
                                 color:
                                     AppColors.primary.withValues(alpha: 0.8),
@@ -372,7 +372,7 @@ class _AppointmentsByDateScreenState extends State<AppointmentsByDateScreen> {
                             const TextSpan(text: 'موعد مريضك "'),
                             TextSpan(
                               text: patientName,
-                              style: GoogleFonts.cairo(
+                              style: AppFonts.lamaSans(
                                 fontWeight: FontWeight.w600,
                                 color:
                                     AppColors.primary.withValues(alpha: 0.8),
@@ -405,7 +405,7 @@ class _AppointmentsByDateScreenState extends State<AppointmentsByDateScreen> {
                       Expanded(
                         child: Text(
                           patientPhone,
-                          style: GoogleFonts.cairo(
+                          style: AppFonts.lamaSans(
                             fontSize: 13.sp,
                             fontWeight: FontWeight.w600,
                             color: AppColors.primary.withValues(alpha: 0.8),

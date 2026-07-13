@@ -481,13 +481,25 @@ class CacheService {
     }
   }
 
+  int _comparePatientsNewestFirst(PatientModel a, PatientModel b) {
+    final aDate = DateTime.tryParse(a.createdAt ?? '');
+    final bDate = DateTime.tryParse(b.createdAt ?? '');
+    if (aDate != null && bDate != null) {
+      final byDate = bDate.compareTo(aDate);
+      if (byDate != 0) return byDate;
+    } else if (aDate != null) {
+      return -1;
+    } else if (bDate != null) {
+      return 1;
+    }
+    return b.id.compareTo(a.id);
+  }
+
   /// الحصول على جميع المرضى (مرتبة حسب الأحدث أولاً)
   List<PatientModel> getAllPatients() {
     try {
       final all = _patientsBox.values.toList();
-      // ترتيب حسب ID (تنازلي) للحصول على الأحدث أولاً
-      // MongoDB ObjectIds تحتوي على timestamp، لذا الأكبر = الأحدث
-      all.sort((a, b) => b.id.compareTo(a.id));
+      all.sort(_comparePatientsNewestFirst);
       return all;
     } catch (e) {
       print('❌ [CacheService] Error getting all patients: $e');
@@ -499,8 +511,7 @@ class CacheService {
   List<PatientModel> getFirstPatients(int limit) {
     try {
       final all = _patientsBox.values.toList();
-      // ترتيب حسب ID (تنازلي) للحصول على الأحدث أولاً
-      all.sort((a, b) => b.id.compareTo(a.id));
+      all.sort(_comparePatientsNewestFirst);
       return all.take(limit).toList();
     } catch (e) {
       print('❌ [CacheService] Error getting first patients: $e');

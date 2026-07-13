@@ -1,20 +1,25 @@
 import 'dart:io';
+import 'dart:ui' as ui;
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
-import 'package:farah_sys_final/core/widgets/custom_button.dart';
-import 'package:farah_sys_final/core/widgets/custom_text_field.dart';
-import 'package:farah_sys_final/core/widgets/gender_selector.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/controllers/patient_controller.dart';
 import 'package:farah_sys_final/services/auth_service.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:farah_sys_final/core/constants/iraq_governorates.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
+
+class _EditProfileAssets {
+  static const back = 'assets/icon/backblack.png';
+}
 
 class EditPatientProfileScreen extends StatefulWidget {
   const EditPatientProfileScreen({super.key});
@@ -25,6 +30,11 @@ class EditPatientProfileScreen extends StatefulWidget {
 }
 
 class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
+  static const Color _bg = Color(0xFFF8FAFF);
+  static const Color _navy = Color(0xFF1A3263);
+  static const Color _grayText = Color(0xFF8A97A8);
+  static const Color _border = Color(0xFFE8ECF0);
+
   final AuthController _authController = Get.find<AuthController>();
   final PatientController _patientController = Get.find<PatientController>();
   final AuthService _authService = AuthService();
@@ -38,26 +48,15 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
   bool _isUploadingImage = false;
   int _imageTimestamp = DateTime.now().millisecondsSinceEpoch;
 
-  final List<String> cities = [
-    'بغداد',
-    'البصرة',
-    'النجف الاشرف',
-    'كربلاء',
-    'الموصل',
-    'أربيل',
-    'السليمانية',
-  ];
+  List<String> get cities => IraqGovernorates.arabicNames;
 
-  // خريطة للتحويل من الإنجليزية إلى العربية
-  final Map<String, String> cityMap = {
-    'Baghdad': 'بغداد',
-    'Basra': 'البصرة',
-    'Najaf': 'النجف الاشرف',
-    'Karbala': 'كربلاء',
-    'Mosul': 'الموصل',
-    'Erbil': 'أربيل',
-    'Sulaymaniyah': 'السليمانية',
-  };
+  static List<BoxShadow> get _softShadow => [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.06),
+          blurRadius: 12,
+          offset: const Offset(0, 4),
+        ),
+      ];
 
   @override
   void initState() {
@@ -68,7 +67,6 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
   }
 
   Future<void> _loadCurrentData() async {
-    // التأكد من تحميل البيانات أولاً
     if (_patientController.myProfile.value == null) {
       await _patientController.loadMyProfile();
     }
@@ -84,7 +82,6 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
       _phoneController.text = user?.phoneNumber ?? profile?.phoneNumber ?? '';
       _ageController.text = (user?.age ?? profile?.age ?? 0).toString();
 
-      // تحويل الجنس من 'male'/'female' إلى 'ذكر'/'أنثى'
       final gender = user?.gender ?? profile?.gender;
       if (gender == 'male') {
         selectedGender = AppStrings.male;
@@ -95,10 +92,10 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
       }
 
       final cityFromData = user?.city ?? profile?.city;
-      // تحويل المدينة من الإنجليزية إلى العربية إذا لزم الأمر
-      selectedCity = cityFromData != null && cityMap.containsKey(cityFromData)
-          ? cityMap[cityFromData]
-          : (cities.contains(cityFromData) ? cityFromData : null);
+      selectedCity = IraqGovernorates.toArabic(cityFromData);
+      if (selectedCity != null && !cities.contains(selectedCity)) {
+        selectedCity = null;
+      }
     });
   }
 
@@ -112,212 +109,610 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 32.h),
-          child: Column(
-            children: [
-              Row(
-                textDirection: TextDirection.ltr,
-                children: [
-                  const BackButtonWidget(),
-                  Expanded(
-                    child: Center(
-                      child: Text(
-                        'تعديل الملف الشخصي',
-                        style: TextStyle(
-                          fontSize: 20.sp,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ),
+    final baseTheme = Theme.of(context);
+    final theme = baseTheme.copyWith(
+      textTheme: AppFonts.textTheme(baseTheme.textTheme),
+      primaryTextTheme: AppFonts.textTheme(baseTheme.primaryTextTheme),
+    );
+
+    return Theme(
+      data: theme,
+      child: Scaffold(
+        backgroundColor: _bg,
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.only(bottom: 32.h),
+            child: Column(
+              children: [
+                _buildHeader(),
+                SizedBox(height: 20.h),
+                Obx(() => _buildProfileImage()),
+                SizedBox(height: 8.h),
+                Text(
+                  'اضغط على الكاميرا لتغيير الصورة',
+                  style: AppFonts.lamaSans(
+                    fontSize: 11.sp,
+                    fontWeight: FontWeight.w500,
+                    color: _grayText,
                   ),
-                  SizedBox(width: 48.w),
-                ],
-              ),
-              SizedBox(height: 32.h),
-              // Profile Image
-              Obx(() => _buildProfileImage()),
-              SizedBox(height: 32.h),
-              CustomTextField(
-                labelText: AppStrings.name,
-                hintText: 'أدخل الاسم',
-                controller: _nameController,
-              ),
-              SizedBox(height: 24.h),
-              CustomTextField(
-                labelText: AppStrings.phoneNumber,
-                hintText: '0000 000 0000',
-                controller: _phoneController,
-                keyboardType: TextInputType.phone,
-                readOnly: true, // لا يمكن تعديل رقم الهاتف
-              ),
-              SizedBox(height: 24.h),
-              CustomTextField(
-                labelText: AppStrings.age,
-                hintText: 'أدخل العمر',
-                controller: _ageController,
-                keyboardType: TextInputType.number,
-              ),
-              SizedBox(height: 24.h),
-              GenderSelector(
-                selectedGender: selectedGender,
-                onGenderChanged: (gender) {
-                  setState(() {
-                    selectedGender = gender;
-                  });
-                },
-              ),
-              SizedBox(height: 24.h),
-              // City Dropdown
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    AppStrings.governorate,
-                    style: TextStyle(
-                      fontSize: 16.sp,
-                      fontWeight: FontWeight.w500,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  SizedBox(height: 8.h),
-                  Container(
-                    width: double.infinity,
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 20.w,
-                      vertical: 16.h,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.white,
-                      borderRadius: BorderRadius.circular(16.r),
-                    ),
-                    child: DropdownButton<String>(
-                      value: selectedCity,
-                      isExpanded: true,
-                      underline: const SizedBox(),
-                      hint: Text(
-                        'اختر المحافظة',
-                        style: TextStyle(
-                          fontSize: 14.sp,
-                          color: AppColors.textHint,
-                        ),
-                      ),
-                      items: cities.map((city) {
-                        return DropdownMenuItem<String>(
-                          value: city,
-                          child: Text(
-                            city,
-                            textAlign: TextAlign.right,
-                            style: TextStyle(
-                              fontSize: 14.sp,
-                              color: AppColors.textPrimary,
+                ),
+                SizedBox(height: 24.h),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16.w),
+                  child: Column(
+                    children: [
+                      _buildFormCard(
+                        children: [
+                          _buildField(
+                            label: AppStrings.name,
+                            icon: Icons.person_outline,
+                            controller: _nameController,
+                            hint: 'أدخل الاسم',
+                          ),
+                          _fieldDivider(),
+                          _buildField(
+                            label: AppStrings.phoneNumber,
+                            icon: Icons.phone_outlined,
+                            controller: _phoneController,
+                            hint: '0000 000 0000',
+                            readOnly: true,
+                            suffix: Icon(
+                              Icons.lock_outline,
+                              size: 18.sp,
+                              color: _grayText,
                             ),
                           ),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        setState(() {
-                          selectedCity = value;
-                        });
-                      },
-                    ),
+                        ],
+                      ),
+                      SizedBox(height: 12.h),
+                      _buildFormCard(
+                        children: [
+                          _buildField(
+                            label: AppStrings.age,
+                            icon: Icons.calendar_month_outlined,
+                            controller: _ageController,
+                            hint: 'أدخل العمر',
+                            keyboardType: TextInputType.number,
+                          ),
+                          _fieldDivider(),
+                          _buildGenderSection(),
+                          _fieldDivider(),
+                          _buildCitySection(),
+                        ],
+                      ),
+                      SizedBox(height: 24.h),
+                      Obx(() => _buildSaveButton()),
+                    ],
                   ),
-                ],
-              ),
-              SizedBox(height: 48.h),
-              Obx(
-                () => CustomButton(
-                  text: 'حفظ التغييرات',
-                  onPressed: _patientController.isLoading.value
-                      ? null
-                      : () async {
-                          if (_nameController.text.isEmpty) {
-                            _showResultDialog(
-                              context,
-                              isSuccess: false,
-                              message: 'يرجى إدخال الاسم',
-                            );
-                            return;
-                          }
-
-                          try {
-                            // تحويل الجنس من 'ذكر'/'أنثى' إلى 'male'/'female'
-                            String? genderValue;
-                            if (selectedGender == AppStrings.male) {
-                              genderValue = 'male';
-                            } else if (selectedGender == AppStrings.female) {
-                              genderValue = 'female';
-                            } else {
-                              genderValue = selectedGender;
-                            }
-
-                            // تحويل المدينة من العربية إلى الإنجليزية عند الحفظ
-                            String? cityValue;
-                            if (selectedCity != null) {
-                              // البحث عن المفتاح الإنجليزي المقابل للقيمة العربية
-                              final englishCity = cityMap.entries
-                                  .firstWhere(
-                                    (entry) => entry.value == selectedCity,
-                                    orElse: () => MapEntry(selectedCity!, selectedCity!),
-                                  )
-                                  .key;
-                              cityValue = englishCity == selectedCity
-                                  ? selectedCity // إذا لم يكن في الخريطة، استخدم القيمة كما هي
-                                  : englishCity;
-                            }
-
-                            // تحديث البيانات عبر API
-                            await _patientController.updateMyProfile(
-                              name: _nameController.text,
-                              gender: genderValue,
-                              age: int.tryParse(_ageController.text),
-                              city: cityValue,
-                            );
-
-                            // العودة إلى الصفحة السابقة أولاً
-                            Get.back();
-
-                            // إظهار dialog النجاح بعد العودة
-                            Future.delayed(
-                              const Duration(milliseconds: 300),
-                              () {
-                                _showResultDialog(
-                                  Get.context!,
-                                  isSuccess: true,
-                                  message: 'تم حفظ التغييرات بنجاح',
-                                );
-                              },
-                            );
-                          } catch (e) {
-                            // العودة إلى الصفحة السابقة أولاً
-                            Get.back();
-
-                            // إظهار dialog الفشل بعد العودة
-                            Future.delayed(
-                              const Duration(milliseconds: 300),
-                              () {
-                                _showResultDialog(
-                                  Get.context!,
-                                  isSuccess: false,
-                                  message: 'فشل حفظ التغييرات: ${e.toString()}',
-                                );
-                              },
-                            );
-                          }
-                        },
-                  width: double.infinity,
-                  isLoading: _patientController.isLoading.value,
-                  backgroundColor: AppColors.primary,
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
+  }
+
+  Widget _buildHeader() {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+      child: Row(
+        textDirection: ui.TextDirection.ltr,
+        children: [
+          const BackButtonWidget(assetPath: _EditProfileAssets.back),
+          Expanded(
+            child: Column(
+              children: [
+                Text(
+                  'تعديل الملف الشخصي',
+                  style: AppFonts.lamaSans(
+                    fontSize: 20.sp,
+                    fontWeight: FontWeight.w800,
+                    color: _navy,
+                  ),
+                ),
+                SizedBox(height: 4.h),
+                Text(
+                  'حدّث بياناتك الشخصية',
+                  style: AppFonts.lamaSans(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w500,
+                    color: _grayText,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(width: 48.w),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFormCard({required List<Widget> children}) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20.r),
+        border: Border.all(color: _border),
+        boxShadow: _softShadow,
+      ),
+      child: Column(children: children),
+    );
+  }
+
+  Widget _fieldDivider() {
+    return Divider(
+      height: 1,
+      thickness: 1,
+      indent: 16.w,
+      endIndent: 16.w,
+      color: _border,
+    );
+  }
+
+  Widget _buildField({
+    required String label,
+    required IconData icon,
+    required TextEditingController controller,
+    required String hint,
+    TextInputType? keyboardType,
+    bool readOnly = false,
+    Widget? suffix,
+  }) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
+      child: Directionality(
+        textDirection: ui.TextDirection.rtl,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: _navy, size: 18.sp),
+                SizedBox(width: 8.w),
+                Text(
+                  label,
+                  style: AppFonts.lamaSans(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w600,
+                    color: _grayText,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 8.h),
+            TextField(
+              controller: controller,
+              keyboardType: keyboardType,
+              readOnly: readOnly,
+              textAlign: TextAlign.right,
+              style: AppFonts.lamaSans(
+                fontSize: 15.sp,
+                fontWeight: FontWeight.w700,
+                color: readOnly ? _grayText : _navy,
+              ),
+              decoration: InputDecoration(
+                hintText: hint,
+                hintStyle: AppFonts.lamaSans(
+                  fontSize: 14.sp,
+                  fontWeight: FontWeight.w500,
+                  color: _grayText.withValues(alpha: 0.6),
+                ),
+                suffixIcon: suffix,
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGenderSection() {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
+      child: Directionality(
+        textDirection: ui.TextDirection.rtl,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.wc_outlined, color: _navy, size: 18.sp),
+                SizedBox(width: 8.w),
+                Text(
+                  'الجنس',
+                  style: AppFonts.lamaSans(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w600,
+                    color: _grayText,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 10.h),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildGenderChip(
+                    label: AppStrings.male,
+                    isSelected: selectedGender == AppStrings.male,
+                    onTap: () => setState(() => selectedGender = AppStrings.male),
+                  ),
+                ),
+                SizedBox(width: 10.w),
+                Expanded(
+                  child: _buildGenderChip(
+                    label: AppStrings.female,
+                    isSelected: selectedGender == AppStrings.female,
+                    onTap: () =>
+                        setState(() => selectedGender = AppStrings.female),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGenderChip({
+    required String label,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: EdgeInsets.symmetric(vertical: 12.h),
+        decoration: BoxDecoration(
+          color: isSelected ? _navy : _bg,
+          borderRadius: BorderRadius.circular(12.r),
+          border: Border.all(
+            color: isSelected ? _navy : _border,
+          ),
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: AppFonts.lamaSans(
+              fontSize: 14.sp,
+              fontWeight: FontWeight.w700,
+              color: isSelected ? Colors.white : _navy,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCitySection() {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
+      child: Directionality(
+        textDirection: ui.TextDirection.rtl,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.location_on_outlined, color: _navy, size: 18.sp),
+                SizedBox(width: 8.w),
+                Text(
+                  AppStrings.governorate,
+                  style: AppFonts.lamaSans(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w600,
+                    color: _grayText,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 8.h),
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: _showCityPicker,
+                borderRadius: BorderRadius.circular(12.r),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 4.h),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          selectedCity ?? 'اختر المحافظة',
+                          style: AppFonts.lamaSans(
+                            fontSize: 15.sp,
+                            fontWeight: FontWeight.w700,
+                            color: selectedCity != null ? _navy : _grayText,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        width: 32.w,
+                        height: 32.w,
+                        decoration: BoxDecoration(
+                          color: _bg,
+                          borderRadius: BorderRadius.circular(10.r),
+                        ),
+                        child: Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          color: _navy,
+                          size: 20.sp,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showCityPicker() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return Container(
+          constraints: BoxConstraints(maxHeight: 0.72.sh),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24.r)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 24,
+                offset: const Offset(0, -4),
+              ),
+            ],
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(height: 12.h),
+                Container(
+                  width: 42.w,
+                  height: 4.h,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD8DEE8),
+                    borderRadius: BorderRadius.circular(99.r),
+                  ),
+                ),
+                SizedBox(height: 18.h),
+                Text(
+                  'اختر المحافظة',
+                  style: AppFonts.lamaSans(
+                    fontSize: 18.sp,
+                    fontWeight: FontWeight.w800,
+                    color: _navy,
+                  ),
+                ),
+                SizedBox(height: 6.h),
+                Text(
+                  'حدد المحافظة التي تقيم فيها',
+                  style: AppFonts.lamaSans(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w500,
+                    color: _grayText,
+                  ),
+                ),
+                SizedBox(height: 16.h),
+                Flexible(
+                  child: ListView.separated(
+                    padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 20.h),
+                    shrinkWrap: true,
+                    itemCount: cities.length,
+                    separatorBuilder: (_, __) => SizedBox(height: 8.h),
+                    itemBuilder: (context, index) {
+                      final city = cities[index];
+                      final isSelected = selectedCity == city;
+                      return _buildCityOption(
+                        city: city,
+                        isSelected: isSelected,
+                        onTap: () {
+                          setState(() => selectedCity = city);
+                          Navigator.pop(sheetContext);
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildCityOption({
+    required String city,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16.r),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 14.h),
+          decoration: BoxDecoration(
+            color: isSelected ? _navy : _bg,
+            borderRadius: BorderRadius.circular(16.r),
+            border: Border.all(
+              color: isSelected ? _navy : _border,
+            ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: _navy.withValues(alpha: 0.2),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Directionality(
+            textDirection: ui.TextDirection.rtl,
+            child: Row(
+              children: [
+                Container(
+                  width: 40.w,
+                  height: 40.w,
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? Colors.white.withValues(alpha: 0.15)
+                        : Colors.white,
+                    borderRadius: BorderRadius.circular(12.r),
+                  ),
+                  child: Icon(
+                    Icons.location_on_rounded,
+                    color: isSelected ? Colors.white : _navy,
+                    size: 20.sp,
+                  ),
+                ),
+                SizedBox(width: 12.w),
+                Expanded(
+                  child: Text(
+                    city,
+                    style: AppFonts.lamaSans(
+                      fontSize: 15.sp,
+                      fontWeight: FontWeight.w700,
+                      color: isSelected ? Colors.white : _navy,
+                    ),
+                  ),
+                ),
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 26.w,
+                  height: 26.w,
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? Colors.white
+                        : Colors.transparent,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: isSelected ? Colors.white : _border,
+                      width: 1.5,
+                    ),
+                  ),
+                  child: isSelected
+                      ? Icon(Icons.check_rounded, color: _navy, size: 16.sp)
+                      : null,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSaveButton() {
+    final isLoading = _patientController.isLoading.value;
+    return GestureDetector(
+      onTap: isLoading ? null : _saveProfile,
+      child: AnimatedOpacity(
+        opacity: isLoading ? 0.7 : 1,
+        duration: const Duration(milliseconds: 200),
+        child: Container(
+          width: double.infinity,
+          padding: EdgeInsets.symmetric(vertical: 16.h),
+          decoration: BoxDecoration(
+            color: _navy,
+            borderRadius: BorderRadius.circular(16.r),
+            boxShadow: _softShadow,
+          ),
+          child: Center(
+            child: isLoading
+                ? SizedBox(
+                    width: 22.w,
+                    height: 22.w,
+                    child: const CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: Colors.white,
+                    ),
+                  )
+                : Text(
+                    'حفظ التغييرات',
+                    style: AppFonts.lamaSans(
+                      fontSize: 15.sp,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _saveProfile() async {
+    if (_nameController.text.isEmpty) {
+      _showResultDialog(
+        context,
+        isSuccess: false,
+        message: 'يرجى إدخال الاسم',
+      );
+      return;
+    }
+
+    try {
+      String? genderValue;
+      if (selectedGender == AppStrings.male) {
+        genderValue = 'male';
+      } else if (selectedGender == AppStrings.female) {
+        genderValue = 'female';
+      } else {
+        genderValue = selectedGender;
+      }
+
+      final cityValue = IraqGovernorates.toEnglish(selectedCity);
+
+      await _patientController.updateMyProfile(
+        name: _nameController.text,
+        gender: genderValue,
+        age: int.tryParse(_ageController.text),
+        city: cityValue,
+      );
+
+      Get.back();
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (Get.context != null) {
+          _showResultDialog(
+            Get.context!,
+            isSuccess: true,
+            message: 'تم حفظ التغييرات بنجاح',
+          );
+        }
+      });
+    } catch (e) {
+      Get.back();
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (Get.context != null) {
+          _showResultDialog(
+            Get.context!,
+            isSuccess: false,
+            message: 'فشل حفظ التغييرات',
+          );
+        }
+      });
+    }
   }
 
   void _showResultDialog(
@@ -325,51 +720,82 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
     required bool isSuccess,
     required String message,
   }) {
-    showDialog(
+    showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (BuildContext context) {
-        return AlertDialog(
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.white,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16.r),
+            borderRadius: BorderRadius.circular(20.r),
           ),
-          title: Row(
-            children: [
-              Icon(
-                isSuccess ? Icons.check_circle : Icons.error,
-                color: isSuccess ? Colors.green : Colors.red,
-                size: 28.sp,
-              ),
-              SizedBox(width: 12.w),
-              Text(
-                isSuccess ? 'نجح' : 'فشل',
-                style: TextStyle(
-                  fontSize: 20.sp,
-                  fontWeight: FontWeight.bold,
-                  color: isSuccess ? Colors.green : Colors.red,
+          child: Padding(
+            padding: EdgeInsets.all(24.w),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 56.w,
+                  height: 56.w,
+                  decoration: BoxDecoration(
+                    color: (isSuccess
+                            ? const Color(0xFF2EAF68)
+                            : const Color(0xFFE25B5B))
+                        .withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    isSuccess ? Icons.check_rounded : Icons.close_rounded,
+                    color: isSuccess
+                        ? const Color(0xFF2EAF68)
+                        : const Color(0xFFE25B5B),
+                    size: 30.sp,
+                  ),
                 ),
-              ),
-            ],
-          ),
-          content: Text(
-            message,
-            style: TextStyle(fontSize: 16.sp, color: AppColors.textPrimary),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: Text(
-                'حسناً',
-                style: TextStyle(
-                  fontSize: 16.sp,
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.bold,
+                SizedBox(height: 16.h),
+                Text(
+                  isSuccess ? 'تم الحفظ' : 'حدث خطأ',
+                  style: AppFonts.lamaSans(
+                    fontSize: 18.sp,
+                    fontWeight: FontWeight.w800,
+                    color: _navy,
+                  ),
                 ),
-              ),
+                SizedBox(height: 8.h),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: AppFonts.lamaSans(
+                    fontSize: 13.sp,
+                    fontWeight: FontWeight.w500,
+                    color: _grayText,
+                  ),
+                ),
+                SizedBox(height: 20.h),
+                GestureDetector(
+                  onTap: () => Navigator.of(dialogContext).pop(),
+                  child: Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.symmetric(vertical: 12.h),
+                    decoration: BoxDecoration(
+                      color: _navy,
+                      borderRadius: BorderRadius.circular(12.r),
+                    ),
+                    child: Center(
+                      child: Text(
+                        'حسناً',
+                        style: AppFonts.lamaSans(
+                          fontSize: 14.sp,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         );
       },
     );
@@ -380,10 +806,8 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
       final XFile? image = await _imagePicker.pickImage(
         source: ImageSource.gallery,
       );
-
       if (image == null) return;
 
-      // Crop the image
       final croppedFile = await ImageCropper().cropImage(
         sourcePath: image.path,
         aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
@@ -397,7 +821,6 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
             toolbarWidgetColor: Colors.white,
             initAspectRatio: CropAspectRatioPreset.square,
             lockAspectRatio: true,
-            hideBottomControls: false,
           ),
           IOSUiSettings(
             title: 'تعديل الصورة',
@@ -406,51 +829,25 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
           ),
         ],
       );
-
       if (croppedFile == null) return;
 
-      setState(() {
-        _isUploadingImage = true;
-      });
+      setState(() => _isUploadingImage = true);
 
-      final imageFile = File(croppedFile.path);
-      await _authService.uploadProfileImage(imageFile);
-
-      // تحديث معلومات المستخدم
+      await _authService.uploadProfileImage(File(croppedFile.path));
       await _authController.checkLoggedInUser();
 
-      // إجبار تحديث الواجهة مع timestamp جديد لإعادة تحميل الصورة
       if (mounted) {
         setState(() {
           _imageTimestamp = DateTime.now().millisecondsSinceEpoch;
         });
-
-        Get.snackbar(
-          'نجح',
-          'تم تحديث الصورة بنجاح',
-          snackPosition: SnackPosition.TOP,
-          backgroundColor: Colors.green,
-          colorText: AppColors.white,
-          duration: const Duration(seconds: 2),
-        );
+        Get.snackbar('نجح', 'تم تحديث الصورة بنجاح');
       }
     } catch (e) {
       if (mounted) {
-        Get.snackbar(
-          'خطأ',
-          'فشل تحديث الصورة: ${e.toString()}',
-          snackPosition: SnackPosition.TOP,
-          backgroundColor: Colors.red,
-          colorText: AppColors.white,
-          duration: const Duration(seconds: 3),
-        );
+        Get.snackbar('خطأ', 'فشل تحديث الصورة');
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _isUploadingImage = false;
-        });
-      }
+      if (mounted) setState(() => _isUploadingImage = false);
     }
   }
 
@@ -458,94 +855,50 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
     final user = _authController.currentUser.value;
     final imageUrl = user?.imageUrl;
     final validImageUrl = ImageUtils.convertToValidUrl(imageUrl);
+    final hasImage =
+        validImageUrl != null && ImageUtils.isValidImageUrl(validImageUrl);
 
-    if (validImageUrl != null && ImageUtils.isValidImageUrl(validImageUrl)) {
-      // إضافة timestamp لإجبار إعادة التحميل عند التحديث
-      final imageUrlWithTimestamp = '$validImageUrl?t=$_imageTimestamp';
-
-      return Stack(
-        children: [
-          CircleAvatar(
-            radius: 60.r,
-            backgroundColor: AppColors.primaryLight,
-            child: ClipOval(
-              child: CachedNetworkImage(
-                imageUrl: imageUrlWithTimestamp,
-                fit: BoxFit.cover,
-                width: 120.w,
-                height: 120.w,
-                fadeInDuration: Duration.zero,
-                fadeOutDuration: Duration.zero,
-                placeholder: (context, url) =>
-                    Container(color: AppColors.primaryLight),
-                errorWidget: (context, url, error) =>
-                    Icon(Icons.person, size: 60.sp, color: AppColors.white),
-                memCacheWidth: 240,
-                memCacheHeight: 240,
-              ),
-            ),
+    Widget avatar;
+    if (hasImage) {
+      final url = '$validImageUrl?t=$_imageTimestamp';
+      avatar = CircleAvatar(
+        radius: 52.r,
+        backgroundColor: const Color(0xFFE8ECF0),
+        child: ClipOval(
+          child: CachedNetworkImage(
+            imageUrl: url,
+            fit: BoxFit.cover,
+            width: 104.w,
+            height: 104.w,
+            fadeInDuration: Duration.zero,
+            fadeOutDuration: Duration.zero,
+            placeholder: (context, url) =>
+                Container(color: const Color(0xFFE8ECF0)),
+            errorWidget: (context, url, error) =>
+                Icon(Icons.person, size: 48.sp, color: _grayText),
+            memCacheWidth: 220,
+            memCacheHeight: 220,
           ),
-          if (!_isUploadingImage)
-            Positioned(
-              bottom: 0,
-              right: 0,
-              child: GestureDetector(
-                onTap: _pickAndUploadImage,
-                child: Container(
-                  padding: EdgeInsets.all(8.w),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.white, width: 2),
-                  ),
-                  child: Icon(
-                    Icons.camera_alt,
-                    color: AppColors.white,
-                    size: 20.sp,
-                  ),
-                ),
-              ),
-            ),
-          if (_isUploadingImage)
-            Positioned.fill(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.7),
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CircularProgressIndicator(
-                        color: AppColors.white,
-                        strokeWidth: 3,
-                      ),
-                      SizedBox(height: 8.h),
-                      Text(
-                        'جاري التحميل...',
-                        style: TextStyle(
-                          color: AppColors.white,
-                          fontSize: 12.sp,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-        ],
+        ),
+      );
+    } else {
+      avatar = CircleAvatar(
+        radius: 52.r,
+        backgroundColor: const Color(0xFFE8ECF0),
+        child: Icon(Icons.person, size: 48.sp, color: _grayText),
       );
     }
 
     return Stack(
+      alignment: Alignment.center,
       children: [
-        CircleAvatar(
-          radius: 60.r,
-          backgroundColor: AppColors.primaryLight,
-          child: Icon(Icons.person, size: 60.sp, color: AppColors.white),
-        ),
+        avatar,
+        if (_isUploadingImage)
+          SizedBox(
+            width: 104.w,
+            height: 104.w,
+            child: const CircularProgressIndicator(strokeWidth: 2),
+          ),
         if (!_isUploadingImage)
           Positioned(
             bottom: 0,
@@ -553,45 +906,22 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
             child: GestureDetector(
               onTap: _pickAndUploadImage,
               child: Container(
-                padding: EdgeInsets.all(8.w),
+                width: 34.w,
+                height: 34.w,
                 decoration: BoxDecoration(
-                  color: AppColors.primary,
+                  color: Colors.white,
                   shape: BoxShape.circle,
-                  border: Border.all(color: AppColors.white, width: 2),
-                ),
-                child: Icon(
-                  Icons.camera_alt,
-                  color: AppColors.white,
-                  size: 20.sp,
-                ),
-              ),
-            ),
-          ),
-        if (_isUploadingImage)
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.7),
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircularProgressIndicator(
-                      color: AppColors.white,
-                      strokeWidth: 3,
-                    ),
-                    SizedBox(height: 8.h),
-                    Text(
-                      'جاري التحميل...',
-                      style: TextStyle(
-                        color: AppColors.white,
-                        fontSize: 12.sp,
-                        fontWeight: FontWeight.w500,
-                      ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.12),
+                      blurRadius: 8,
                     ),
                   ],
+                ),
+                child: Icon(
+                  Icons.camera_alt_outlined,
+                  color: _navy,
+                  size: 18.sp,
                 ),
               ),
             ),

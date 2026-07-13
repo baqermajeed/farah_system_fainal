@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:frontend_desktop/controllers/queue_controller.dart';
 import 'package:frontend_desktop/core/constants/app_colors.dart';
 import 'package:frontend_desktop/models/queue_entry_model.dart';
+import 'package:frontend_desktop/services/queue_ticket_print_service.dart';
 import 'package:frontend_desktop/views/queue_display_screen.dart';
 
 Future<void> showQueueManagementDialog(BuildContext context) {
@@ -159,7 +160,7 @@ class _QueueManagementDialogContentState
     _refresh();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     final controller = _queueController;
     if (controller == null) return;
 
@@ -171,9 +172,15 @@ class _QueueManagementDialogContentState
       return;
     }
 
+    final assignedNumber = controller.nextNumber.value;
     if (controller.addPatient(name)) {
+      final printedName = name.trim();
       _nameController.clear();
       _refresh();
+      await QueueTicketPrintService.showPrintPrompt(
+        name: printedName,
+        number: assignedNumber,
+      );
     }
   }
 
@@ -182,6 +189,40 @@ class _QueueManagementDialogContentState
       _editingId = entry.id;
       _nameController.text = entry.name;
     });
+  }
+
+  Future<void> _printEntryTicket(QueueEntry entry) async {
+    try {
+      final method = await QueueTicketPrintService.printTicket(
+        name: entry.name.trim(),
+        number: entry.number,
+      );
+      Get.snackbar(
+        'تمت الطباعة',
+        'تم الإرسال عبر: $method',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: AppColors.success,
+        colorText: AppColors.white,
+        duration: const Duration(seconds: 4),
+      );
+    } catch (e) {
+      Get.snackbar(
+        'تنبيه',
+        'فشلت طباعة التذكرة\n$e',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: AppColors.error,
+        colorText: AppColors.white,
+        duration: const Duration(seconds: 6),
+      );
+    }
+  }
+
+  void _recallEntry(QueueEntry entry) {
+    final controller = _queueController;
+    if (controller == null) return;
+    if (controller.recallPatient(entry.id)) {
+      _refresh();
+    }
   }
 
   Future<void> _confirmDelete(QueueEntry entry) async {
@@ -760,8 +801,8 @@ class _QueueManagementDialogContentState
             child: Row(
               children: [
                 _headerCell('الرقم', flex: 1),
-                _headerCell('اسم المريض', flex: 5),
-                _headerCell('إجراءات', flex: 2, align: TextAlign.center),
+                _headerCell('اسم المريض', flex: 4),
+                _headerCell('إجراءات', flex: 3, align: TextAlign.center),
               ],
             ),
           ),
@@ -848,7 +889,7 @@ class _QueueManagementDialogContentState
               child: _numberBadge(entry.number, isCalled: isCalled),
             ),
             Expanded(
-              flex: 5,
+              flex: 4,
               child: Row(
                 children: [
                   if (isCalled) ...[
@@ -876,10 +917,24 @@ class _QueueManagementDialogContentState
               ),
             ),
             Expanded(
-              flex: 2,
+              flex: 3,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
+                  _iconAction(
+                    icon: Icons.campaign_rounded,
+                    color: AppColors.success,
+                    tooltip: isCalled ? 'استدعاء مجدداً' : 'استدعاء',
+                    onTap: () => _recallEntry(entry),
+                  ),
+                  SizedBox(width: 6.w),
+                  _iconAction(
+                    icon: Icons.print_rounded,
+                    color: const Color(0xFF1B7A4E),
+                    tooltip: 'طباعة الرقم',
+                    onTap: () => _printEntryTicket(entry),
+                  ),
+                  SizedBox(width: 6.w),
                   _iconAction(
                     icon: Icons.edit_rounded,
                     color: AppColors.primary,

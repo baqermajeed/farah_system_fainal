@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
@@ -9,7 +10,6 @@ import 'package:farah_sys_final/controllers/patient_controller.dart';
 import 'package:farah_sys_final/models/patient_model.dart';
 import 'package:farah_sys_final/services/chat_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:farah_sys_final/widgets/portrait_network_image.dart';
 
 class DoctorHomeScreen extends StatefulWidget {
@@ -161,7 +161,7 @@ return Container(
                   ),
                 Text(
   'الصفحة الرئيسية',
-  style: GoogleFonts.cairo(
+  style: AppFonts.lamaSans(
     fontSize: 20.sp,
     fontWeight: FontWeight.w600,
     color: const Color(0xFF505558),
@@ -562,7 +562,7 @@ SizedBox(width: 12.w),
                   // Patient Name
                   Text(
                     patient.name.split(' ').first, // First name only
-                    style: GoogleFonts.cairo(
+                    style: AppFonts.lamaSans(
                       fontSize: 14.sp,
                       fontWeight: FontWeight.w700,
                       color: const Color(0xFF649FCC),
@@ -578,7 +578,7 @@ SizedBox(width: 12.w),
                             patient.treatmentHistory!.isNotEmpty
                         ? patient.treatmentHistory!.last
                         : 'لا يوجد',
-                    style: GoogleFonts.cairo(
+                    style: AppFonts.lamaSans(
                       fontSize: 12.sp,
                       fontWeight: FontWeight.w400,
                       color: const Color(0xFF505558),
@@ -656,7 +656,7 @@ SizedBox(width: 12.w),
                               children: [
                                 TextSpan(
                                   text: 'الاسم : ',
-                                  style: GoogleFonts.cairo(
+                                  style: AppFonts.lamaSans(
                                     fontSize: 13.sp,
                                     fontWeight: FontWeight.w600,
                                     color: const Color(0xFF505558),
@@ -664,7 +664,7 @@ SizedBox(width: 12.w),
                                 ),
                                 TextSpan(
                                   text: patient.name,
-                                  style: GoogleFonts.cairo(
+                                  style: AppFonts.lamaSans(
                                     color: AppColors.primary,
                                     fontSize: 14.sp,
                                     fontWeight: FontWeight.w600,
@@ -676,7 +676,7 @@ SizedBox(width: 12.w),
                           SizedBox(height: 2.h),
                           Text(
                             'العمر : ${patient.age} سنة',
-                            style: GoogleFonts.cairo(
+                            style: AppFonts.lamaSans(
                               fontSize: 13.sp,
                               fontWeight: FontWeight.w600,
                               color: const Color(0xFF505558),
@@ -687,7 +687,7 @@ SizedBox(width: 12.w),
                           SizedBox(height: 2.h),
                           Text(
                             'نوع العلاج : ${patient.treatmentHistory != null && patient.treatmentHistory!.isNotEmpty ? patient.treatmentHistory!.last : 'لا يوجد'}',
-                            style: GoogleFonts.cairo(
+                            style: AppFonts.lamaSans(
                               fontSize: 13.sp,
                               fontWeight: FontWeight.w600,
                               color: const Color(0xFF505558),

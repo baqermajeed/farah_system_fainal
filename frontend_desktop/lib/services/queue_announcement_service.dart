@@ -4,6 +4,13 @@ import 'dart:io';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 
+class _AnnounceRequest {
+  const _AnnounceRequest({required this.number, required this.name});
+
+  final int number;
+  final String name;
+}
+
 class QueueAnnouncementService {
   QueueAnnouncementService._();
 
@@ -12,7 +19,8 @@ class QueueAnnouncementService {
   final AudioPlayer _bellPlayer = AudioPlayer();
   final AudioPlayer _numberPlayer = AudioPlayer();
   bool _initialized = false;
-  bool _isSpeaking = false;
+  bool _processing = false;
+  final List<_AnnounceRequest> _pending = <_AnnounceRequest>[];
 
   static const List<String> _bellCandidates = [
     'audio/الجرس.mp3',
@@ -29,19 +37,16 @@ class QueueAnnouncementService {
     await _configurePlayer(_bellPlayer);
     await _configurePlayer(_numberPlayer);
     _initialized = true;
-    debugPrint('✅ [QueueAnnouncement] ready (bell + number only)');
+    debugPrint('✅ [QueueAnnouncement] ready (queued bell + number)');
   }
 
+  /// يضيف النداء للطابور — لا يتجاهل الاستدعاءات السريعة المتتالية
   Future<void> announcePatient({
     required int number,
     required String name,
   }) async {
     if (!_initialized) await init();
     if (!Platform.isWindows) return;
-    if (_isSpeaking) {
-      debugPrint('⚠️ [QueueAnnouncement] Already speaking, skipped');
-      return;
-    }
 
     final numberAsset = _numberAssetFor(number);
     if (numberAsset == null) {
@@ -49,7 +54,37 @@ class QueueAnnouncementService {
       return;
     }
 
-    _isSpeaking = true;
+    _pending.add(_AnnounceRequest(number: number, name: name));
+    debugPrint(
+      '🔔 [QueueAnnouncement] queued #$number ($name) pending=${_pending.length}',
+    );
+    await _drainQueue();
+  }
+
+  Future<void> _drainQueue() async {
+    if (_processing) return;
+    _processing = true;
+    try {
+      while (_pending.isNotEmpty) {
+        final next = _pending.removeAt(0);
+        await _speak(next);
+      }
+    } finally {
+      _processing = false;
+      // إذا أُضيف نداء أثناء finally
+      if (_pending.isNotEmpty) {
+        await _drainQueue();
+      }
+    }
+  }
+
+  Future<void> _speak(_AnnounceRequest request) async {
+    final numberAsset = _numberAssetFor(request.number);
+    if (numberAsset == null) return;
+
+    debugPrint(
+      '🔊 [QueueAnnouncement] speaking #${request.number} (${request.name})',
+    );
     try {
       final bellAsset = await _resolveBellAsset();
       if (bellAsset != null) {
@@ -58,13 +93,17 @@ class QueueAnnouncementService {
       await _prepareAssetOnPlayer(_numberPlayer, numberAsset);
 
       if (bellAsset != null) {
-        await _playPreparedPlayer(_bellPlayer, timeout: const Duration(seconds: 8));
+        await _playPreparedPlayer(
+          _bellPlayer,
+          timeout: const Duration(seconds: 8),
+        );
       }
-      await _playPreparedPlayer(_numberPlayer, timeout: const Duration(seconds: 20));
+      await _playPreparedPlayer(
+        _numberPlayer,
+        timeout: const Duration(seconds: 20),
+      );
     } catch (e) {
       debugPrint('⚠️ [QueueAnnouncement] Speak failed: $e');
-    } finally {
-      _isSpeaking = false;
     }
   }
 
@@ -91,7 +130,10 @@ class QueueAnnouncementService {
     return null;
   }
 
-  Future<void> _prepareAssetOnPlayer(AudioPlayer player, String assetPath) async {
+  Future<void> _prepareAssetOnPlayer(
+    AudioPlayer player,
+    String assetPath,
+  ) async {
     await player.stop();
     await player.setSource(AssetSource(assetPath));
     await player.setVolume(1.0);

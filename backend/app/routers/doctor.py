@@ -448,14 +448,14 @@ async def my_patients(
     pipeline.append(
         {
             "$addFields": {
-                "sort_date": {"$ifNull": ["$user_data.created_at", "$_id"]}
+                "sort_date": {"$ifNull": ["$created_at", "$_id"]}
             }
         }
     )
 
     pipeline.extend(
         [
-            {"$sort": {"sort_date": -1}},
+            {"$sort": {"sort_date": -1, "_id": -1}},
             {"$skip": skip},
             {"$limit": limit},
         ]

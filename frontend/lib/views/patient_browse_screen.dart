@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class PatientBrowseScreen extends StatelessWidget {
   const PatientBrowseScreen({super.key});
@@ -52,7 +52,7 @@ class PatientBrowseScreen extends StatelessWidget {
         centerTitle: true,
         title: Text(
           'معلومات طبية',
-          style: GoogleFonts.cairo(
+          style: AppFonts.lamaSans(
             fontSize: 20.sp,
             fontWeight: FontWeight.w600,
             color: const Color.fromARGB(255, 48, 53, 58),
@@ -130,7 +130,7 @@ class PatientBrowseScreen extends StatelessWidget {
             child: Text(
               item['text']!,
               textAlign: TextAlign.center,
-              style: GoogleFonts.cairo(
+              style: AppFonts.lamaSans(
                 fontSize: 20.sp,
                 fontWeight: FontWeight.w700,
                 color: const Color(0xFF58A0C9),

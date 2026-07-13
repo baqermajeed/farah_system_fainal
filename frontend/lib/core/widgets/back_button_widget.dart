@@ -7,20 +7,42 @@ class BackButtonWidget extends StatelessWidget {
   final VoidCallback? onTap;
   final Color? backgroundColor;
   final double? size;
+  final String? assetPath;
 
   const BackButtonWidget({
     super.key,
     this.onTap,
     this.backgroundColor,
     this.size,
+    this.assetPath,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (backgroundColor != null) {
+      return GestureDetector(
+        onTap: onTap ?? () => Get.back(),
+        child: Container(
+          width: size?.w ?? 48.w,
+          height: size?.w ?? 48.w,
+          decoration: BoxDecoration(
+            color: backgroundColor,
+            borderRadius: BorderRadius.circular(20.r),
+          ),
+          alignment: Alignment.center,
+          child: Icon(
+            Icons.arrow_back,
+            color: Colors.white,
+            size: 20.sp,
+          ),
+        ),
+      );
+    }
+
     return GestureDetector(
       onTap: onTap ?? () => Get.back(),
       child: Image.asset(
-        'assets/images/arrow-square-up.png',
+        assetPath ?? 'assets/images/arrow-square-up.png',
         width: size?.w ?? 48.w,
         height: size?.w ?? 48.w,
         fit: BoxFit.contain,

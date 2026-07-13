@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
+import 'package:farah_sys_final/core/theme/app_fonts.dart';
 
 class AppTheme {
   static ThemeData get lightTheme {
@@ -14,7 +15,7 @@ class AppTheme {
         surface: AppColors.white,
         error: AppColors.error,
       ),
-      fontFamily: 'Expo Arabic',
+      fontFamily: AppFonts.family,
       textTheme: TextTheme(
         displayLarge: TextStyle(
           fontSize: 32.sp,
@@ -74,7 +75,7 @@ class AppTheme {
           fontSize: 20.sp,
           fontWeight: FontWeight.bold,
           color: AppColors.textPrimary,
-          fontFamily: 'Expo Arabic',
+          fontFamily: AppFonts.family,
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -89,7 +90,7 @@ class AppTheme {
           textStyle: TextStyle(
             fontSize: 16.sp,
             fontWeight: FontWeight.bold,
-            fontFamily: 'Expo Arabic',
+            fontFamily: AppFonts.family,
           ),
         ),
       ),
@@ -104,7 +105,7 @@ class AppTheme {
           textStyle: TextStyle(
             fontSize: 16.sp,
             fontWeight: FontWeight.bold,
-            fontFamily: 'Expo Arabic',
+            fontFamily: AppFonts.family,
           ),
         ),
       ),

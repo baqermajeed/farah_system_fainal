@@ -1,7 +1,8 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'dart:ui' as ui;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:gal/gal.dart';
@@ -31,7 +32,6 @@ import 'package:farah_sys_final/models/doctor_model.dart';
 import 'package:farah_sys_final/models/patient_model.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:farah_sys_final/widgets/portrait_network_image.dart';
 
 // Shared shadow used in patient UI cards.
@@ -189,8 +189,8 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
   Widget build(BuildContext context) {
     final baseTheme = Theme.of(context);
     final cairoTheme = baseTheme.copyWith(
-      textTheme: GoogleFonts.cairoTextTheme(baseTheme.textTheme),
-      primaryTextTheme: GoogleFonts.cairoTextTheme(baseTheme.primaryTextTheme),
+      textTheme: AppFonts.textTheme(baseTheme.textTheme),
+      primaryTextTheme: AppFonts.textTheme(baseTheme.primaryTextTheme),
     );
 
     return Theme(
@@ -206,7 +206,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                 icon: Icon(Icons.delete, color: AppColors.white),
                 label: Text(
                   'حذف (${selectedAppointmentIds.length})',
-                  style: GoogleFonts.cairo(color: AppColors.white),
+                  style: AppFonts.lamaSans(color: AppColors.white),
                 ),
               )
             : null,
@@ -359,8 +359,8 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                   final baseTheme = Theme.of(context);
                                   final cairoTheme = baseTheme.copyWith(
                                     textTheme:
-                                        GoogleFonts.cairoTextTheme(baseTheme.textTheme),
-                                    primaryTextTheme: GoogleFonts.cairoTextTheme(
+                                        AppFonts.textTheme(baseTheme.textTheme),
+                                    primaryTextTheme: AppFonts.textTheme(
                                       baseTheme.primaryTextTheme,
                                     ),
                                   );
@@ -408,7 +408,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                                     alignment: Alignment.centerRight,
                                                     child: Text(
                                                       'الاسم : ${patient.name}',
-                                                      style: GoogleFonts.cairo(
+                                                      style: AppFonts.lamaSans(
                                                         fontSize: 14.sp,
                                                         fontWeight: FontWeight.w700,
                                                         color: const Color(0xFF649FCC),
@@ -436,7 +436,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                                                   .centerRight,
                                                               child: Text(
                                                                 'العمر : ${patient.age} سنة',
-                                                                style: GoogleFonts.cairo(
+                                                                style: AppFonts.lamaSans(
                                                                   fontSize: 12.sp,
                                                                   fontWeight: FontWeight.w600,
                                                                   color: const Color(
@@ -457,7 +457,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                                                   .centerRight,
                                                               child: Text(
                                                                 'الجنس: ${patient.gender == 'male' ? 'ذكر' : patient.gender == 'female' ? 'أنثى' : patient.gender}',
-                                                                style: GoogleFonts.cairo(
+                                                                style: AppFonts.lamaSans(
                                                                   fontSize: 12.sp,
                                                                   fontWeight: FontWeight.w600,
                                                                   color: const Color(
@@ -478,7 +478,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                                                   .centerRight,
                                                               child: Text(
                                                                 'رقم الهاتف : ${patient.phoneNumber}',
-                                                                style: GoogleFonts.cairo(
+                                                                style: AppFonts.lamaSans(
                                                                   fontSize: 12.sp,
                                                                   fontWeight: FontWeight.w600,
                                                                   color: const Color(
@@ -499,7 +499,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                                                   .centerRight,
                                                               child: Text(
                                                                 'المدينة : ${patient.city}',
-                                                                style: GoogleFonts.cairo(
+                                                                style: AppFonts.lamaSans(
                                                                   fontSize: 12.sp,
                                                                   fontWeight: FontWeight.w600,
                                                                   color: const Color(
@@ -520,7 +520,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                                                   .centerRight,
                                                               child: Text(
                                                                 'نوع العلاج : ${patient.treatmentHistory != null && patient.treatmentHistory!.isNotEmpty ? patient.treatmentHistory!.last : 'لا يوجد'}',
-                                                                style: GoogleFonts.cairo(
+                                                                style: AppFonts.lamaSans(
                                                                   fontSize: 12.sp,
                                                                   fontWeight: FontWeight.w600,
                                                                   color: const Color(
@@ -660,11 +660,11 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                 dividerColor: Colors.transparent,
                                 labelColor: const Color.fromARGB(255, 255, 255, 255),
                                 unselectedLabelColor: const Color(0xFF505558),
-                                labelStyle: GoogleFonts.cairo(
+                                labelStyle: AppFonts.lamaSans(
                                   fontSize: 16.sp,
                                   fontWeight: FontWeight.w700,
                                 ),
-                                unselectedLabelStyle: GoogleFonts.cairo(
+                                unselectedLabelStyle: AppFonts.lamaSans(
                                   fontSize: 16.sp,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -885,7 +885,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                         padding: EdgeInsets.only(bottom: 2.h), // vertical 2
                         child: Text(
                           record.notes!,
-                          style: GoogleFonts.cairo(
+                          style: AppFonts.lamaSans(
                             fontSize: 14.sp,
                             fontWeight: FontWeight.w500,
                             color: AppColors.textPrimary,
@@ -983,7 +983,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                         SizedBox(width: 4.w),
                         Text(
                           DateFormat('dd/MM/yyyy', 'ar').format(record.date),
-                          style: GoogleFonts.cairo(
+                          style: AppFonts.lamaSans(
                             fontSize: 14.sp,
                             fontWeight: FontWeight.w500,
                             color: const Color(0xFF505558),

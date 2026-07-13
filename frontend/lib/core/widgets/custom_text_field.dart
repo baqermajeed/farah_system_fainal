@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
+import 'package:farah_sys_final/core/theme/app_fonts.dart';
 
 class CustomTextField extends StatelessWidget {
   final String? hintText;
@@ -51,6 +52,7 @@ class CustomTextField extends StatelessWidget {
               textAlign: TextAlign.right,
               textDirection: TextDirection.rtl,
               style: TextStyle(
+                fontFamily: AppFonts.family,
                 fontSize: 16.sp,
                 fontWeight: FontWeight.w500,
                 color: AppColors.textPrimary,
@@ -73,6 +75,7 @@ class CustomTextField extends StatelessWidget {
           focusNode: focusNode,
           maxLength: maxLength,
           style: TextStyle(
+            fontFamily: AppFonts.family,
             fontSize: 14.sp,
             color: AppColors.textPrimary,
           ),

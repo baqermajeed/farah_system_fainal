@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
@@ -92,7 +93,7 @@ class _DoctorLoginScreenState extends State<DoctorLoginScreen> {
                     Text(
                       AppStrings.login,
                       style: TextStyle(
-                        fontFamily: 'Expo Arabic',
+                        fontFamily: AppFonts.family,
                         fontSize: 22.sp,
                         fontWeight: FontWeight.bold,
                         color: AppColors.textPrimary,
@@ -161,7 +162,7 @@ class _DoctorLoginScreenState extends State<DoctorLoginScreen> {
                                   : Text(
                                       AppStrings.login,
                                       style: TextStyle(
-                                        fontFamily: 'Expo Arabic',
+                                        fontFamily: AppFonts.family,
                                         fontSize: 16.sp,
                                         fontWeight: FontWeight.w600,
                                         color: AppColors.white,

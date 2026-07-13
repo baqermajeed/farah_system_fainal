@@ -1,4 +1,5 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
+import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
@@ -9,7 +10,6 @@ import 'package:farah_sys_final/controllers/patient_controller.dart';
 import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/models/patient_model.dart';
 import 'package:farah_sys_final/widgets/app_avatar.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class DoctorPatientsListScreen extends StatefulWidget {
   const DoctorPatientsListScreen({super.key});
@@ -250,7 +250,7 @@ class _DoctorPatientsListScreenState extends State<DoctorPatientsListScreen> {
                               children: [
                                 TextSpan(
                                   text: 'الاسم : ',
-                                  style: GoogleFonts.cairo(
+                                  style: AppFonts.lamaSans(
                                     fontSize: 13.sp,
                                     fontWeight: FontWeight.w600,
                                     color: const Color(0xFF505558),
@@ -258,7 +258,7 @@ class _DoctorPatientsListScreenState extends State<DoctorPatientsListScreen> {
                                 ),
                                 TextSpan(
                                   text: patient.name,
-                                  style: GoogleFonts.cairo(
+                                  style: AppFonts.lamaSans(
                                     color: AppColors.primary,
                                     fontSize: 14.sp,
                                     fontWeight: FontWeight.w600,
@@ -270,7 +270,7 @@ class _DoctorPatientsListScreenState extends State<DoctorPatientsListScreen> {
                           SizedBox(height: 2.h),
                           Text(
                             'العمر : ${patient.age} سنة',
-                            style: GoogleFonts.cairo(
+                            style: AppFonts.lamaSans(
                               fontSize: 13.sp,
                               fontWeight: FontWeight.w600,
                               color: const Color(0xFF505558),
@@ -283,7 +283,7 @@ class _DoctorPatientsListScreenState extends State<DoctorPatientsListScreen> {
                           SizedBox(height: 2.h),
                           Text(
                             'نوع العلاج : ${patient.treatmentHistory != null && patient.treatmentHistory!.isNotEmpty ? patient.treatmentHistory!.last : 'لا يوجد'}',
-                            style: GoogleFonts.cairo(
+                            style: AppFonts.lamaSans(
                               fontSize: 13.sp,
                               fontWeight: FontWeight.w600,
                               color: const Color(0xFF505558),

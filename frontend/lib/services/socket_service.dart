@@ -68,14 +68,14 @@ class SocketService {
       _isConnecting = true;
       print('🔄 SocketService: Connecting to Socket.IO server...');
 
-      // Connect to socket.io
-      // Socket.IO client automatically adds /socket.io to the URL
-      final socketUrl = ApiConstants.baseUrl;
-      print('🔌 SocketService: Connecting to: $socketUrl');
+      // Connect to socket.io at /socket.io on the API host.
+      final socketUrl = ApiConstants.socketOrigin;
+      print('🔌 SocketService: Connecting to: $socketUrl (path: /socket.io)');
       
       _socket = IO.io(
         socketUrl,
         IO.OptionBuilder()
+            .setPath('/socket.io')
             .setTransports(['websocket', 'polling'])
             .setAuth({'token': token})
             .setExtraHeaders({'Authorization': 'Bearer $token'})

@@ -1,4 +1,7 @@
+﻿import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -10,7 +13,11 @@ import 'package:farah_sys_final/models/appointment_model.dart';
 import 'package:farah_sys_final/core/widgets/loading_widget.dart';
 import 'package:farah_sys_final/core/widgets/empty_state_widget.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
-import 'package:google_fonts/google_fonts.dart';
+
+class _AppointmentsAssets {
+  static const dateIcon = 'assets/icon/date23.png';
+  static const back = 'assets/icon/backblack.png';
+}
 
 class PatientAppointmentsScreen extends StatelessWidget {
   const PatientAppointmentsScreen({super.key});
@@ -20,7 +27,6 @@ class PatientAppointmentsScreen extends StatelessWidget {
     final appointmentController = Get.find<AppointmentController>();
     final patientController = Get.find<PatientController>();
 
-    // Load appointments on first build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       appointmentController.loadPatientAppointments();
       patientController.loadMyDoctor();
@@ -28,122 +34,45 @@ class PatientAppointmentsScreen extends StatelessWidget {
 
     final baseTheme = Theme.of(context);
     final cairoTheme = baseTheme.copyWith(
-      textTheme: GoogleFonts.cairoTextTheme(baseTheme.textTheme),
-      primaryTextTheme: GoogleFonts.cairoTextTheme(baseTheme.primaryTextTheme),
+      textTheme: AppFonts.textTheme(baseTheme.textTheme),
+      primaryTextTheme: AppFonts.textTheme(baseTheme.primaryTextTheme),
     );
 
     return Theme(
       data: cairoTheme,
       child: Scaffold(
-        backgroundColor: const Color(0xFFF4FEFF),
+        backgroundColor: Colors.white,
         body: SafeArea(
           child: Column(
             children: [
-              // Header with light blue background
-              Container(
-                color: const Color(0xFFF4FEFF),
-                padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
-                child: Stack(
-                  children: [
-                    // Back button (moved to the right)
-                    Positioned(
-                      left: 0,
-                      top: 0,
-                      bottom: 0,
-                      child: Center(child: BackButtonWidget()),
-                    ),
-
-                    // Title and subtitle in center
-                    Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            AppStrings.appointments,
-                            style: GoogleFonts.cairo(
-                              fontSize: 24.sp,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          SizedBox(height: 4.h),
-                          Obx(() {
-                            final doctor = patientController.myDoctor.value;
-                            final doctorName =
-                                doctor != null && doctor['name'] != null
-                                    ? doctor['name']!
-                                    : 'الطبيب';
-                            return Text(
-                              'مواعيدك مع الطبيب',
-                              style: GoogleFonts.cairo(
-                                fontSize: 14.sp,
-                                color: AppColors.textSecondary,
-                              ),
-                            );
-                          }),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Appointments List
+              _buildHeader(),
               Expanded(
                 child: Obx(() {
-                  if (appointmentController.isLoading.value) {
+                  if (appointmentController.isLoading.value &&
+                      appointmentController.appointments.isEmpty) {
                     return const LoadingWidget();
                   }
 
-                  final allAppointments =
-                      appointmentController.appointments.toList();
-                  if (allAppointments.isEmpty) {
-                    return EmptyStateWidget(
+                  final appointments =
+                      _sortedAppointments(appointmentController);
+
+                  if (appointments.isEmpty) {
+                    return const EmptyStateWidget(
                       title: 'لا توجد مواعيد',
                       icon: Icons.calendar_today,
                     );
                   }
 
-                  // Sort appointments by date (newest first)
-                  allAppointments.sort((a, b) {
-                    final aDate =
-                        DateTime(a.date.year, a.date.month, a.date.day);
-                    final bDate =
-                        DateTime(b.date.year, b.date.month, b.date.day);
-                    final aTime = _parseTime(a.time);
-                    final bTime = _parseTime(b.time);
-                    final aDateTime = aDate.add(
-                      Duration(hours: aTime.hour, minutes: aTime.minute),
-                    );
-                    final bDateTime = bDate.add(
-                      Duration(hours: bTime.hour, minutes: bTime.minute),
-                    );
-                    return bDateTime.compareTo(aDateTime);
-                  });
-
-                  final now = DateTime.now();
-                  final today = DateTime(now.year, now.month, now.day);
-
-                  return ListView.builder(
+                  return ListView.separated(
                     padding: EdgeInsets.symmetric(
-                      horizontal: 24.w,
+                      horizontal: 16.w,
                       vertical: 16.h,
                     ),
-                    itemCount: allAppointments.length,
+                    itemCount: appointments.length,
+                    separatorBuilder: (_, __) => SizedBox(height: 10.h),
                     itemBuilder: (context, index) {
-                      final appointment = allAppointments[index];
-                      final appointmentDate = DateTime(
-                        appointment.date.year,
-                        appointment.date.month,
-                        appointment.date.day,
-                      );
-                      final isPast = appointmentDate.isBefore(today);
-
-                      return Padding(
-                        padding: EdgeInsets.only(bottom: 16.h),
-                        child: _buildAppointmentCard(
-                          appointment: appointment,
-                          isPast: isPast,
-                        ),
+                      return _buildAppointmentCard(
+                        appointment: appointments[index],
                       );
                     },
                   );
@@ -156,20 +85,64 @@ class PatientAppointmentsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildAppointmentCard({
-    required AppointmentModel appointment,
-    required bool isPast,
-  }) {
+  Widget _buildHeader() {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
+      child: Row(
+        textDirection: ui.TextDirection.ltr,
+        children: [
+          const BackButtonWidget(assetPath: _AppointmentsAssets.back),
+          Expanded(
+            child: Column(
+              children: [
+                Text(
+                  AppStrings.appointments,
+                  style: AppFonts.lamaSans(
+                    fontSize: 20.sp,
+                    fontWeight: FontWeight.w800,
+                    color: const Color(0xFF1E3A5F),
+                  ),
+                ),
+                SizedBox(height: 4.h),
+                Text(
+                  'جميع المواعيد مرتبة حسب التاريخ',
+                  style: AppFonts.lamaSans(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w500,
+                    color: const Color(0xFF8A97A8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(width: 48.w),
+        ],
+      ),
+    );
+  }
+
+  List<AppointmentModel> _sortedAppointments(
+    AppointmentController controller,
+  ) {
+    final upcoming = controller.getUpcomingAppointments();
+
+    final others = controller.appointments.where((appointment) {
+      return !upcoming.any((u) => u.id == appointment.id);
+    }).toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+
+    return [...upcoming, ...others];
+  }
+
+  Widget _buildAppointmentCard({required AppointmentModel appointment}) {
+    const navy = Color(0xFF1E3A5F);
+    const grayText = Color(0xFF8A97A8);
+
     final patientController = Get.find<PatientController>();
     final doctorName = appointment.doctorName.isNotEmpty
         ? appointment.doctorName
-        : (patientController.myDoctor.value?['name'] ?? 'الطبيب');
+        : (patientController.myDoctor.value?['name'] ?? 'طبيبك');
 
-    // تنسيق التاريخ
-    final dateFormat = DateFormat('dd-MM-yyyy', 'ar');
-    final formattedDate = dateFormat.format(appointment.date);
-
-    // أسماء الأيام بالعربية
     final weekDays = [
       'الأحد',
       'الاثنين',
@@ -180,169 +153,191 @@ class PatientAppointmentsScreen extends StatelessWidget {
       'السبت',
     ];
     final dayName = weekDays[appointment.date.weekday % 7];
+    final dayNumber = appointment.date.day.toString();
+    final monthYear = DateFormat('MMMM yyyy', 'ar').format(appointment.date);
 
-    // تنسيق الوقت
     final timeParts = appointment.time.split(':');
     final hour = int.tryParse(timeParts[0]) ?? 0;
     final minute = timeParts.length > 1 ? timeParts[1] : '00';
     final isPM = hour >= 12;
     final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
     final timeText = '$displayHour:$minute';
-    final periodText = isPM ? 'مساءاً' : 'صباحاً';
+    final periodText = isPM ? 'مساءً' : 'صباحاً';
+
+    final serviceText = (appointment.notes?.trim().isNotEmpty == true)
+        ? appointment.notes!.trim()
+        : (appointment.stageName?.trim().isNotEmpty == true)
+            ? appointment.stageName!.trim()
+            : 'حشوات قلع تنظيف';
 
     return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(5.w),
       decoration: BoxDecoration(
-        color: isPast ? Colors.grey[200] : AppColors.white,
-        borderRadius: BorderRadius.circular(12.r),
-        border: Border.all(
-          color: AppColors.primary.withValues(alpha: 0.3),
-          width: 1,
-        ),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20.r),
+        border: Border.all(color: const Color(0xFFE8ECF0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              // Spacing where image was (to prevent text from sticking to edge)
-              SizedBox(width: 6.w),
-              // Line 1: Doctor name text
-              RichText(
-                text: TextSpan(
-                  style: GoogleFonts.cairo(
-                    fontSize: 15.sp,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                    height: 1.5,
-                  ),
-                  children: [
-                    TextSpan(
-                      text: isPast
-                          ? 'موعدك السابق مع الدكتور "'
-                          : 'موعدك القادم مع الدكتور "',
+          Directionality(
+            textDirection: ui.TextDirection.rtl,
+            child: IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Container(
+                    width: 78.w,
+                    padding: EdgeInsets.symmetric(
+                      vertical: 14.h,
+                      horizontal: 8.w,
                     ),
-                    TextSpan(
-                      text: doctorName,
-                      style: GoogleFonts.cairo(
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.primary.withValues(alpha: 0.8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.only(
+                        topRight: Radius.circular(20.r),
                       ),
-                    ),
-                    TextSpan(text: '" هو'),
-                  ],
-                ),
-                textAlign: TextAlign.right,
-              ),
-            ],
-          ),
-          Padding(
-            padding: EdgeInsets.only(right: 10.w),
-            // Appointment Details
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(height: 12.h),
-                // Line 2: Date row - "يوم الثلاثاء المصادف" + icon + date
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  children: [
-                    Text(
-                      'يوم $dayName المصادف',
-                      style: TextStyle(
-                        fontSize: 12.sp,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-
-                    SizedBox(width: 4.w),
-                    Text(
-                      formattedDate,
-                      style: TextStyle(
-                        fontSize: 12.sp,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.primary.withValues(alpha: 0.7),
-                      ),
-                    ),
-                    SizedBox(width: 4.w),
-                    Icon(
-                      Icons.calendar_today,
-                      size: 14.sp,
-                      color: AppColors.primary.withValues(alpha: 0.7),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 8.h),
-                // Line 3: Time row - "في تمام الساعة" + blue button with time + period
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  children: [
-                    Text(
-                      'في تمام الساعة',
-                      style: TextStyle(
-                        fontSize: 12.sp,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-
-                    SizedBox(width: 8.w),
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 12.w,
-                        vertical: 6.h,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary,
-                        borderRadius: BorderRadius.circular(8.r),
-                      ),
-                      child: Text(
-                        timeText,
-                        style: TextStyle(
-                          fontSize: 14.sp,
-                          color: AppColors.white,
-                          fontWeight: FontWeight.bold,
+                      border: Border(
+                        left: BorderSide(
+                          color: AppColors.primary.withValues(alpha: 0.15),
+                          width: 1,
                         ),
                       ),
                     ),
-                    SizedBox(width: 8.w),
-                    Text(
-                      periodText,
-                      style: TextStyle(
-                        fontSize: 12.sp,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textSecondary,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          dayName,
+                          style: AppFonts.lamaSans(
+                            fontSize: 11.sp,
+                            fontWeight: FontWeight.w600,
+                            color: grayText,
+                          ),
+                        ),
+                        SizedBox(height: 4.h),
+                        Text(
+                          dayNumber,
+                          style: AppFonts.lamaSans(
+                            fontSize: 28.sp,
+                            fontWeight: FontWeight.w800,
+                            color: navy,
+                            height: 1,
+                          ),
+                        ),
+                        SizedBox(height: 4.h),
+                        Text(
+                          monthYear,
+                          textAlign: TextAlign.center,
+                          style: AppFonts.lamaSans(
+                            fontSize: 9.sp,
+                            fontWeight: FontWeight.w600,
+                            color: grayText,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 14.w,
+                        vertical: 16.h,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            'د. $doctorName',
+                            style: AppFonts.lamaSans(
+                              fontSize: 14.sp,
+                              fontWeight: FontWeight.w800,
+                              color: navy,
+                            ),
+                          ),
+                          SizedBox(height: 4.h),
+                          Text(
+                            serviceText,
+                            style: AppFonts.lamaSans(
+                              fontSize: 11.sp,
+                              fontWeight: FontWeight.w500,
+                              color: grayText,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-                ),
-              ],
+                  ),
+                  Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 14.w,
+                      vertical: 16.h,
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          timeText,
+                          style: AppFonts.lamaSans(
+                            fontSize: 18.sp,
+                            fontWeight: FontWeight.w800,
+                            color: navy,
+                          ),
+                        ),
+                        Text(
+                          periodText,
+                          style: AppFonts.lamaSans(
+                            fontSize: 11.sp,
+                            fontWeight: FontWeight.w600,
+                            color: grayText,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          SizedBox(height: 10.h),
+          Divider(
+            height: 1,
+            thickness: 1,
+            color: const Color(0xFFE8ECF0),
+          ),
           Padding(
-            padding: EdgeInsets.only(right: 10.w),
-            child: Text(
-              'الرجاء الحضور قبل الموعد بنصف ساعة',
-              textAlign: TextAlign.right,
-              style: GoogleFonts.cairo(
-                fontSize: 12.sp,
-                fontWeight: FontWeight.w600,
-                color: const Color.fromARGB(255, 71, 148, 184),
+            padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
+            child: Directionality(
+              textDirection: ui.TextDirection.rtl,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Image.asset(
+                    _AppointmentsAssets.dateIcon,
+                    width: 18.w,
+                    height: 18.w,
+                    fit: BoxFit.contain,
+                  ),
+                  SizedBox(width: 8.w),
+                  Text(
+                    'الرجاء الحضور قبل الموعد ب نصف ساعة',
+                    style: AppFonts.lamaSans(
+                      fontSize: 11.sp,
+                      fontWeight: FontWeight.w500,
+                      color: grayText,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
         ],
       ),
     );
-  }
-
-  TimeOfDay _parseTime(String time) {
-    final parts = time.split(':');
-    final hour = int.tryParse(parts[0]) ?? 0;
-    final minute = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
-    return TimeOfDay(hour: hour, minute: minute);
   }
 }

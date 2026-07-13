@@ -1,10 +1,15 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
+
+class _OtpAssets {
+  static const back = 'assets/icon/backblack.png';
+}
 
 class OtpVerificationScreen extends StatefulWidget {
   final String phoneNumber;
@@ -19,6 +24,8 @@ class OtpVerificationScreen extends StatefulWidget {
 }
 
 class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
+  static const Color _otpNumberColor = Color(0xFF032252);
+
   final AuthController _authController = Get.find<AuthController>();
   static const int _otpLength = 6;
   final List<TextEditingController> _otpControllers =
@@ -59,6 +66,14 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     final minutes = seconds ~/ 60;
     final secs = seconds % 60;
     return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+  }
+
+  void _clearOtpFields() {
+    for (final controller in _otpControllers) {
+      controller.clear();
+    }
+    _otpFocusNodes.first.requestFocus();
+    setState(() {});
   }
 
   void _onOtpChanged(int index, String value) {
@@ -161,10 +176,10 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                           Text(
                             _formatTime(_remainingSeconds),
                             style: TextStyle(
-                              fontFamily: 'Expo Arabic',
+                              fontFamily: AppFonts.family,
                               fontSize: 48.sp,
                               fontWeight: FontWeight.bold,
-                              color: AppColors.textPrimary,
+                              color: _otpNumberColor,
                             ),
                           ),
                           SizedBox(height: 16.h),
@@ -174,7 +189,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                             textAlign: TextAlign.center,
                             textDirection: TextDirection.rtl,
                             style: TextStyle(
-                              fontFamily: 'Expo Arabic',
+                              fontFamily: AppFonts.family,
                               fontSize: 16.sp,
                               color: AppColors.textSecondary,
                             ),
@@ -213,9 +228,14 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                                       showCursor: false,
                                       enableInteractiveSelection: false,
                                       style: TextStyle(
+                                        fontFamily: AppFonts.family,
                                         fontSize: 22.sp,
                                         fontWeight: FontWeight.bold,
-                                        color: AppColors.textPrimary,
+                                        color: _otpControllers[reversedIndex]
+                                                .text
+                                                .isNotEmpty
+                                            ? Colors.white
+                                            : _otpNumberColor,
                                       ),
                                       decoration: InputDecoration(
                                         counterText: '',
@@ -224,7 +244,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                                             _otpControllers[reversedIndex]
                                                     .text
                                                     .isNotEmpty
-                                                ? AppColors.secondary
+                                                ? _otpNumberColor
                                                 : Colors.transparent,
                                         contentPadding: EdgeInsets.zero,
                                         isDense: true,
@@ -236,7 +256,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                                                 _otpControllers[reversedIndex]
                                                         .text
                                                         .isNotEmpty
-                                                    ? AppColors.secondary
+                                                    ? _otpNumberColor
                                                     : AppColors.primaryLight
                                                         .withValues(alpha: 0.5),
                                             width: 2,
@@ -250,7 +270,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                                                 _otpControllers[reversedIndex]
                                                         .text
                                                         .isNotEmpty
-                                                    ? AppColors.secondary
+                                                    ? _otpNumberColor
                                                     : AppColors.primaryLight
                                                         .withValues(alpha: 0.5),
                                             width: 2,
@@ -260,7 +280,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                                           borderRadius:
                                               BorderRadius.circular(12.r),
                                           borderSide: BorderSide(
-                                            color: AppColors.secondary,
+                                            color: _otpNumberColor,
                                             width: 2,
                                           ),
                                         ),
@@ -287,7 +307,8 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                           GestureDetector(
                             onTap: _remainingSeconds == 0
                                 ? () async {
-                                    _startTimer(); // Start timer immediately
+                                    _clearOtpFields();
+                                    _startTimer();
                                     await _authController.requestOtp(widget.phoneNumber);
                                   }
                                 : null,
@@ -296,10 +317,10 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                               textAlign: TextAlign.center,
                               textDirection: TextDirection.rtl,
                               style: TextStyle(
-                                fontFamily: 'Expo Arabic',
+                                fontFamily: AppFonts.family,
                                 fontSize: 16.sp,
                                 color: _remainingSeconds == 0
-                                    ? AppColors.secondary
+                                    ? _otpNumberColor
                                     : AppColors.textSecondary.withValues(alpha: 0.5),
                                 fontWeight: FontWeight.w500,
                               ),
@@ -358,7 +379,11 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
               ],
             ),
             // Back button
-            Positioned(top: 16.h, left: 16, child: BackButtonWidget()),
+            Positioned(
+              top: 16.h,
+              left: 16,
+              child: const BackButtonWidget(assetPath: _OtpAssets.back),
+            ),
           ],
         ),
       ),
@@ -382,9 +407,10 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
             child: Text(
               number,
               style: TextStyle(
+                fontFamily: AppFonts.family,
                 fontSize: 28.sp,
                 fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
+                color: _otpNumberColor,
               ),
             ),
           ),

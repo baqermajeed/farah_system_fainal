@@ -57,8 +57,7 @@ async def list_patients(
     search: Optional[str] = Query(None, description="بحث في اسم المريض أو رقم الهاتف"),
 ):
     """يعرض جميع المرضى مع بياناتهم الأساسية مرتبة حسب الأحدث أولاً."""
-    # جلب جميع المرضى مع المستخدمين المرتبطين بهم
-    # نستخدم aggregation pipeline لترتيب حسب created_at من User (الأحدث أولاً)
+    # ترتيب حسب تاريخ إنشاء ملف المريض (فرد العائلة)، وليس تاريخ حساب الهاتف
     
     pipeline = [
         {
@@ -93,7 +92,12 @@ async def list_patients(
     # إضافة الترتيب والـ pagination
     pipeline.extend([
         {
-            "$sort": {"user_data.created_at": -1}
+            "$addFields": {
+                "sort_date": {"$ifNull": ["$created_at", "$_id"]}
+            }
+        },
+        {
+            "$sort": {"sort_date": -1, "_id": -1}
         },
         {
             "$skip": skip
@@ -207,6 +211,46 @@ async def assign_patient(patient_id: str = Query(...), doctor_ids: List[str] = B
     from app.services.patient_service import assign_patient_doctors
     p = await assign_patient_doctors(patient_id=patient_id, doctor_ids=doctor_ids, assigned_by_user_id=str(current.id))
     return {"ok": True, "patient_id": str(p.id), "doctor_ids": [str(did) for did in p.doctor_ids]}
+
+@router.get("/family-by-phone")
+async def lookup_family_by_phone(
+    phone: str = Query(..., description="رقم هاتف العائلة"),
+):
+    """التحقق إن كان رقم الهاتف حساب عائلة موجوداً مع أسماء الأفراد."""
+    phone = phone.strip()
+    if not PHONE_PATTERN.match(phone):
+        raise HTTPException(
+            status_code=400,
+            detail="رقم الهاتف يجب أن يكون 11 رقم ويبدأ بـ 07",
+        )
+
+    existing_user = await User.find_one(User.phone == phone)
+    if not existing_user or existing_user.role != Role.PATIENT:
+        return {
+            "exists": False,
+            "family_member_count": 0,
+            "members": [],
+        }
+
+    patients = await Patient.find(Patient.user_id == existing_user.id).to_list()
+    members = []
+    for p in patients:
+        identity = build_patient_out(p, existing_user)
+        members.append(
+            {
+                "id": identity.id,
+                "name": identity.name,
+                "is_primary": identity.is_primary,
+                "relationship": identity.relationship,
+            }
+        )
+
+    return {
+        "exists": True,
+        "family_member_count": len(members),
+        "members": members,
+    }
+
 
 @router.post("/patients", response_model=PatientOut)
 async def create_patient_reception(payload: PatientCreate):

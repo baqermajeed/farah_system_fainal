@@ -1,5 +1,6 @@
-import 'dart:ui' as ui;
+﻿import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
@@ -12,7 +13,6 @@ import 'package:farah_sys_final/services/chat_service.dart';
 import 'package:farah_sys_final/core/network/api_exception.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class DoctorChatsScreen extends StatefulWidget {
   const DoctorChatsScreen({super.key});
@@ -50,8 +50,8 @@ class _DoctorChatsScreenState extends State<DoctorChatsScreen> {
   Widget build(BuildContext context) {
     final baseTheme = Theme.of(context);
     final cairoTheme = baseTheme.copyWith(
-      textTheme: GoogleFonts.cairoTextTheme(baseTheme.textTheme),
-      primaryTextTheme: GoogleFonts.cairoTextTheme(baseTheme.primaryTextTheme),
+      textTheme: AppFonts.textTheme(baseTheme.textTheme),
+      primaryTextTheme: AppFonts.textTheme(baseTheme.primaryTextTheme),
     );
 
     return Theme(
@@ -77,7 +77,7 @@ class _DoctorChatsScreenState extends State<DoctorChatsScreen> {
                   textDirection: ui.TextDirection.rtl,
                   child: Text(
                     'المحادثات',
-                    style: GoogleFonts.cairo(
+                    style: AppFonts.lamaSans(
                       fontSize: 22.sp,
                       fontWeight: FontWeight.w700,
                       color: AppColors.textPrimary,
@@ -280,7 +280,7 @@ class _DoctorChatsScreenState extends State<DoctorChatsScreen> {
                                 Expanded(
                                   child: Text(
                                     name,
-                                    style: GoogleFonts.cairo(
+                                    style: AppFonts.lamaSans(
                                       fontSize: 14.sp,
                                       fontWeight: FontWeight.w700,
                                       color: AppColors.textPrimary,
@@ -292,7 +292,7 @@ class _DoctorChatsScreenState extends State<DoctorChatsScreen> {
                                   SizedBox(width: 8.w),
                                   Text(
                                     timeText,
-                                    style: GoogleFonts.cairo(
+                                    style: AppFonts.lamaSans(
                                       fontSize: 12.sp,
                                       color: AppColors.textSecondary,
                                     ),
@@ -303,7 +303,7 @@ class _DoctorChatsScreenState extends State<DoctorChatsScreen> {
                             SizedBox(height: 6.h),
                             Text(
                               last,
-                              style: GoogleFonts.cairo(
+                              style: AppFonts.lamaSans(
                                 fontSize: 16.sp,
                                 color: AppColors.textSecondary,
                               ),
@@ -333,7 +333,7 @@ class _DoctorChatsScreenState extends State<DoctorChatsScreen> {
                               child: Center(
                                 child: Text(
                                   '$unread',
-                                  style: GoogleFonts.cairo(
+                                  style: AppFonts.lamaSans(
                                     fontSize: 14.sp,
                                     fontWeight: FontWeight.w900,
                                     color: Colors.white,

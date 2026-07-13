@@ -64,6 +64,7 @@ dependencies:
   window_manager: ^0.5.1
   audioplayers: ^6.1.0
   socket_io_client: ^3.0.2
+  windows_printer: ^0.2.1
 
 dev_dependencies:
   flutter_test:
@@ -87,4 +88,5 @@ flutter:
     - assets/images/dental/
     - assets/splash/
     - assets/audio/
+    - assets/fonts/
 

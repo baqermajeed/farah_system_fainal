@@ -123,6 +123,7 @@ flutter:
   assets:
     - assets/images/
     - assets/splash/
+    - assets/icon/
     # - assets/fonts/
     
 
@@ -138,9 +139,18 @@ flutter:
   # list giving the asset and other descriptors for the font. For
   # example:
   fonts:
-    - family: Expo Arabic
+    - family: Lama Sans
       fonts:
-        - asset: assets/font/ExpoArabic-Book.ttf
+        - asset: assets/font/LamaSans-Light.otf
+          weight: 300
+        - asset: assets/font/LamaSans-Regular.otf
+          weight: 400
+        - asset: assets/font/LamaSans-SemiBold.otf
+          weight: 600
+        - asset: assets/font/LamaSans-Bold.otf
+          weight: 700
+        - asset: assets/font/LamaSans-ExtraBold.otf
+          weight: 800
 # Launcher icon configuration
 flutter_icons:
   android: true

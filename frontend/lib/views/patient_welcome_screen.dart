@@ -1,5 +1,6 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
@@ -7,7 +8,6 @@ import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/controllers/patient_controller.dart';
 import 'package:farah_sys_final/views/patient_browse_screen.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class PatientWelcomeScreen extends StatefulWidget {
   const PatientWelcomeScreen({super.key});
@@ -56,7 +56,7 @@ class _PatientWelcomeScreenState extends State<PatientWelcomeScreen> {
   @override
   Widget build(BuildContext context) {
     final userName = _authController.currentUser.value?.name ?? 'المريض';
-    final messageStyle = GoogleFonts.cairo(
+    final messageStyle = AppFonts.lamaSans(
       fontSize: 16.sp,
       fontWeight: FontWeight.bold,
       height: 1.6,
@@ -183,7 +183,7 @@ class _PatientWelcomeScreenState extends State<PatientWelcomeScreen> {
               Text(
                 'حتى يتم تحويلك الى الطبيب تصفح بعض المعلومات الطبية حول الاسنان 🌚👀 ' ,
                 textAlign: TextAlign.center,
-                style: GoogleFonts.cairo(
+                style: AppFonts.lamaSans(
                   fontSize: 14.sp,
                   fontWeight: FontWeight.w600,
                   color: const Color(0xFF6C9FB7),
