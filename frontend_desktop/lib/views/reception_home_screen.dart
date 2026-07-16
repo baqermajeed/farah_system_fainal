@@ -8369,7 +8369,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                     context: dialogContext,
                     builder: (ctx) {
                       return Directionality(
-                        textDirection: TextDirection.rtl,
+                        textDirection: ui.TextDirection.rtl,
                         child: AlertDialog(
                           title: const Text('رقم عائلة موجود'),
                           content: Text(
@@ -9962,6 +9962,17 @@ class _SelectDoctorDialogState extends State<_SelectDoctorDialog> {
   Future<void> _saveSelection() async {
     if (_isSaving) return;
 
+    if (_selectedDoctorIds.isEmpty) {
+      Get.snackbar(
+        'تنبيه',
+        'اختر طبيباً واحداً على الأقل للتحويل',
+        snackPosition: SnackPosition.TOP,
+        backgroundColor: AppColors.warning,
+        colorText: Colors.white,
+      );
+      return;
+    }
+
     setState(() {
       _isSaving = true;
     });
@@ -9972,19 +9983,17 @@ class _SelectDoctorDialogState extends State<_SelectDoctorDialog> {
         _selectedDoctorIds.toList(),
       );
 
-      // Close dialog
       if (mounted) {
         Navigator.of(context).pop();
         await Future.delayed(const Duration(milliseconds: 100));
 
-        // Call onSaved callback to reload data
         widget.onSaved();
 
         Get.snackbar(
           'نجح',
-          'تم ربط المريض بالأطباء بنجاح',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: AppColors.primary,
+          'تم تحويل المريض بنجاح',
+          snackPosition: SnackPosition.TOP,
+          backgroundColor: AppColors.success,
           colorText: Colors.white,
         );
       }
@@ -9995,8 +10004,8 @@ class _SelectDoctorDialogState extends State<_SelectDoctorDialog> {
       if (mounted) {
         Get.snackbar(
           'خطأ',
-          'فشل ربط المريض بالأطباء',
-          snackPosition: SnackPosition.BOTTOM,
+          'فشل تحويل المريض للأطباء',
+          snackPosition: SnackPosition.TOP,
           backgroundColor: Colors.red,
           colorText: Colors.white,
         );
@@ -10004,252 +10013,427 @@ class _SelectDoctorDialogState extends State<_SelectDoctorDialog> {
     }
   }
 
+  Widget _buildDoctorAvatar(DoctorModel doctor, {required bool isSelected}) {
+    final imageUrl = ImageUtils.convertToValidUrl(doctor.imageUrl);
+    final hasImage =
+        imageUrl != null && ImageUtils.isValidImageUrl(imageUrl);
+    final name = doctor.name?.trim() ?? '';
+    final initial = name.isNotEmpty ? name.substring(0, 1) : 'ط';
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          width: 48.w,
+          height: 48.w,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppColors.primaryLight,
+            border: Border.all(
+              color: isSelected ? AppColors.primary : Colors.white,
+              width: 2,
+            ),
+            image: hasImage
+                ? DecorationImage(
+                    image: NetworkImage(imageUrl),
+                    fit: BoxFit.cover,
+                  )
+                : null,
+          ),
+          child: hasImage
+              ? null
+              : Center(
+                  child: Text(
+                    initial,
+                    style: TextStyle(
+                      fontSize: 18.sp,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ),
+        ),
+        Positioned(
+          bottom: 0,
+          left: 0,
+          child: DoctorOnlineIndicator(userId: doctor.userId, size: 12.r),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDoctorCard(DoctorModel doctor) {
+    final isSelected = _selectedDoctorIds.contains(doctor.id);
+    final hasPresence = Get.isRegistered<PresenceController>();
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _toggleDoctorSelection(doctor.id),
+        borderRadius: BorderRadius.circular(14.r),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? AppColors.primary.withOpacity(0.08)
+                : AppColors.cardBackground,
+            borderRadius: BorderRadius.circular(14.r),
+            border: Border.all(
+              color: isSelected ? AppColors.primary : AppColors.divider,
+              width: isSelected ? 2 : 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: 26.w,
+                height: 26.w,
+                decoration: BoxDecoration(
+                  color: isSelected ? AppColors.primary : Colors.transparent,
+                  borderRadius: BorderRadius.circular(8.r),
+                  border: Border.all(
+                    color: isSelected
+                        ? AppColors.primary
+                        : AppColors.textHint,
+                    width: 1.8,
+                  ),
+                ),
+                child: isSelected
+                    ? Icon(Icons.check, size: 16.sp, color: Colors.white)
+                    : null,
+              ),
+              SizedBox(width: 12.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      doctor.name?.trim().isNotEmpty == true
+                          ? doctor.name!
+                          : 'طبيب',
+                      style: TextStyle(
+                        fontSize: 15.sp,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                        height: 1.25,
+                      ),
+                      textAlign: TextAlign.right,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    SizedBox(height: 4.h),
+                    if (hasPresence)
+                      Obx(() {
+                        final online = Get.find<PresenceController>()
+                            .isDoctorOnline(doctor.userId);
+                        return Text(
+                          online ? 'متصل الآن' : 'غير متصل',
+                          style: TextStyle(
+                            fontSize: 12.sp,
+                            fontWeight: FontWeight.w500,
+                            color: online
+                                ? AppColors.success
+                                : AppColors.textSecondary,
+                          ),
+                          textAlign: TextAlign.right,
+                        );
+                      })
+                    else
+                      Text(
+                        doctor.isOnline ? 'متصل الآن' : 'غير متصل',
+                        style: TextStyle(
+                          fontSize: 12.sp,
+                          fontWeight: FontWeight.w500,
+                          color: doctor.isOnline
+                              ? AppColors.success
+                              : AppColors.textSecondary,
+                        ),
+                        textAlign: TextAlign.right,
+                      ),
+                  ],
+                ),
+              ),
+              SizedBox(width: 12.w),
+              _buildDoctorAvatar(doctor, isSelected: isSelected),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final selectedCount = _selectedDoctorIds.length;
+    final patientName = widget.patient.name.trim().isNotEmpty
+        ? widget.patient.name
+        : 'المريض';
+
     return Dialog(
       backgroundColor: Colors.transparent,
+      insetPadding: EdgeInsets.symmetric(horizontal: 28.w, vertical: 24.h),
       child: Container(
-        width: 365.w,
-        height: 450.h,
+        width: 440.w,
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.9,
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
         ),
         decoration: BoxDecoration(
-          color: const Color(0xFFF4FEFF),
-          borderRadius: BorderRadius.circular(20.r),
+          color: AppColors.white,
+          borderRadius: BorderRadius.circular(22.r),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.12),
+              blurRadius: 24,
+              offset: const Offset(0, 10),
+            ),
+          ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Header
             Container(
-              padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h),
+              width: double.infinity,
+              padding: EdgeInsets.fromLTRB(20.w, 18.h, 20.w, 16.h),
               decoration: BoxDecoration(
-                color: const Color(0xFFF4FEFF),
+                gradient: LinearGradient(
+                  begin: Alignment.topRight,
+                  end: Alignment.bottomLeft,
+                  colors: [
+                    AppColors.background,
+                    AppColors.primaryLight.withOpacity(0.45),
+                  ],
+                ),
                 borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(20.r),
-                  topRight: Radius.circular(20.r),
+                  topLeft: Radius.circular(22.r),
+                  topRight: Radius.circular(22.r),
                 ),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Close button (on the left in RTL)
-                  GestureDetector(
-                    onTap: () => Navigator.of(context).pop(),
-                    child: Container(
-                      padding: EdgeInsets.all(8.w),
-                      decoration: BoxDecoration(
-                        color: AppColors.divider,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.close,
-                        color: AppColors.textPrimary,
-                        size: 24.sp,
-                      ),
-                    ),
-                  ),
-                  // Title (centered)
-                  Expanded(
-                    child: Center(
-                      child: Text(
-                        'اختر الطبيب',
-                        style: TextStyle(
-                          fontSize: 20.sp,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
+                  Row(
+                    children: [
+                      GestureDetector(
+                        onTap: () => Navigator.of(context).pop(),
+                        child: Container(
+                          padding: EdgeInsets.all(8.w),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.9),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.close,
+                            color: AppColors.textPrimary,
+                            size: 20.sp,
+                          ),
                         ),
                       ),
+                      Expanded(
+                        child: Text(
+                          'تحويل المريض',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 20.sp,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 36.w),
+                    ],
+                  ),
+                  SizedBox(height: 12.h),
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 14.w,
+                      vertical: 10.h,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.85),
+                      borderRadius: BorderRadius.circular(12.r),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          patientName,
+                          style: TextStyle(
+                            fontSize: 15.sp,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary,
+                          ),
+                          textAlign: TextAlign.right,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        SizedBox(height: 4.h),
+                        Text(
+                          'اختر طبيباً أو أكثر — يمكن مشاركة المريض بين عدة أطباء',
+                          style: TextStyle(
+                            fontSize: 12.sp,
+                            color: AppColors.textSecondary,
+                            height: 1.35,
+                          ),
+                          textAlign: TextAlign.right,
+                        ),
+                      ],
                     ),
                   ),
-                  // Empty space to balance close button
-                  SizedBox(width: 40.w),
                 ],
               ),
             ),
-            // Content
-            Expanded(
-              child: Container(
-                margin: EdgeInsets.all(24.w),
-                padding: EdgeInsets.all(24.w),
-                decoration: BoxDecoration(
-                  color: AppColors.white,
-                  borderRadius: BorderRadius.circular(16.r),
-                ),
+            Flexible(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(20.w, 16.h, 20.w, 8.h),
                 child: _isLoading
-                    ? Center(
-                        child: CircularProgressIndicator(
-                          color: AppColors.primary,
+                    ? SizedBox(
+                        height: 180.h,
+                        child: Center(
+                          child: CircularProgressIndicator(
+                            color: AppColors.primary,
+                          ),
                         ),
                       )
                     : _doctors.isEmpty
-                    ? Center(
-                        child: Text(
-                          'لا يوجد أطباء متاحين',
-                          style: TextStyle(
-                            fontSize: 16.sp,
-                            color: AppColors.textSecondary,
+                    ? SizedBox(
+                        height: 160.h,
+                        child: Center(
+                          child: Text(
+                            'لا يوجد أطباء متاحين',
+                            style: TextStyle(
+                              fontSize: 15.sp,
+                              color: AppColors.textSecondary,
+                            ),
                           ),
                         ),
                       )
-                    : GridView.builder(
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          crossAxisSpacing: 16.w,
-                          mainAxisSpacing: 16.h,
-                          childAspectRatio: 2.5,
-                        ),
-                        itemCount: _doctors.length,
-                        itemBuilder: (context, index) {
-                          final doctor = _doctors[index];
-                          final isSelected = _selectedDoctorIds.contains(
-                            doctor.id,
-                          );
-
-                          return GestureDetector(
-                            onTap: () => _toggleDoctorSelection(doctor.id),
-                            child: Container(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 16.w,
-                                vertical: 6.h,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isSelected
-                                    ? AppColors.primary.withOpacity(0.1)
-                                    : Colors.grey[200],
-                                borderRadius: BorderRadius.circular(12.r),
-                                border: Border.all(
-                                  color: isSelected
-                                      ? AppColors.primary
-                                      : AppColors.divider,
-                                  width: 1,
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 10.w,
+                                  vertical: 5.h,
                                 ),
-                              ),
-                              child: Row(
-                                children: [
-                                  // Radio button icon
-                                  Icon(
-                                    isSelected
-                                        ? Icons.radio_button_checked
-                                        : Icons.radio_button_unchecked,
-                                    color: isSelected
+                                decoration: BoxDecoration(
+                                  color: selectedCount > 0
+                                      ? AppColors.primary.withOpacity(0.12)
+                                      : AppColors.divider,
+                                  borderRadius: BorderRadius.circular(20.r),
+                                ),
+                                child: Text(
+                                  selectedCount > 0
+                                      ? 'تم اختيار $selectedCount'
+                                      : 'لم يُختر أحد',
+                                  style: TextStyle(
+                                    fontSize: 12.sp,
+                                    fontWeight: FontWeight.w600,
+                                    color: selectedCount > 0
                                         ? AppColors.primary
                                         : AppColors.textSecondary,
-                                    size: 24.sp,
                                   ),
-                                  SizedBox(width: 12.w),
-                                  // Doctor name + online indicator
-                                  Expanded(
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.end,
-                                      children: [
-                                        DoctorOnlineIndicator(
-                                          userId: doctor.userId,
-                                        ),
-                                        SizedBox(width: 6.w),
-                                        Flexible(
-                                          child: Text(
-                                            doctor.name ?? 'طبيب',
-                                            style: TextStyle(
-                                              fontSize: 14.sp,
-                                              fontWeight: FontWeight.w500,
-                                              color: isSelected
-                                                  ? AppColors.primary
-                                                  : AppColors.textPrimary,
-                                            ),
-                                            textAlign: TextAlign.right,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
+                                ),
                               ),
+                              const Spacer(),
+                              Text(
+                                'قائمة الأطباء',
+                                style: TextStyle(
+                                  fontSize: 13.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: 12.h),
+                          Flexible(
+                            child: ListView.separated(
+                              shrinkWrap: true,
+                              itemCount: _doctors.length,
+                              separatorBuilder: (_, __) =>
+                                  SizedBox(height: 10.h),
+                              itemBuilder: (context, index) {
+                                return _buildDoctorCard(_doctors[index]);
+                              },
                             ),
-                          );
-                        },
+                          ),
+                        ],
                       ),
               ),
             ),
-            // Bottom buttons
             Container(
-              padding: EdgeInsets.all(24.w),
+              padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 20.h),
               decoration: BoxDecoration(
                 color: AppColors.white,
                 borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(20.r),
-                  bottomRight: Radius.circular(20.r),
+                  bottomLeft: Radius.circular(22.r),
+                  bottomRight: Radius.circular(22.r),
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 10,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
+                border: Border(
+                  top: BorderSide(color: AppColors.divider, width: 1),
+                ),
               ),
               child: Row(
                 children: [
-                  // Back button
                   Expanded(
-                    child: GestureDetector(
-                      onTap: () => Navigator.of(context).pop(),
-                      child: Container(
+                    child: OutlinedButton(
+                      onPressed: _isSaving
+                          ? null
+                          : () => Navigator.of(context).pop(),
+                      style: OutlinedButton.styleFrom(
                         padding: EdgeInsets.symmetric(vertical: 14.h),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[200],
+                        side: BorderSide(color: AppColors.divider),
+                        shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12.r),
                         ),
-                        child: Center(
-                          child: Text(
-                            'عودة',
-                            style: TextStyle(
-                              fontSize: 16.sp,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
+                        foregroundColor: AppColors.textPrimary,
+                      ),
+                      child: Text(
+                        'إلغاء',
+                        style: TextStyle(
+                          fontSize: 15.sp,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
                   ),
-                  SizedBox(width: 16.w),
-                  // Add button
+                  SizedBox(width: 12.w),
                   Expanded(
-                    child: GestureDetector(
-                      onTap: _isSaving ? null : _saveSelection,
-                      child: Container(
+                    flex: 2,
+                    child: ElevatedButton(
+                      onPressed: _isSaving ? null : _saveSelection,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        disabledBackgroundColor: AppColors.textHint,
                         padding: EdgeInsets.symmetric(vertical: 14.h),
-                        decoration: BoxDecoration(
-                          color: _isSaving
-                              ? AppColors.textHint
-                              : AppColors.primary,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12.r),
                         ),
-                        child: Center(
-                          child: _isSaving
-                              ? SizedBox(
-                                  width: 20.w,
-                                  height: 20.h,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      AppColors.white,
-                                    ),
-                                  ),
-                                )
-                              : Text(
-                                  'اضافة',
-                                  style: TextStyle(
-                                    fontSize: 16.sp,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppColors.white,
-                                  ),
-                                ),
-                        ),
                       ),
+                      child: _isSaving
+                          ? SizedBox(
+                              width: 20.w,
+                              height: 20.h,
+                              child: const CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.white,
+                                ),
+                              ),
+                            )
+                          : Text(
+                              'تأكيد التحويل',
+                              style: TextStyle(
+                                fontSize: 15.sp,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
+                            ),
                     ),
                   ),
                 ],

@@ -88,9 +88,8 @@ class CacheService {
       Hive.registerAdapter(GalleryImageModelAdapter());
     }
 
-    await _migrateCacheSchemaIfNeeded();
-
     try {
+      await _migrateCacheSchemaIfNeeded();
       await _openAllBoxes();
     } catch (e) {
       print('⚠️ [CacheService] Primary hive open failed: $e');
@@ -111,6 +110,7 @@ class CacheService {
       }
       await Hive.initFlutter(recoveryDir.path);
       _activeHivePath = recoveryDir.path;
+      await _migrateCacheSchemaIfNeeded();
       await _openAllBoxes();
     }
   }
@@ -143,7 +143,7 @@ class CacheService {
       await meta.put(_schemaVersionKey, _cacheSchemaVersion);
     } catch (e) {
       print('⚠️ [CacheService] Schema migration failed: $e');
-      // محاولة أخيرة: حذف صندوق المواعيد المعروف بتلفه
+      // لا نرمي الخطأ — التنظيف best-effort حتى لا يوقف الإقلاع
       await _cleanupCorruptedBox(_appointmentsBoxName);
     }
   }
@@ -185,15 +185,17 @@ class CacheService {
           try {
             await box.close();
           } catch (_) {}
-          await _cleanupCorruptedBox(boxName);
+          try {
+            await _cleanupCorruptedBox(boxName);
+          } catch (_) {}
           continue;
         }
         return box;
       } catch (e, st) {
         lastError = e;
         final message = e.toString();
-        var isLockError = message.contains('lock failed') ||
-            message.contains('PathAccessException');
+        var isLockError =
+            e is PathAccessException || _isLockErrorMessage(message);
         final isCorruptedBox = e is RangeError ||
             e is TypeError ||
             message.contains('Not enough bytes available') ||
@@ -207,12 +209,12 @@ class CacheService {
         // If cache data is corrupted, drop this box and recreate it.
         // This keeps the app alive after model/schema cache changes.
         if (isCorruptedBox) {
-          try {
-            await _cleanupCorruptedBox(boxName);
-            continue;
-          } catch (_) {
-            // If delete fails due lock by another process, retry with backoff.
+          await _cleanupCorruptedBox(boxName);
+          // إذا بقي الملف مقفولاً نعيد المحاولة بانتظار قصير
+          if (_isLockErrorMessage(message)) {
             isLockError = true;
+          } else {
+            continue;
           }
         }
 
@@ -227,6 +229,18 @@ class CacheService {
     throw lastError ?? Exception('Failed to open Hive box: $boxName');
   }
 
+  bool _isLockErrorMessage(String message) {
+    final lower = message.toLowerCase();
+    return lower.contains('lock failed') ||
+        lower.contains('pathaccessexception') ||
+        lower.contains('being used by another process') ||
+        lower.contains('locked a portion') ||
+        lower.contains('errno = 32') ||
+        lower.contains('errno = 33') ||
+        lower.contains('access is denied');
+  }
+
+  /// حذف صندوق تالف — لا يرمي استثناء أبداً (ملفات Hive قد تكون مقفولة من عملية أخرى).
   Future<void> _cleanupCorruptedBox(String boxName) async {
     try {
       if (Hive.isBoxOpen(boxName)) {
@@ -241,18 +255,47 @@ class CacheService {
     final hivePath = _activeHivePath;
     if (hivePath == null || hivePath.isEmpty) return;
 
-    final dataFile = File(p.join(hivePath, '$boxName.hive'));
-    final lockFile = File(p.join(hivePath, '$boxName.lock'));
-
-    if (await dataFile.exists()) {
-      await dataFile.delete();
-    }
-    if (await lockFile.exists()) {
-      await lockFile.delete();
-    }
+    await _deleteHiveFileBestEffort(p.join(hivePath, '$boxName.hive'));
+    await _deleteHiveFileBestEffort(p.join(hivePath, '$boxName.lock'));
 
     // Give filesystem/lock manager a tiny cooldown before re-open.
     await Future<void>.delayed(const Duration(milliseconds: 120));
+  }
+
+  Future<void> _deleteHiveFileBestEffort(String path) async {
+    final file = File(path);
+    for (var i = 0; i < 5; i++) {
+      try {
+        if (!await file.exists()) return;
+        await file.delete();
+        return;
+      } on PathAccessException catch (e) {
+        print(
+          '⚠️ [CacheService] Locked file delete retry ${i + 1}: $path ($e)',
+        );
+      } on FileSystemException catch (e) {
+        print(
+          '⚠️ [CacheService] File delete retry ${i + 1}: $path ($e)',
+        );
+      } catch (e) {
+        print('⚠️ [CacheService] File delete failed: $path ($e)');
+        break;
+      }
+      await Future<void>.delayed(Duration(milliseconds: 150 * (i + 1)));
+    }
+
+    // إن فشل الحذف بسبب القفل: أعد تسمية الملف حتى يفتح Hive ملفاً جديداً
+    try {
+      if (await file.exists()) {
+        final tombstone = File(
+          '$path.corrupt_${DateTime.now().millisecondsSinceEpoch}',
+        );
+        await file.rename(tombstone.path);
+        print('⚠️ [CacheService] Renamed locked file -> ${tombstone.path}');
+      }
+    } catch (e) {
+      print('⚠️ [CacheService] Could not remove/rename $path: $e');
+    }
   }
 
   // ==================== Queue Operations ====================

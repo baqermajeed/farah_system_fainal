@@ -104,15 +104,35 @@ Future<void> _bootstrapMainApp() async {
 Future<void> _bootstrapQueueDisplayWindow(
   Map<String, dynamic> config,
 ) async {
-  final width = _readDouble(config['width'], 1080);
-  final height = _readDouble(config['height'], 1920);
-  final x = _readDouble(config['x'], 0);
-  final y = _readDouble(config['y'], 0);
+  var width = _readDouble(config['width'], 1080);
+  var height = _readDouble(config['height'], 1920);
+  var x = _readDouble(config['x'], 0);
+  var y = _readDouble(config['y'], 0);
 
   await initializeDateFormatting('ar', null);
 
   final queueController = Get.put(QueueController(remoteMode: true));
   await QueueWindowService.setupDisplayChannel(queueController.applyRemoteState);
+
+  // إعادة التموضع عند الطلب من النافذة الرئيسية (بدون setAsFrameless —
+  // يسبب crash أصلي مع desktop_multi_window على Windows).
+  try {
+    final windowController = await WindowController.fromCurrentEngine();
+    await windowController.setWindowMethodHandler((call) async {
+      if (call.method == QueueWindowService.repositionMethod &&
+          call.arguments is Map) {
+        final args = Map<String, dynamic>.from(call.arguments as Map);
+        x = _readDouble(args['x'], x);
+        y = _readDouble(args['y'], y);
+        width = _readDouble(args['width'], width);
+        height = _readDouble(args['height'], height);
+        await _configureDisplayWindow(x, y, width, height);
+      }
+      return null;
+    });
+  } catch (e) {
+    debugPrint('⚠️ [QueueDisplay] Method handler setup failed: $e');
+  }
 
   runApp(const QueueDisplayApp());
 
@@ -121,6 +141,9 @@ Future<void> _bootstrapQueueDisplayWindow(
   });
 }
 
+/// تثبيت نافذة الطابور على الشاشة الثانية.
+/// ملاحظة: لا تستخدم setAsFrameless / setBounds المعقّدة هنا —
+/// window_manager على نوافذ desktop_multi_window ينهار معها على Windows.
 Future<void> _configureDisplayWindow(
   double x,
   double y,
@@ -128,12 +151,27 @@ Future<void> _configureDisplayWindow(
   double height,
 ) async {
   try {
+    if (width < 100 || height < 100) {
+      width = 1080;
+      height = 1920;
+    }
+
     await windowManager.ensureInitialized();
     await windowManager.setTitle('شاشة الطابور - عيادة فرح');
+
+    // انقل للشاشة المستهدفة أولاً ثم فعّل ملء الشاشة على نفس الشاشة
+    await windowManager.setFullScreen(false);
     await windowManager.setPosition(Offset(x, y));
     await windowManager.setSize(Size(width, height));
+    await windowManager.show();
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    await windowManager.setPosition(Offset(x, y));
     await windowManager.setFullScreen(true);
     await windowManager.show();
+
+    debugPrint(
+      '✅ [QueueDisplay] Shown at ($x, $y) ${width.toInt()}×${height.toInt()}',
+    );
   } catch (e) {
     debugPrint('⚠️ [QueueDisplay] Window setup failed: $e');
   }

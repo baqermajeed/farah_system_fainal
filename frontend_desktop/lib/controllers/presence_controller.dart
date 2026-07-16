@@ -14,6 +14,7 @@ class PresenceController extends GetxController {
   void onInit() {
     super.onInit();
     _socketService.onPresenceChanged = _handlePresenceChanged;
+    _socketService.onPresenceSnapshot = _handlePresenceSnapshot;
   }
 
   @override
@@ -32,17 +33,33 @@ class PresenceController extends GetxController {
       disconnect();
       return;
     }
-    await _socketService.connect();
+    final ok = await _socketService.connect();
+    if (!ok) {
+      print('⚠️ [PresenceController] Failed to connect presence socket');
+    }
   }
 
+  /// Seed from REST. Only add confirmed online doctors — never clear
+  /// someone who may already be online via a live `presence_changed` event
+  /// when the API returns a stale/false `is_online` (e.g. multi-worker).
   void seedFromDoctors(List<DoctorModel> doctors) {
+    var changed = false;
     for (final doctor in doctors) {
-      if (doctor.isOnline) {
-        _onlineDoctorUserIds.add(doctor.userId);
-      } else {
-        _onlineDoctorUserIds.remove(doctor.userId);
+      if (doctor.isOnline && doctor.userId.isNotEmpty) {
+        if (_onlineDoctorUserIds.add(doctor.userId)) {
+          changed = true;
+        }
       }
     }
+    if (changed) {
+      _onlineDoctorUserIds.refresh();
+    }
+  }
+
+  void _handlePresenceSnapshot(List<String> onlineUserIds) {
+    _onlineDoctorUserIds
+      ..clear()
+      ..addAll(onlineUserIds.where((id) => id.isNotEmpty));
     _onlineDoctorUserIds.refresh();
   }
 

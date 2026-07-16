@@ -36,11 +36,38 @@ def is_user_online(user_id: str) -> bool:
     return bool(sockets)
 
 
+def get_online_doctor_user_ids() -> list[str]:
+    """Return user_ids of doctors that currently have an active socket."""
+    online: list[str] = []
+    for user_id, sockets in active_connections.items():
+        if not sockets:
+            continue
+        # Prefer role stored on any live socket for this user.
+        role = None
+        for sid in sockets:
+            data = socket_users.get(sid)
+            if data:
+                role = data.get("role")
+                break
+        if role == Role.DOCTOR.value:
+            online.append(user_id)
+    return online
+
+
 async def _broadcast_doctor_presence(user_id: str, is_online: bool) -> None:
     """Notify all connected clients when a doctor goes online/offline."""
     await sio.emit(
         "presence_changed",
         {"user_id": user_id, "is_online": is_online},
+    )
+
+
+async def _emit_presence_snapshot(sid: str) -> None:
+    """Send current online doctors to a newly connected receptionist/doctor."""
+    await sio.emit(
+        "presence_snapshot",
+        {"online_user_ids": get_online_doctor_user_ids()},
+        room=sid,
     )
 
 
@@ -99,6 +126,9 @@ async def connect(sid: str, environ: dict, auth: dict):
         print(f"✅ User connected: {user_id_key} ({user.name}) - Socket: {sid}")
         if role == Role.DOCTOR.value and not was_online:
             await _broadcast_doctor_presence(user_id_key, True)
+        # Reception / doctor managers joining late need the current roster.
+        if role in (Role.DOCTOR.value, Role.RECEPTIONIST.value):
+            await _emit_presence_snapshot(sid)
         return True
     except Exception as e:
         print(f"❌ Connection error for {sid}: {e}")

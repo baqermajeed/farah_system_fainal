@@ -28,14 +28,18 @@ class QueueAnnouncementService {
     'audio/bell.mp3',
   ];
 
+  /// الجرس مسجّل أعلى من ملفات الأرقام — نخفّضه ليوازن الاستدعاء.
+  static const double _bellVolume = 0.25;
+  static const double _numberVolume = 1.0;
+
   Future<void> init() async {
     if (_initialized) return;
     if (!Platform.isWindows) {
       debugPrint('⚠️ [QueueAnnouncement] TTS supported on Windows only');
       return;
     }
-    await _configurePlayer(_bellPlayer);
-    await _configurePlayer(_numberPlayer);
+    await _configurePlayer(_bellPlayer, volume: _bellVolume);
+    await _configurePlayer(_numberPlayer, volume: _numberVolume);
     _initialized = true;
     debugPrint('✅ [QueueAnnouncement] ready (queued bell + number)');
   }
@@ -88,9 +92,17 @@ class QueueAnnouncementService {
     try {
       final bellAsset = await _resolveBellAsset();
       if (bellAsset != null) {
-        await _prepareAssetOnPlayer(_bellPlayer, bellAsset);
+        await _prepareAssetOnPlayer(
+          _bellPlayer,
+          bellAsset,
+          volume: _bellVolume,
+        );
       }
-      await _prepareAssetOnPlayer(_numberPlayer, numberAsset);
+      await _prepareAssetOnPlayer(
+        _numberPlayer,
+        numberAsset,
+        volume: _numberVolume,
+      );
 
       if (bellAsset != null) {
         await _playPreparedPlayer(
@@ -107,8 +119,11 @@ class QueueAnnouncementService {
     }
   }
 
-  Future<void> _configurePlayer(AudioPlayer player) async {
-    await player.setVolume(1.0);
+  Future<void> _configurePlayer(
+    AudioPlayer player, {
+    required double volume,
+  }) async {
+    await player.setVolume(volume);
     await player.setReleaseMode(ReleaseMode.stop);
   }
 
@@ -132,11 +147,12 @@ class QueueAnnouncementService {
 
   Future<void> _prepareAssetOnPlayer(
     AudioPlayer player,
-    String assetPath,
-  ) async {
+    String assetPath, {
+    required double volume,
+  }) async {
     await player.stop();
     await player.setSource(AssetSource(assetPath));
-    await player.setVolume(1.0);
+    await player.setVolume(volume);
     await player.seek(Duration.zero);
   }
 
