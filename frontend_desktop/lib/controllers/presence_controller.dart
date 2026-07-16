@@ -1,12 +1,28 @@
+import 'dart:async';
+
 import 'package:get/get.dart';
 import 'package:frontend_desktop/models/doctor_model.dart';
 import 'package:frontend_desktop/models/user_model.dart';
+import 'package:frontend_desktop/services/presence_api_service.dart';
 import 'package:frontend_desktop/services/socket_service.dart';
 
 /// Tracks which doctors are currently online (desktop app open).
+///
+/// Primary path: HTTP heartbeat + polling (works when nginx blocks WebSocket).
+/// Optional path: Socket.IO events when the proxy upgrade works.
 class PresenceController extends GetxController {
   final SocketService _socketService = SocketService();
+  final PresenceApiService _presenceApi = PresenceApiService();
   final RxSet<String> _onlineDoctorUserIds = <String>{}.obs;
+
+  Timer? _heartbeatTimer;
+  Timer? _pollTimer;
+  String? _activeRole;
+  bool _heartbeatInFlight = false;
+  bool _pollInFlight = false;
+
+  static const Duration _heartbeatInterval = Duration(seconds: 25);
+  static const Duration _pollInterval = Duration(seconds: 20);
 
   bool isDoctorOnline(String userId) => _onlineDoctorUserIds.contains(userId);
 
@@ -33,15 +49,66 @@ class PresenceController extends GetxController {
       disconnect();
       return;
     }
-    final ok = await _socketService.connect();
-    if (!ok) {
-      print('⚠️ [PresenceController] Failed to connect presence socket');
+
+    _activeRole = user.userType.toLowerCase();
+    _startHttpPresence();
+
+    // Socket is optional — nginx currently rejects WebSocket upgrades.
+    unawaited(_socketService.connect().then((ok) {
+      if (!ok) {
+        print(
+          '⚠️ [PresenceController] Socket unavailable; using HTTP presence',
+        );
+      }
+    }));
+  }
+
+  void _startHttpPresence() {
+    _heartbeatTimer?.cancel();
+    _pollTimer?.cancel();
+
+    if (_activeRole == 'doctor') {
+      unawaited(_sendHeartbeat());
+      _heartbeatTimer = Timer.periodic(
+        _heartbeatInterval,
+        (_) => unawaited(_sendHeartbeat()),
+      );
+    }
+
+    // Reception and doctors both need the online roster.
+    unawaited(_pollOnlineDoctors());
+    _pollTimer = Timer.periodic(
+      _pollInterval,
+      (_) => unawaited(_pollOnlineDoctors()),
+    );
+  }
+
+  Future<void> _sendHeartbeat() async {
+    if (_heartbeatInFlight || _activeRole != 'doctor') return;
+    _heartbeatInFlight = true;
+    try {
+      await _presenceApi.sendHeartbeat();
+    } catch (e) {
+      print('⚠️ [PresenceController] Heartbeat failed: $e');
+    } finally {
+      _heartbeatInFlight = false;
     }
   }
 
-  /// Seed from REST. Only add confirmed online doctors — never clear
-  /// someone who may already be online via a live `presence_changed` event
-  /// when the API returns a stale/false `is_online` (e.g. multi-worker).
+  Future<void> _pollOnlineDoctors() async {
+    if (_pollInFlight) return;
+    _pollInFlight = true;
+    try {
+      final ids = await _presenceApi.fetchOnlineDoctorUserIds();
+      _handlePresenceSnapshot(ids);
+    } catch (e) {
+      print('⚠️ [PresenceController] Online poll failed: $e');
+    } finally {
+      _pollInFlight = false;
+    }
+  }
+
+  /// Seed from REST doctor lists (additive only).
   void seedFromDoctors(List<DoctorModel> doctors) {
     var changed = false;
     for (final doctor in doctors) {
@@ -57,9 +124,14 @@ class PresenceController extends GetxController {
   }
 
   void _handlePresenceSnapshot(List<String> onlineUserIds) {
+    final next = onlineUserIds.where((id) => id.isNotEmpty).toSet();
+    if (next.length == _onlineDoctorUserIds.length &&
+        next.containsAll(_onlineDoctorUserIds)) {
+      return;
+    }
     _onlineDoctorUserIds
       ..clear()
-      ..addAll(onlineUserIds.where((id) => id.isNotEmpty));
+      ..addAll(next);
     _onlineDoctorUserIds.refresh();
   }
 
@@ -73,6 +145,11 @@ class PresenceController extends GetxController {
   }
 
   void disconnect() {
+    _heartbeatTimer?.cancel();
+    _pollTimer?.cancel();
+    _heartbeatTimer = null;
+    _pollTimer = null;
+    _activeRole = null;
     _socketService.disconnect();
     _onlineDoctorUserIds.clear();
     _onlineDoctorUserIds.refresh();

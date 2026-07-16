@@ -44,6 +44,7 @@ async def init_db() -> None:
         ImplantStage,
         DentalChart,  # noqa: F401 — registered below
         ReceptionQueueDay,
+        DoctorPresence,  # noqa: F401 — registered below
     )
     await init_beanie(
         database=_mongo_client[db_name],
@@ -66,6 +67,7 @@ async def init_db() -> None:
             ImplantStage,
             DentalChart,
             ReceptionQueueDay,
+            DoctorPresence,
         ],
     )
     try:

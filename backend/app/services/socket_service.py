@@ -30,19 +30,23 @@ socket_rooms: Dict[str, Set[str]] = {}
 socket_users: Dict[str, dict] = {}
 
 
-def is_user_online(user_id: str) -> bool:
+def is_socket_online(user_id: str) -> bool:
     """Return True if the user has at least one active Socket.IO connection."""
     sockets = active_connections.get(user_id)
     return bool(sockets)
 
 
-def get_online_doctor_user_ids() -> list[str]:
+# Backward-compatible alias (sync socket-only check).
+def is_user_online(user_id: str) -> bool:
+    return is_socket_online(user_id)
+
+
+def get_socket_online_doctor_user_ids() -> list[str]:
     """Return user_ids of doctors that currently have an active socket."""
     online: list[str] = []
     for user_id, sockets in active_connections.items():
         if not sockets:
             continue
-        # Prefer role stored on any live socket for this user.
         role = None
         for sid in sockets:
             data = socket_users.get(sid)
@@ -64,9 +68,11 @@ async def _broadcast_doctor_presence(user_id: str, is_online: bool) -> None:
 
 async def _emit_presence_snapshot(sid: str) -> None:
     """Send current online doctors to a newly connected receptionist/doctor."""
+    from app.services.presence_service import get_online_doctor_user_ids
+
     await sio.emit(
         "presence_snapshot",
-        {"online_user_ids": get_online_doctor_user_ids()},
+        {"online_user_ids": await get_online_doctor_user_ids()},
         room=sid,
     )
 
@@ -114,7 +120,7 @@ async def connect(sid: str, environ: dict, auth: dict):
         # Track active connection
         user_id_key = str(user.id)
         role = payload.get("role")
-        was_online = is_user_online(user_id_key)
+        was_online = is_socket_online(user_id_key)
         if user_id_key not in active_connections:
             active_connections[user_id_key] = set()
         active_connections[user_id_key].add(sid)

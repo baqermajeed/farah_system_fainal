@@ -190,20 +190,23 @@ class ApiConstants {
   static const String doctorAllDoctorsTransferStats =
       '/doctor/doctors/transfer-stats';
 
+  // Presence (HTTP heartbeat — works when WebSocket proxy is broken)
+  static const String presenceHeartbeat = '/presence/heartbeat';
+  static const String presenceOnlineDoctors = '/presence/online-doctors';
+
   // Socket.IO
   static String get socketUrl =>
       baseUrl.replaceFirst('http://', '').replaceFirst('https://', '');
   static const String socketNamespace = '/socket.io';
 
-  /// Full origin for Socket.IO (avoids `:0` port bug on some clients).
+  /// Full origin for Socket.IO. Always include an explicit port to avoid the
+  /// Dart `:0` WebSocket bug on desktop.
   static String get socketOrigin {
     final uri = Uri.parse(baseUrl);
     final isHttps = uri.scheme == 'https';
-    final port = uri.hasPort ? uri.port : (isHttps ? 443 : 80);
-    final omitPort = (isHttps && port == 443) || (!isHttps && port == 80);
-    if (omitPort) {
-      return '${uri.scheme}://${uri.host}';
-    }
+    final port = uri.hasPort && uri.port != 0
+        ? uri.port
+        : (isHttps ? 443 : 80);
     return '${uri.scheme}://${uri.host}:$port';
   }
 

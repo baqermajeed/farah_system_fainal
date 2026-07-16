@@ -33,6 +33,7 @@ from app.routers import implant_stage as implant_stage_router
 from app.routers import dental_chart as dental_chart_router
 from app.routers import call_center as call_center_router
 from app.routers import call_center_internal as call_center_internal_router
+from app.routers import presence as presence_router
 from app.services.socket_service import sio, get_socket_app
 
 # FastAPI مع Swagger UI الافتراضي
@@ -128,6 +129,8 @@ print("   ✅ Dental Chart router registered")
 app.include_router(call_center_router.router)
 app.include_router(call_center_internal_router.router)
 print("   ✅ Call Center router registered")
+app.include_router(presence_router.router)
+print("   ✅ Presence router registered")
 print("✅ [STARTUP] All routers registered successfully!")
 print(f"   📍 Auth endpoints available at: /auth/*")
 print(f"   🔗 Test endpoint: http://localhost:8000/auth/test")
