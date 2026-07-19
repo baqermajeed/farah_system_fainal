@@ -371,16 +371,16 @@ class AppointmentController extends GetxController {
   // مواعيد اليوم
   List<AppointmentModel> getTodayAppointments() {
     final now = DateTime.now();
-    final todayStart = DateTime(now.year, now.month, now.day);
-    final todayEnd = todayStart.add(const Duration(days: 1));
-    
+
     return appointments.where((appointment) {
-      final appointmentDate = appointment.date;
-      return appointmentDate.isAfter(todayStart) && 
-             appointmentDate.isBefore(todayEnd) &&
+      final d = appointment.date;
+      final isToday =
+          d.year == now.year && d.month == now.month && d.day == now.day;
+      return isToday &&
           (appointment.status == 'pending' ||
               appointment.status == 'scheduled');
-    }).toList()..sort((a, b) => a.date.compareTo(b.date));
+    }).toList()
+      ..sort((a, b) => a.date.compareTo(b.date));
   }
 
   // المواعيد المتأخرة (مواعيد فاتت ولم تكتمل)

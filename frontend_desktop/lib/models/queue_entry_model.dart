@@ -1,23 +1,66 @@
-enum QueueEntryStatus { waiting, called, done }
+enum QueueEntryStatus {
+  /// بالانتظار — يظهر على شاشة العرض
+  waiting,
+
+  /// استدعاء البنچ / التخدير — برتقالي في الإدارة، يبقى على شاشة العرض
+  anesthesia,
+
+  /// استدعاء العملية — أخضر في الإدارة، يختفي من شاشة العرض
+  surgery,
+
+  /// تأجيل (لم يحضر) — أحمر في الإدارة، يختفي من شاشة العرض
+  postponed,
+}
 
 extension QueueEntryStatusX on QueueEntryStatus {
   String get value {
     switch (this) {
       case QueueEntryStatus.waiting:
         return 'waiting';
-      case QueueEntryStatus.called:
-        return 'called';
-      case QueueEntryStatus.done:
-        return 'done';
+      case QueueEntryStatus.anesthesia:
+        return 'anesthesia';
+      case QueueEntryStatus.surgery:
+        return 'surgery';
+      case QueueEntryStatus.postponed:
+        return 'postponed';
+    }
+  }
+
+  /// يظهر على شاشة العرض العامة
+  bool get isVisibleOnDisplay {
+    switch (this) {
+      case QueueEntryStatus.waiting:
+      case QueueEntryStatus.anesthesia:
+        return true;
+      case QueueEntryStatus.surgery:
+      case QueueEntryStatus.postponed:
+        return false;
+    }
+  }
+
+  String get labelAr {
+    switch (this) {
+      case QueueEntryStatus.waiting:
+        return 'انتظار';
+      case QueueEntryStatus.anesthesia:
+        return 'بنج';
+      case QueueEntryStatus.surgery:
+        return 'عملية';
+      case QueueEntryStatus.postponed:
+        return 'تأجيل';
     }
   }
 
   static QueueEntryStatus fromValue(String? raw) {
     switch (raw) {
-      case 'called':
-        return QueueEntryStatus.called;
-      case 'done':
-        return QueueEntryStatus.done;
+      case 'anesthesia':
+      case 'called': // توافق النسخ القديمة
+        return QueueEntryStatus.anesthesia;
+      case 'surgery':
+      case 'done': // توافق النسخ القديمة
+        return QueueEntryStatus.surgery;
+      case 'postponed':
+        return QueueEntryStatus.postponed;
       case 'waiting':
       default:
         return QueueEntryStatus.waiting;
@@ -52,11 +95,11 @@ class QueueEntry {
   }
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'number': number,
-    'name': name,
-    'status': status.value,
-  };
+        'id': id,
+        'number': number,
+        'name': name,
+        'status': status.value,
+      };
 
   factory QueueEntry.fromJson(Map<String, dynamic> json) {
     return QueueEntry(

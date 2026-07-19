@@ -38,7 +38,6 @@ class PatientHomeScreen extends StatefulWidget {
 class _PatientHomeScreenState extends State<PatientHomeScreen> {
   static const Color _navy = Color(0xFF1E3A5F);
   static const Color _grayText = Color(0xFF8A97A8);
-  static const Color _lightBtnBg = Color(0xFFF3F5F8);
   static const double _headerBoxSize = 50;
   static const double _headerBoxRadius = 16;
 
@@ -131,6 +130,40 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   }
 
   String _greetingIcon() => _isMorning ? _HomeAssets.sun : _HomeAssets.moon;
+
+  /// رسائل اليوم — تتغير مع بداية كل يوم جديد (بعد 12:00 منتصف الليل)
+  static const List<String> _dailyMessages = [
+    'اليوم بداية ابتسامة جديدة',
+    'عنايتك تصنع فرقًا دائمًا',
+    'اسنان صحية لحياة سعيدة',
+    'ابدأ يومك بابتسامة مشرقة',
+    'ثقتك تبدأ بابتسامتك الجميلة',
+    'العناية تصنع ابتسامة تدوم',
+    'صحتك الفموية أولويتنا دائمًا',
+    'كل موعد خطوة للأفضل',
+    'لأن ابتسامتك تستحق الأفضل',
+    'أسنان أقوى ابتسامة أجمل',
+    'جمالك يبدأ بابتسامتك دائمًا',
+  ];
+
+  /// كلمتان في السطر الأول والباقي في السطر الثاني
+  (String line1, String line2) _dailyMessageLines() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final dayIndex =
+        today.difference(DateTime(2020, 1, 1)).inDays.abs();
+    final message = _dailyMessages[dayIndex % _dailyMessages.length];
+    final words = message.trim().split(RegExp(r'\s+'));
+
+    if (words.length <= 2) {
+      return (message, '');
+    }
+
+    return (
+      words.take(2).join(' '),
+      words.skip(2).join(' '),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -365,9 +398,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
       final todayCount = appointmentController.getTodayAppointments().length;
       final countText = todayCount == 0
           ? 'لا توجد مواعيد اليوم'
-          : todayCount == 1
-              ? 'لديك موعد واحد اليوم'
-              : 'لديك $todayCount مواعيد اليوم';
+          : 'لديك موعد اليوم';
 
       return ClipRRect(
         borderRadius: BorderRadius.circular(24.r),
@@ -427,34 +458,41 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                       ),
                     ),
                     SizedBox(height: 10.h),
-                    Directionality(
-                      textDirection: ui.TextDirection.rtl,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'اليــوم جميـل',
-                            textAlign: TextAlign.right,
-                            style: AppFonts.lamaSans(
-                              fontSize: 24.sp,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.white,
-                              height: 1.2,
-                            ),
+                    Builder(
+                      builder: (context) {
+                        final (line1, line2) = _dailyMessageLines();
+                        return Directionality(
+                          textDirection: ui.TextDirection.rtl,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                line1,
+                                textAlign: TextAlign.right,
+                                style: AppFonts.lamaSans(
+                                  fontSize: 24.sp,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.white,
+                                  height: 1.2,
+                                ),
+                              ),
+                              if (line2.isNotEmpty) ...[
+                                SizedBox(height: 6.h),
+                                Text(
+                                  line2,
+                                  textAlign: TextAlign.right,
+                                  style: AppFonts.lamaSans(
+                                    fontSize: 32.sp,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.white,
+                                    height: 1.2,
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
-                          SizedBox(height: 6.h),
-                          Text(
-                            'لصناعة ابتسامتك',
-                            textAlign: TextAlign.right,
-                            style: AppFonts.lamaSans(
-                              fontSize: 32.sp,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.white,
-                              height: 1.2,
-                            ),
-                          ),
-                        ],
-                      ),
+                        );
+                      },
                     ),
                     SizedBox(height: 10.h),
                     Directionality(

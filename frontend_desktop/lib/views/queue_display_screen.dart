@@ -86,8 +86,8 @@ class _QueueDisplayScreenState extends State<QueueDisplayScreen> {
   }
 
   Widget _buildDisplayBody(QueueController controller) {
-    final current = controller.currentEntry;
-    final next = controller.nextEntry;
+    final current = controller.displayCurrentEntry;
+    final next = controller.displayNextEntry;
     final waiting = controller.displayWaitingList;
 
     return Stack(

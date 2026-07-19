@@ -124,6 +124,7 @@ flutter:
     - assets/images/
     - assets/splash/
     - assets/icon/
+    - assets/implant-stage/
     # - assets/fonts/
     
 

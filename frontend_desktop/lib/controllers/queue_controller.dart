@@ -16,21 +16,30 @@ class QueueController extends GetxController {
   final _archiveService = QueueArchiveService();
   final RxList<QueueEntry> entries = <QueueEntry>[].obs;
   final RxInt nextNumber = 1.obs;
-  /// آخر مريض تم استدعاؤه فعلياً (للعرض حتى مع وجود أكثر من called)
+  /// آخر مستدعى بنج في دايلوك الإدارة (لا يُدفع لشاشة العرض تلقائياً)
   final RxnString lastCalledId = RxnString();
+
+  /// نسخة شاشة العرض — مستقلة عن استدعاءات البنچ/الصف في الإدارة
+  final List<QueueEntry> _displayEntries = <QueueEntry>[];
+  String? _displayNowId;
+
   int _archiveSyncToken = 0;
+  /// تاريخ جلسة الطابور الحالي (yyyy-MM-dd) — للكشف عن انتقال اليوم أثناء بقاء التطبيق مفتوحاً
+  String _sessionDateKey = '';
+  Timer? _dayRolloverTimer;
 
-  bool get isEmpty => activeEntries.isEmpty;
+  bool get isEmpty => sortedEntries.isEmpty;
 
-  List<QueueEntry> get activeEntries =>
-      entries.where((e) => e.status != QueueEntryStatus.done).toList();
+  /// كل الحالات تظهر في دايلوك الإدارة (انتظار / بنج / عملية / تأجيل)
+  List<QueueEntry> get activeEntries => List<QueueEntry>.from(entries);
 
   List<QueueEntry> get sortedEntries {
-    final list = List<QueueEntry>.from(activeEntries);
+    final list = List<QueueEntry>.from(entries);
     list.sort((a, b) => a.number.compareTo(b.number));
     return list;
   }
 
+  /// بانتظار استدعاء البنچ
   List<QueueEntry> get waitingEntries {
     final list =
         entries.where((e) => e.status == QueueEntryStatus.waiting).toList()
@@ -38,59 +47,175 @@ class QueueController extends GetxController {
     return list;
   }
 
-  QueueEntry? get currentEntry {
-    final id = lastCalledId.value;
-    if (id != null) {
-      for (final entry in entries) {
-        if (entry.id == id && entry.status == QueueEntryStatus.called) {
-          return entry;
-        }
-      }
-    }
-    for (var i = entries.length - 1; i >= 0; i--) {
-      if (entries[i].status == QueueEntryStatus.called) {
-        return entries[i];
-      }
+  /// تم استدعاؤهم للبنچ وبانتظار العملية
+  List<QueueEntry> get anesthesiaEntries {
+    final list =
+        entries.where((e) => e.status == QueueEntryStatus.anesthesia).toList()
+          ..sort((a, b) => a.number.compareTo(b.number));
+    return list;
+  }
+
+  List<QueueEntry> get _displaySourceEntries {
+    if (remoteMode) return entries.toList();
+    return List<QueueEntry>.from(_displayEntries);
+  }
+
+  String? get _displaySourceNowId =>
+      remoteMode ? lastCalledId.value : _displayNowId;
+
+  /// «الآن» على شاشة العرض — فقط إن وُضع صراحة عبر استدعاء العملية (لا بنج)
+  QueueEntry? get displayCurrentEntry {
+    final id = _displaySourceNowId;
+    if (id == null || id.isEmpty) return null;
+    for (final entry in _displaySourceEntries) {
+      if (entry.id == id) return entry;
     }
     return null;
   }
 
+  /// توافق قديم مع شاشة العرض
+  QueueEntry? get currentEntry => displayCurrentEntry;
+
+  /// التالي في دايلوك الإدارة (أول منتظر للبنچ)
   QueueEntry? get nextEntry {
     final waiting = waitingEntries;
     if (waiting.isEmpty) return null;
     return waiting.first;
   }
 
+  /// «القادم» على شاشة العرض — أول رقم بعد «الآن»
+  QueueEntry? get displayNextEntry {
+    final currentId = displayCurrentEntry?.id;
+    final waiting = _displaySourceEntries
+        .where((e) => e.id != currentId)
+        .toList()
+      ..sort((a, b) => a.number.compareTo(b.number));
+    if (waiting.isEmpty) return null;
+    return waiting.first;
+  }
+
   List<QueueEntry> get displayWaitingList {
-    final waiting = waitingEntries;
-    if (waiting.length <= 1) return const [];
-    return waiting.sublist(1);
+    final currentId = displayCurrentEntry?.id;
+    final nextId = displayNextEntry?.id;
+    return _displaySourceEntries
+        .where((e) => e.id != currentId && e.id != nextId)
+        .toList()
+      ..sort((a, b) => a.number.compareTo(b.number));
   }
 
   @override
   void onInit() {
     super.onInit();
+    _sessionDateKey = _todayKey();
     if (!remoteMode) {
       _loadFromCache();
     }
+    _startDayRolloverWatcher();
+  }
+
+  @override
+  void onClose() {
+    _dayRolloverTimer?.cancel();
+    _dayRolloverTimer = null;
+    super.onClose();
   }
 
   Map<String, dynamic> toSyncPayload() {
+    ensureNewDay();
+    // نرسل نسخة شاشة العرض فقط — بدون حالات البنچ من الإدارة
+    final nowId = remoteMode ? lastCalledId.value : _displayNowId;
+    final displayList = (remoteMode
+            ? entries.toList()
+            : List<QueueEntry>.from(_displayEntries))
+        .map(
+          (e) => QueueEntry(
+            id: e.id,
+            number: e.number,
+            name: e.name,
+            // كل القائمة انتظار في الـ payload؛ «الآن» يُحدد فقط بـ displayNowId
+            status: QueueEntryStatus.waiting,
+          ),
+        )
+        .toList()
+      ..sort((a, b) => a.number.compareTo(b.number));
     return {
       'date': _todayKey(),
       'nextNumber': nextNumber.value,
-      'lastCalledId': lastCalledId.value,
-      'entries': entries.map((e) => e.toJson()).toList(),
+      'displayNowId': nowId,
+      'lastCalledId': nowId, // توافق مع شاشة العرض القديمة
+      'entries': displayList.map((e) => e.toJson()).toList(),
     };
+  }
+
+  void _clearDisplaySnapshot() {
+    _displayEntries.clear();
+    _displayNowId = null;
+  }
+
+  /// تهيئة نسخة العرض عند التحميل — بدون توريث استدعاءات البنچ كـ «الآن»
+  void _seedDisplaySnapshotFromEntries() {
+    _displayEntries
+      ..clear()
+      ..addAll(
+        entries.where((e) => e.status.isVisibleOnDisplay).map(
+              (e) => QueueEntry(
+                id: e.id,
+                number: e.number,
+                name: e.name,
+                status: QueueEntryStatus.waiting,
+              ),
+            ),
+      );
+    _displayNowId = null;
+  }
+
+  void _addToDisplaySnapshot(QueueEntry entry) {
+    _displayEntries.removeWhere((e) => e.id == entry.id);
+    _displayEntries.add(
+      QueueEntry(
+        id: entry.id,
+        number: entry.number,
+        name: entry.name,
+        status: QueueEntryStatus.waiting,
+      ),
+    );
+  }
+
+  void _updateDisplaySnapshotName(String id, String name) {
+    final index = _displayEntries.indexWhere((e) => e.id == id);
+    if (index == -1) return;
+    _displayEntries[index] = _displayEntries[index].copyWith(name: name);
+  }
+
+  void _removeFromDisplaySnapshot(String id) {
+    _displayEntries.removeWhere((e) => e.id == id);
+    if (_displayNowId == id) {
+      _displayNowId = null;
+    }
+  }
+
+  /// عند استدعاء العملية من الشريط العلوي فقط: يصبح المريض «الآن»
+  void _applySurgeryToDisplaySnapshot(QueueEntry entry) {
+    if (_displayNowId != null && _displayNowId != entry.id) {
+      _displayEntries.removeWhere((e) => e.id == _displayNowId);
+    }
+    _displayEntries.removeWhere((e) => e.id == entry.id);
+    _displayEntries.add(
+      QueueEntry(
+        id: entry.id,
+        number: entry.number,
+        name: entry.name,
+        status: QueueEntryStatus.waiting,
+      ),
+    );
+    _displayNowId = entry.id;
   }
 
   void applyRemoteState(Map<String, dynamic> data) {
     final today = _todayKey();
     final date = data['date']?.toString() ?? '';
-    if (date != today) {
-      entries.clear();
-      nextNumber.value = 1;
-      lastCalledId.value = null;
+    if (date != today || _entriesFromPreviousDay(data['entries'])) {
+      _resetInMemoryForNewDay(today);
       update();
       return;
     }
@@ -100,7 +225,17 @@ class QueueController extends GetxController {
     if (entriesRaw is List) {
       for (final item in entriesRaw) {
         if (item is Map) {
-          parsed.add(QueueEntry.fromJson(Map<String, dynamic>.from(item)));
+          final entry =
+              QueueEntry.fromJson(Map<String, dynamic>.from(item));
+          // شاشة العرض لا تستخدم حالات البنچ — كلها انتظار + displayNowId
+          parsed.add(
+            QueueEntry(
+              id: entry.id,
+              number: entry.number,
+              name: entry.name,
+              status: QueueEntryStatus.waiting,
+            ),
+          );
         }
       }
     }
@@ -111,9 +246,12 @@ class QueueController extends GetxController {
     } else {
       nextNumber.value = int.tryParse('$remoteNext') ?? nextNumber.value;
     }
-    final remoteLast = data['lastCalledId']?.toString();
+    // «الآن» فقط من displayNowId الصريح (يُضبط عند استدعاء العملية)
+    final remoteNow = data['displayNowId']?.toString() ??
+        data['lastCalledId']?.toString();
     lastCalledId.value =
-        (remoteLast != null && remoteLast.isNotEmpty) ? remoteLast : null;
+        (remoteNow != null && remoteNow.isNotEmpty) ? remoteNow : null;
+    _sessionDateKey = today;
     update();
   }
 
@@ -124,6 +262,79 @@ class QueueController extends GetxController {
     return '${now.year}-$month-$day';
   }
 
+  DateTime _startOfToday() {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day);
+  }
+
+  void _startDayRolloverWatcher() {
+    _dayRolloverTimer?.cancel();
+    // كل 30 ثانية: يكفي لاكتشاف منتصف الليل دون إبقاء التطبيق مفتوحاً على بيانات الأمس
+    _dayRolloverTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      ensureNewDay();
+    });
+  }
+
+  /// يصفّر الطابور إن تغيّر اليوم (حتى لو التطبيق بقي مفتوحاً من الأمس).
+  /// يُرجع true إذا تم التصفير.
+  bool ensureNewDay() {
+    final today = _todayKey();
+    if (_sessionDateKey == today) return false;
+    _rollOverToNewDay(today);
+    return true;
+  }
+
+  void _resetInMemoryForNewDay(String today) {
+    entries.clear();
+    nextNumber.value = 1;
+    lastCalledId.value = null;
+    _clearDisplaySnapshot();
+    _sessionDateKey = today;
+  }
+
+  void _rollOverToNewDay(String today) {
+    _resetInMemoryForNewDay(today);
+    update();
+    if (!remoteMode) {
+      unawaited(_persistEmptyDay(today));
+    }
+  }
+
+  Future<void> _persistEmptyDay(String today) async {
+    await _cacheService.saveQueueState(
+      dateKey: today,
+      nextNumber: 1,
+      entries: const [],
+    );
+    await QueueWindowService.notifyDisplayUpdate(toSyncPayload());
+  }
+
+  /// كشف بيانات أمس التي أُعيد حفظها بتاريخ اليوم بالخطأ (id = microsecondsSinceEpoch).
+  bool _entriesFromPreviousDay(dynamic entriesRaw) {
+    if (entriesRaw is! List || entriesRaw.isEmpty) return false;
+    final startMicros = _startOfToday().microsecondsSinceEpoch;
+    for (final item in entriesRaw) {
+      if (item is! Map) continue;
+      final idMicros = int.tryParse(item['id']?.toString() ?? '');
+      if (idMicros != null && idMicros < startMicros) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _listFromPreviousDay(List<QueueEntry> list) {
+    if (list.isEmpty) return false;
+    final startMicros = _startOfToday().microsecondsSinceEpoch;
+    for (final entry in list) {
+      final idMicros = int.tryParse(entry.id);
+      if (idMicros != null && idMicros < startMicros) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   Future<void> reloadFromCache() async {
     await _cacheService.reloadQueueBox();
     await _loadFromCache();
@@ -132,29 +343,43 @@ class QueueController extends GetxController {
   Future<void> _loadFromCache() async {
     final state = _cacheService.loadQueueState();
     final today = _todayKey();
+    _sessionDateKey = today;
 
-    if (state == null || state.date != today) {
+    final staleByDate = state != null && state.date != today;
+    final staleByEntries =
+        state != null && state.date == today && _listFromPreviousDay(state.entries);
+
+    if (state == null || staleByDate || staleByEntries) {
       entries.clear();
       nextNumber.value = 1;
       lastCalledId.value = null;
-      if (state != null && state.date != today) {
-        await _cacheService.clearQueueState();
+      _clearDisplaySnapshot();
+      if (staleByDate || staleByEntries) {
+        await _cacheService.saveQueueState(
+          dateKey: today,
+          nextNumber: 1,
+          entries: const [],
+        );
       }
       update();
+      if (!remoteMode) {
+        await QueueWindowService.notifyDisplayUpdate(toSyncPayload());
+      }
       return;
     }
 
     entries.assignAll(state.entries);
     nextNumber.value = state.nextNumber;
-    // استعادة آخر مستدعى من الحالات المحفوظة إن وُجد
+    // استعادة آخر مستدعى بنج من الحالات المحفوظة إن وُجد
     QueueEntry? lastCalled;
     for (var i = state.entries.length - 1; i >= 0; i--) {
-      if (state.entries[i].status == QueueEntryStatus.called) {
+      if (state.entries[i].status == QueueEntryStatus.anesthesia) {
         lastCalled = state.entries[i];
         break;
       }
     }
     lastCalledId.value = lastCalled?.id;
+    _seedDisplaySnapshotFromEntries();
     update();
     // إعادة دفع أرشيف اليوم عند التشغيل (لا يُستخدم للعرض)
     if (entries.isNotEmpty) {
@@ -162,17 +387,29 @@ class QueueController extends GetxController {
     }
   }
 
-  Future<void> _saveToCache({bool syncArchive = true}) async {
+  Future<void> _saveToCache({
+    bool syncArchive = true,
+    // افتراضي false حتى لا تُزامَن شاشة العرض صدفة (مثلاً عند البنچ)
+    bool syncDisplay = false,
+  }) async {
+    // لا تستدعِ ensureNewDay هنا بعد إضافة مريض — يُستدعى قبل العمليات
+    if (_sessionDateKey != _todayKey()) {
+      _rollOverToNewDay(_todayKey());
+      return;
+    }
     if (!remoteMode) {
       await _cacheService.saveQueueState(
-        dateKey: _todayKey(),
+        dateKey: _sessionDateKey,
         nextNumber: nextNumber.value,
         entries: entries.toList(),
       );
     }
     update();
     if (!remoteMode) {
-      await QueueWindowService.notifyDisplayUpdate(toSyncPayload());
+      // شاشة العرض فقط عند syncDisplay=true (إضافة/تعديل/حذف/استدعاء عملية)
+      if (syncDisplay) {
+        await QueueWindowService.notifyDisplayUpdate(toSyncPayload());
+      }
       if (syncArchive) {
         _syncArchiveToServer();
       }
@@ -208,7 +445,12 @@ class QueueController extends GetxController {
 
   bool _isNameTaken(String name, {String? excludeId}) {
     final normalized = _normalizeName(name);
-    for (final entry in activeEntries) {
+    for (final entry in entries) {
+      // العملية/التأجيل لا يمنعان إعادة إضافة نفس الاسم لاحقاً
+      if (entry.status == QueueEntryStatus.surgery ||
+          entry.status == QueueEntryStatus.postponed) {
+        continue;
+      }
       if (excludeId != null && entry.id == excludeId) continue;
       if (_normalizeName(entry.name) == normalized) return true;
     }
@@ -227,6 +469,7 @@ class QueueController extends GetxController {
   }
 
   bool addPatient(String name) {
+    ensureNewDay();
     if (nextNumber.value > 100) {
       _showValidationError('تم الوصول إلى الحد الأقصى للطابور (100)');
       return false;
@@ -244,19 +487,21 @@ class QueueController extends GetxController {
       return false;
     }
 
-    entries.add(
-      QueueEntry(
-        id: DateTime.now().microsecondsSinceEpoch.toString(),
-        number: nextNumber.value,
-        name: trimmed,
-      ),
+    final entry = QueueEntry(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      number: nextNumber.value,
+      name: trimmed,
     );
+    entries.add(entry);
     nextNumber.value++;
-    _saveToCache();
+    _addToDisplaySnapshot(entry);
+    // الإضافة وحدها (مع استدعاء العملية من الزر العلوي) تحدّث شاشة العرض
+    _saveToCache(syncDisplay: true);
     return true;
   }
 
   bool updatePatient(String id, String name) {
+    ensureNewDay();
     final error = validateName(name);
     if (error != null) {
       _showValidationError(error);
@@ -273,31 +518,86 @@ class QueueController extends GetxController {
     }
 
     entries[index] = entries[index].copyWith(name: trimmed);
-    _saveToCache();
+    _updateDisplaySnapshotName(id, trimmed);
+    // التعديل يحدّث الاسم على شاشة العرض
+    _saveToCache(syncDisplay: true);
     return true;
   }
 
   void deletePatient(String id) {
+    ensureNewDay();
     entries.removeWhere((e) => e.id == id);
     if (lastCalledId.value == id) {
       lastCalledId.value = null;
     }
-    _saveToCache();
+    _removeFromDisplaySnapshot(id);
+    // الحذف يزيل المراجع من شاشة العرض
+    _saveToCache(syncDisplay: true);
   }
 
-  bool callNext() {
+  /// تصفير يدوي للطابور — يمسح الكل ويعيد الترقيم من 1.
+  void clearQueue() {
+    final today = _todayKey();
+    _resetInMemoryForNewDay(today);
+    update();
+    if (!remoteMode) {
+      unawaited(_persistEmptyDay(today));
+    }
+  }
+
+  /// استدعاء التالي لغرفة التخدير (البنچ)
+  bool callNextAnesthesia() {
+    ensureNewDay();
     final waiting = waitingEntries;
     if (waiting.isEmpty) {
-      _showValidationError('لا يوجد مرضى في الانتظار');
+      _showValidationError('لا يوجد مرضى بانتظار البنچ');
+      return false;
+    }
+    return callAnesthesia(waiting.first.id);
+  }
+
+  /// استدعاء التالي لغرفة العمليات من الشريط العلوي فقط.
+  /// يحدّث شاشة العرض بالترتيب (أصغر رقم ظاهر في نسخة العرض بعد «الآن»).
+  bool callNextSurgery() {
+    ensureNewDay();
+    final ready = anesthesiaEntries;
+    if (ready.isEmpty) {
+      _showValidationError('لا يوجد مرضى بانتظار العملية (بعد البنچ)');
       return false;
     }
 
-    final next = waiting.first;
-    return recallPatient(next.id);
+    // ترتيب شاشة العرض: لا نتخطى رقماً أصغر ما زال في قائمة العرض
+    final displayOrdered = List<QueueEntry>.from(_displayEntries)
+      ..sort((a, b) => a.number.compareTo(b.number));
+    final nowId = _displayNowId;
+    QueueEntry? displayNext;
+    for (final entry in displayOrdered) {
+      if (entry.id == nowId) continue;
+      displayNext = entry;
+      break;
+    }
+
+    if (displayNext != null) {
+      final managed = findById(displayNext.id);
+      if (managed == null || managed.status != QueueEntryStatus.anesthesia) {
+        _showValidationError(
+          'يجب استدعاء البنچ للرقم ${displayNext.number} أولاً قبل العملية',
+        );
+        return false;
+      }
+      return callSurgery(managed.id, syncDisplay: true);
+    }
+
+    return callSurgery(ready.first.id, syncDisplay: true);
   }
 
-  /// استدعاء مريض محدد مجدداً (أو لأول مرة من القائمة)
-  bool recallPatient(String id) {
+  /// توافق مع الاستدعاءات القديمة — يعامل كاستدعاء بنج
+  bool callNext() => callNextAnesthesia();
+
+  /// استدعاء / إعادة استدعاء للبنچ — صوت + حالة في الإدارة فقط.
+  /// لا يغيّر شاشة العرض نهائياً.
+  bool callAnesthesia(String id) {
+    ensureNewDay();
     final index = entries.indexWhere((e) => e.id == id);
     if (index == -1) {
       _showValidationError('المريض غير موجود في الطابور');
@@ -305,12 +605,16 @@ class QueueController extends GetxController {
     }
 
     final entry = entries[index];
-    if (entry.status == QueueEntryStatus.done) {
-      _showValidationError('لا يمكن استدعاء مريض مكتمل');
+    if (entry.status == QueueEntryStatus.surgery) {
+      _showValidationError('تم استدعاء هذا المراجع للعملية مسبقاً');
+      return false;
+    }
+    if (entry.status == QueueEntryStatus.postponed) {
+      _showValidationError('المراجع مؤجّل — ألغِ التأجيل أولاً أو أعد إضافته');
       return false;
     }
 
-    entries[index] = entry.copyWith(status: QueueEntryStatus.called);
+    entries[index] = entry.copyWith(status: QueueEntryStatus.anesthesia);
     lastCalledId.value = entry.id;
 
     unawaited(
@@ -319,9 +623,85 @@ class QueueController extends GetxController {
         name: entry.name,
       ),
     );
-    _saveToCache(syncArchive: false);
+    // مهم: لا مزامنة لشاشة العرض ولا تعديل لنسخة العرض
+    _saveToCache(syncArchive: false, syncDisplay: false);
     return true;
   }
+
+  /// استدعاء للعملية — صوت + حالة خضراء في الإدارة.
+  /// تحديث شاشة العرض فقط عندما [syncDisplay] = true (زر الشريط العلوي).
+  bool callSurgery(String id, {bool syncDisplay = false}) {
+    ensureNewDay();
+    final index = entries.indexWhere((e) => e.id == id);
+    if (index == -1) {
+      _showValidationError('المريض غير موجود في الطابور');
+      return false;
+    }
+
+    final entry = entries[index];
+    if (entry.status == QueueEntryStatus.postponed) {
+      _showValidationError('لا يمكن استدعاء مراجع مؤجّل للعملية');
+      return false;
+    }
+    if (entry.status == QueueEntryStatus.waiting) {
+      _showValidationError('يجب استدعاء البنچ أولاً قبل العملية');
+      return false;
+    }
+    if (entry.status == QueueEntryStatus.surgery) {
+      // إعادة النداء الصوتي فقط — بدون تغيير للطابور أو شاشة العرض
+      unawaited(
+        QueueAnnouncementService.instance.announcePatient(
+          number: entry.number,
+          name: entry.name,
+        ),
+      );
+      return true;
+    }
+
+    final updated = entry.copyWith(status: QueueEntryStatus.surgery);
+    entries[index] = updated;
+    if (lastCalledId.value == entry.id) {
+      lastCalledId.value = null;
+    }
+    if (syncDisplay) {
+      _applySurgeryToDisplaySnapshot(updated);
+    }
+
+    unawaited(
+      QueueAnnouncementService.instance.announcePatient(
+        number: entry.number,
+        name: entry.name,
+      ),
+    );
+    _saveToCache(syncArchive: false, syncDisplay: syncDisplay);
+    return true;
+  }
+
+  /// تأجيل المراجع (لم يحضر) — أحمر في الإدارة فقط (بدون تغيير شاشة العرض)
+  bool postponePatient(String id) {
+    ensureNewDay();
+    final index = entries.indexWhere((e) => e.id == id);
+    if (index == -1) {
+      _showValidationError('المريض غير موجود في الطابور');
+      return false;
+    }
+
+    final entry = entries[index];
+    if (entry.status == QueueEntryStatus.surgery) {
+      _showValidationError('لا يمكن تأجيل مراجع بعد استدعاء العملية');
+      return false;
+    }
+
+    entries[index] = entry.copyWith(status: QueueEntryStatus.postponed);
+    if (lastCalledId.value == entry.id) {
+      lastCalledId.value = null;
+    }
+    _saveToCache(syncArchive: false, syncDisplay: false);
+    return true;
+  }
+
+  /// توافق قديم — استدعاء بنج
+  bool recallPatient(String id) => callAnesthesia(id);
 
   void _showValidationError(String message) {
     Get.snackbar(

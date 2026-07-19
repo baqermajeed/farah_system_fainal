@@ -952,7 +952,8 @@ class _ManagerToggle extends StatelessWidget {
               // استدعاء callback فقط - الـ controller سيتولى عرض الرسائل والتحديث
               onChanged(value);
             },
-            activeColor: AppColors.primary,
+            activeThumbColor: AppColors.primary,
+            activeTrackColor: AppColors.primary.withValues(alpha: 0.45),
             inactiveThumbColor: AppColors.textHint,
             inactiveTrackColor: AppColors.textHint.withValues(alpha: 0.3),
           ),

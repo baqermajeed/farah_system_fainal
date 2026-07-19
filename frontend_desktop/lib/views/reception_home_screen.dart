@@ -7519,7 +7519,10 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
     final entries = queue.entries;
     final trimmed = patientName.trim();
     for (final entry in entries) {
-      if (entry.status == QueueEntryStatus.done) continue;
+      if (entry.status == QueueEntryStatus.surgery ||
+          entry.status == QueueEntryStatus.postponed) {
+        continue;
+      }
       if (entry.name.trim() == trimmed) return entry;
     }
     return null;

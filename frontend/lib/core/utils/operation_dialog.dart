@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
-import 'package:get/get.dart';
 
 Future<T> runWithOperationDialog<T>({
   required BuildContext context,

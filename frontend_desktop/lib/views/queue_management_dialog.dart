@@ -80,13 +80,13 @@ class _QueueManagementDialogContentState
   );
 
   TextStyle get _titleStyle => GoogleFonts.cairo(
-        fontSize: 18.sp,
+        fontSize: 15.sp,
         fontWeight: FontWeight.w700,
         color: AppColors.textPrimary,
       );
 
   TextStyle get _labelStyle => GoogleFonts.cairo(
-        fontSize: 12.sp,
+        fontSize: 10.sp,
         fontWeight: FontWeight.w600,
         color: AppColors.textSecondary,
       );
@@ -118,8 +118,6 @@ class _QueueManagementDialogContentState
 
   int get _waitingCount => _queueController?.waitingEntries.length ?? 0;
 
-  QueueEntry? get _currentEntry => _queueController?.currentEntry;
-
   void _resetForm() {
     setState(() {
       _editingId = null;
@@ -129,10 +127,78 @@ class _QueueManagementDialogContentState
 
   void _refresh() => setState(() {});
 
-  void _callNext() {
-    if (_queueController?.callNext() == true) {
+  void _callNextAnesthesia() {
+    if (_queueController?.callNextAnesthesia() == true) {
       _refresh();
     }
+  }
+
+  void _callNextSurgery() {
+    if (_queueController?.callNextSurgery() == true) {
+      _refresh();
+    }
+  }
+
+  Future<void> _confirmClearQueue() async {
+    final controller = _queueController;
+    if (controller == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: widget.dialogContext,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16.r),
+        ),
+        title: Text(
+          'تصفير الطابور',
+          style: GoogleFonts.cairo(
+            fontSize: 16.sp,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Text(
+          'هل تريد تصفير الطابور بالكامل؟\nسيتم حذف جميع الأسماء وإعادة الترقيم من 1.',
+          style: GoogleFonts.cairo(fontSize: 14.sp),
+          textDirection: TextDirection.rtl,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(
+              'إلغاء',
+              style: GoogleFonts.cairo(color: AppColors.textSecondary),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10.r),
+              ),
+            ),
+            child: Text(
+              'تصفير',
+              style: GoogleFonts.cairo(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    controller.clearQueue();
+    _resetForm();
+    _refresh();
+    Get.snackbar(
+      'تم التصفير',
+      'تم تصفير الطابور وإعادة الترقيم من 1',
+      snackPosition: SnackPosition.BOTTOM,
+      backgroundColor: AppColors.success,
+      colorText: AppColors.white,
+      duration: const Duration(seconds: 2),
+    );
   }
 
   Future<void> _openDisplayScreen() async {
@@ -217,11 +283,73 @@ class _QueueManagementDialogContentState
     }
   }
 
-  void _recallEntry(QueueEntry entry) {
+  void _callAnesthesiaEntry(QueueEntry entry) {
     final controller = _queueController;
     if (controller == null) return;
-    if (controller.recallPatient(entry.id)) {
+    if (controller.callAnesthesia(entry.id)) {
       _refresh();
+    }
+  }
+
+  void _callSurgeryEntry(QueueEntry entry) {
+    final controller = _queueController;
+    if (controller == null) return;
+    if (controller.callSurgery(entry.id)) {
+      _refresh();
+    }
+  }
+
+  Future<void> _confirmPostpone(QueueEntry entry) async {
+    final confirmed = await showDialog<bool>(
+      context: widget.dialogContext,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16.r),
+        ),
+        title: Text(
+          'تأجيل المراجع',
+          style: GoogleFonts.cairo(
+            fontSize: 16.sp,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Text(
+          'هل تريد تأجيل "${entry.name}" (رقم ${entry.number})؟\nسيُعتبر غير حاضر ويختفي من شاشة العرض.',
+          style: GoogleFonts.cairo(fontSize: 14.sp),
+          textDirection: TextDirection.rtl,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(
+              'إلغاء',
+              style: GoogleFonts.cairo(color: AppColors.textSecondary),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10.r),
+              ),
+            ),
+            child: Text(
+              'تأجيل',
+              style: GoogleFonts.cairo(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      _queueController?.postponePatient(entry.id);
+      if (_editingId == entry.id) {
+        _resetForm();
+      } else {
+        _refresh();
+      }
     }
   }
 
@@ -292,18 +420,16 @@ class _QueueManagementDialogContentState
             Expanded(
               child: Padding(
                 padding: EdgeInsets.fromLTRB(
-                  isCompact ? 12.w : 20.w,
-                  14.h,
-                  isCompact ? 12.w : 20.w,
-                  14.h,
+                  isCompact ? 10.w : 14.w,
+                  6.h,
+                  isCompact ? 10.w : 14.w,
+                  8.h,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _buildFormCard(isCompact: isCompact),
-                    SizedBox(height: 10.h),
-                    _buildStatsRow(isCompact: isCompact),
-                    SizedBox(height: 10.h),
+                    SizedBox(height: 6.h),
                     Expanded(child: _buildTable()),
                   ],
                 ),
@@ -318,49 +444,35 @@ class _QueueManagementDialogContentState
   Widget _buildHeader({required bool isCompact}) {
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: isCompact ? 8.w : 12.w,
-        vertical: isCompact ? 14.h : 18.h,
+        horizontal: isCompact ? 8.w : 10.w,
+        vertical: isCompact ? 6.h : 8.h,
       ),
       decoration: const BoxDecoration(gradient: _headerGradient),
       child: Stack(
         alignment: Alignment.center,
         children: [
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'إدارة الطابور',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.cairo(
-                  fontSize: isCompact ? 17.sp : 20.sp,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
-              ),
-              SizedBox(height: 2.h),
-              Text(
-                'إضافة المرضى واستدعاء الأدوار',
-                textAlign: TextAlign.center,
-                style: GoogleFonts.cairo(
-                  fontSize: isCompact ? 11.sp : 12.sp,
-                  color: Colors.white.withValues(alpha: 0.85),
-                ),
-              ),
-            ],
+          Text(
+            'إدارة الطابور',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.cairo(
+              fontSize: isCompact ? 14.sp : 16.sp,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
           ),
           Align(
             alignment: Alignment.centerRight,
             child: Container(
-              width: isCompact ? 38.w : 44.w,
-              height: isCompact ? 38.w : 44.w,
+              width: isCompact ? 30.w : 34.w,
+              height: isCompact ? 30.w : 34.w,
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(12.r),
+                borderRadius: BorderRadius.circular(8.r),
               ),
               child: Icon(
                 Icons.format_list_numbered_rounded,
                 color: Colors.white,
-                size: isCompact ? 20.sp : 24.sp,
+                size: isCompact ? 16.sp : 18.sp,
               ),
             ),
           ),
@@ -368,16 +480,22 @@ class _QueueManagementDialogContentState
             alignment: Alignment.centerLeft,
             child: IconButton(
               onPressed: () => Navigator.of(widget.dialogContext).pop(),
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.all(4.w),
+              constraints: BoxConstraints(
+                minWidth: 32.w,
+                minHeight: 32.w,
+              ),
               style: IconButton.styleFrom(
                 backgroundColor: Colors.white.withValues(alpha: 0.15),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10.r),
+                  borderRadius: BorderRadius.circular(8.r),
                 ),
               ),
               icon: Icon(
                 Icons.close_rounded,
                 color: Colors.white,
-                size: isCompact ? 18.sp : 20.sp,
+                size: isCompact ? 16.sp : 18.sp,
               ),
             ),
           ),
@@ -388,10 +506,13 @@ class _QueueManagementDialogContentState
 
   Widget _buildFormCard({required bool isCompact}) {
     return Container(
-      padding: EdgeInsets.all(isCompact ? 12.w : 16.w),
+      padding: EdgeInsets.symmetric(
+        horizontal: isCompact ? 8.w : 10.w,
+        vertical: isCompact ? 8.h : 8.h,
+      ),
       decoration: BoxDecoration(
         color: AppColors.cardBackground,
-        borderRadius: BorderRadius.circular(16.r),
+        borderRadius: BorderRadius.circular(12.r),
         border: Border.all(color: AppColors.divider),
       ),
       child: Column(
@@ -399,24 +520,24 @@ class _QueueManagementDialogContentState
         children: [
           if (_isEditing)
             Container(
-              margin: EdgeInsets.only(bottom: 10.h),
-              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+              margin: EdgeInsets.only(bottom: 6.h),
+              padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
               decoration: BoxDecoration(
                 color: AppColors.primary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10.r),
+                borderRadius: BorderRadius.circular(8.r),
                 border: Border.all(
                   color: AppColors.primary.withValues(alpha: 0.25),
                 ),
               ),
               child: Row(
                 children: [
-                  Icon(Icons.edit_rounded, size: 16.sp, color: AppColors.primary),
-                  SizedBox(width: 8.w),
+                  Icon(Icons.edit_rounded, size: 14.sp, color: AppColors.primary),
+                  SizedBox(width: 6.w),
                   Expanded(
                     child: Text(
                       'وضع التعديل — رقم $_previewNumber',
                       style: GoogleFonts.cairo(
-                        fontSize: 12.sp,
+                        fontSize: 11.sp,
                         fontWeight: FontWeight.w600,
                         color: AppColors.primary,
                       ),
@@ -425,14 +546,14 @@ class _QueueManagementDialogContentState
                   TextButton(
                     onPressed: _resetForm,
                     style: TextButton.styleFrom(
-                      padding: EdgeInsets.symmetric(horizontal: 8.w),
+                      padding: EdgeInsets.symmetric(horizontal: 6.w),
                       minimumSize: Size.zero,
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                     child: Text(
                       'إلغاء',
                       style: GoogleFonts.cairo(
-                        fontSize: 12.sp,
+                        fontSize: 11.sp,
                         color: AppColors.textSecondary,
                       ),
                     ),
@@ -445,7 +566,7 @@ class _QueueManagementDialogContentState
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _buildNameField(),
-                    SizedBox(height: 10.h),
+                    SizedBox(height: 6.h),
                     Center(child: _buildNumberBox()),
                   ],
                 )
@@ -453,126 +574,192 @@ class _QueueManagementDialogContentState
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Expanded(child: _buildNameField()),
-                    SizedBox(width: 12.w),
+                    SizedBox(width: 8.w),
                     _buildNumberBox(),
                   ],
                 ),
-          SizedBox(height: isCompact ? 10.h : 14.h),
-          isCompact
-              ? Column(
-                  children: [
-                    SizedBox(
-                      width: double.infinity,
-                      child: _primaryButton(
-                        onPressed: _submit,
-                        icon: _isEditing
-                            ? Icons.check_rounded
-                            : Icons.person_add_rounded,
-                        label: _isEditing ? 'حفظ التعديل' : 'إضافة للطابور',
-                        color: AppColors.primary,
-                      ),
-                    ),
-                    SizedBox(height: 8.h),
-                    SizedBox(
-                      width: double.infinity,
-                      child: _primaryButton(
-                        onPressed: _callNext,
-                        icon: Icons.campaign_rounded,
-                        label: 'استدعاء التالي',
-                        color: AppColors.success,
-                      ),
-                    ),
-                    SizedBox(height: 8.h),
-                    SizedBox(
-                      width: double.infinity,
-                      child: _secondaryButton(
-                        onPressed: _openDisplayScreen,
-                        icon: Icons.tv_rounded,
-                        label: 'شاشة العرض',
-                      ),
-                    ),
-                  ],
-                )
-              : Row(
-                  children: [
-                    Expanded(
-                      flex: 2,
-                      child: _primaryButton(
-                        onPressed: _submit,
-                        icon: _isEditing
-                            ? Icons.check_rounded
-                            : Icons.person_add_rounded,
-                        label: _isEditing ? 'حفظ التعديل' : 'إضافة للطابور',
-                        color: AppColors.primary,
-                      ),
-                    ),
-                    SizedBox(width: 8.w),
-                    Expanded(
-                      flex: 2,
-                      child: _primaryButton(
-                        onPressed: _callNext,
-                        icon: Icons.campaign_rounded,
-                        label: 'استدعاء التالي',
-                        color: AppColors.success,
-                      ),
-                    ),
-                    SizedBox(width: 8.w),
-                    Expanded(
-                      flex: 2,
-                      child: _secondaryButton(
-                        onPressed: _openDisplayScreen,
-                        icon: Icons.tv_rounded,
-                        label: 'شاشة العرض',
-                      ),
-                    ),
-                  ],
-                ),
+          SizedBox(height: 6.h),
+          _buildActionsAndStatsRow(isCompact: isCompact),
         ],
       ),
     );
   }
 
-  Widget _buildNameField() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('اسم المريض', style: _labelStyle),
-        SizedBox(height: 6.h),
-        TextField(
-          controller: _nameController,
-          textAlign: TextAlign.right,
-          textDirection: TextDirection.rtl,
-          decoration: InputDecoration(
-            hintText: 'اكتب اسم المريض',
-            hintStyle: GoogleFonts.cairo(
-              fontSize: 13.sp,
-              color: AppColors.textHint,
-            ),
-            hintTextDirection: TextDirection.rtl,
-            filled: true,
-            fillColor: AppColors.white,
-            contentPadding: EdgeInsets.symmetric(
-              horizontal: 14.w,
-              vertical: 13.h,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12.r),
-              borderSide: const BorderSide(color: AppColors.divider),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12.r),
-              borderSide: const BorderSide(color: AppColors.divider),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12.r),
-              borderSide: const BorderSide(
-                color: AppColors.primary,
-                width: 1.5,
+  Widget _buildActionsAndStatsRow({required bool isCompact}) {
+    final waitingChip = _statChip(
+      icon: Icons.people_outline_rounded,
+      label: 'بالانتظار',
+      value: '$_waitingCount',
+      color: AppColors.info,
+    );
+
+    if (isCompact) {
+      return Column(
+        children: [
+          Row(
+            children: [
+              waitingChip,
+              SizedBox(width: 4.w),
+              Expanded(
+                child: _primaryButton(
+                  onPressed: _confirmClearQueue,
+                  icon: Icons.delete_sweep_rounded,
+                  label: 'تصفير',
+                  color: AppColors.error,
+                ),
               ),
+              SizedBox(width: 4.w),
+              Expanded(
+                child: _secondaryButton(
+                  onPressed: _openDisplayScreen,
+                  icon: Icons.tv_rounded,
+                  label: 'شاشة العرض',
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 4.h),
+          Row(
+            children: [
+              Expanded(
+                child: _primaryButton(
+                  onPressed: _callNextSurgery,
+                  icon: Icons.local_hospital_rounded,
+                  label: 'استدعاء عملية',
+                  color: AppColors.success,
+                ),
+              ),
+              SizedBox(width: 4.w),
+              Expanded(
+                child: _primaryButton(
+                  onPressed: _callNextAnesthesia,
+                  icon: Icons.vaccines_rounded,
+                  label: 'استدعاء البنچ',
+                  color: AppColors.warning,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 4.h),
+          SizedBox(
+            width: double.infinity,
+            child: _primaryButton(
+              onPressed: _submit,
+              icon: _isEditing
+                  ? Icons.check_rounded
+                  : Icons.person_add_rounded,
+              label: _isEditing ? 'حفظ التعديل' : 'إضافة للطابور',
+              color: AppColors.primary,
             ),
           ),
-          style: GoogleFonts.cairo(fontSize: 14.sp),
-          onSubmitted: (_) => _submit(),
+        ],
+      );
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        waitingChip,
+        SizedBox(width: 6.w),
+        Expanded(
+          flex: 2,
+          child: _primaryButton(
+            onPressed: _confirmClearQueue,
+            icon: Icons.delete_sweep_rounded,
+            label: 'تصفير',
+            color: AppColors.error,
+          ),
+        ),
+        SizedBox(width: 4.w),
+        Expanded(
+          flex: 2,
+          child: _secondaryButton(
+            onPressed: _openDisplayScreen,
+            icon: Icons.tv_rounded,
+            label: 'شاشة العرض',
+          ),
+        ),
+        SizedBox(width: 4.w),
+        Expanded(
+          flex: 2,
+          child: _primaryButton(
+            onPressed: _callNextSurgery,
+            icon: Icons.local_hospital_rounded,
+            label: 'استدعاء عملية',
+            color: AppColors.success,
+          ),
+        ),
+        SizedBox(width: 4.w),
+        Expanded(
+          flex: 2,
+          child: _primaryButton(
+            onPressed: _callNextAnesthesia,
+            icon: Icons.vaccines_rounded,
+            label: 'استدعاء البنچ',
+            color: AppColors.warning,
+          ),
+        ),
+        SizedBox(width: 4.w),
+        Expanded(
+          flex: 2,
+          child: _primaryButton(
+            onPressed: _submit,
+            icon: _isEditing
+                ? Icons.check_rounded
+                : Icons.person_add_rounded,
+            label: _isEditing ? 'حفظ التعديل' : 'إضافة للطابور',
+            color: AppColors.primary,
+          ),
+        ),
+      ],
+    );
+  }
+
+  double get _fieldHeight => 36.h;
+
+  Widget _buildNameField() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(
+          'اسم المريض',
+          style: _labelStyle,
+          textAlign: TextAlign.center,
+        ),
+        SizedBox(height: 3.h),
+        Container(
+          height: _fieldHeight,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: AppColors.white,
+            borderRadius: BorderRadius.circular(8.r),
+            border: Border.all(color: AppColors.divider),
+          ),
+          padding: EdgeInsets.symmetric(horizontal: 10.w),
+          child: TextField(
+            controller: _nameController,
+            textAlign: TextAlign.center,
+            textDirection: TextDirection.rtl,
+            textAlignVertical: TextAlignVertical.center,
+            style: GoogleFonts.cairo(fontSize: 13.sp, height: 1.2),
+            cursorColor: AppColors.primary,
+            decoration: InputDecoration(
+              isDense: true,
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
+              hintText: 'اكتب اسم المريض',
+              hintStyle: GoogleFonts.cairo(
+                fontSize: 12.sp,
+                color: AppColors.textHint,
+                height: 1.2,
+              ),
+              hintTextDirection: TextDirection.rtl,
+              alignLabelWithHint: true,
+            ),
+            onSubmitted: (_) => _submit(),
+          ),
         ),
       ],
     );
@@ -583,14 +770,14 @@ class _QueueManagementDialogContentState
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Text('رقم الدور', style: _labelStyle),
-        SizedBox(height: 6.h),
+        SizedBox(height: 3.h),
         Container(
-          width: 72.w,
-          height: 48.h,
+          width: 56.w,
+          height: _fieldHeight,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: AppColors.white,
-            borderRadius: BorderRadius.circular(12.r),
+            borderRadius: BorderRadius.circular(8.r),
             border: Border.all(
               color: AppColors.primary.withValues(alpha: 0.35),
             ),
@@ -598,55 +785,10 @@ class _QueueManagementDialogContentState
           child: Text(
             '$_previewNumber',
             style: GoogleFonts.cairo(
-              fontSize: 22.sp,
+              fontSize: 18.sp,
               fontWeight: FontWeight.w800,
               color: AppColors.primary,
             ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildStatsRow({required bool isCompact}) {
-    final current = _currentEntry;
-    if (isCompact) {
-      return Column(
-        children: [
-          _statChip(
-            icon: Icons.people_outline_rounded,
-            label: 'بالانتظار',
-            value: '$_waitingCount',
-            color: AppColors.info,
-          ),
-          SizedBox(height: 8.h),
-          _statChip(
-            icon: Icons.record_voice_over_rounded,
-            label: 'الآن يُستدعى',
-            value: current?.name ?? '—',
-            color: AppColors.success,
-            expanded: true,
-          ),
-        ],
-      );
-    }
-
-    return Row(
-      children: [
-        _statChip(
-          icon: Icons.people_outline_rounded,
-          label: 'بالانتظار',
-          value: '$_waitingCount',
-          color: AppColors.info,
-        ),
-        SizedBox(width: 8.w),
-        Expanded(
-          child: _statChip(
-            icon: Icons.record_voice_over_rounded,
-            label: 'الآن يُستدعى',
-            value: current?.name ?? '—',
-            color: AppColors.success,
-            expanded: true,
           ),
         ),
       ],
@@ -659,31 +801,35 @@ class _QueueManagementDialogContentState
     required String label,
     required Color color,
   }) {
-    return Material(
-      color: color,
-      borderRadius: BorderRadius.circular(12.r),
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(12.r),
-        child: Padding(
-          padding: EdgeInsets.symmetric(vertical: 12.h),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 17.sp, color: Colors.white),
-              SizedBox(width: 6.w),
-              Flexible(
-                child: Text(
-                  label,
-                  style: GoogleFonts.cairo(
-                    fontSize: 12.sp,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
+    return SizedBox(
+      height: _fieldHeight,
+      child: Material(
+        color: color,
+        borderRadius: BorderRadius.circular(8.r),
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(8.r),
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 4.w),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 14.sp, color: Colors.white),
+                SizedBox(width: 4.w),
+                Flexible(
+                  child: Text(
+                    label,
+                    style: GoogleFonts.cairo(
+                      fontSize: 11.sp,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      height: 1.0,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -695,35 +841,41 @@ class _QueueManagementDialogContentState
     required IconData icon,
     required String label,
   }) {
-    return Material(
-      color: AppColors.white,
-      borderRadius: BorderRadius.circular(12.r),
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(12.r),
-        child: Container(
-          padding: EdgeInsets.symmetric(vertical: 12.h),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12.r),
-            border: Border.all(color: AppColors.primary.withValues(alpha: 0.45)),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 17.sp, color: AppColors.primary),
-              SizedBox(width: 6.w),
-              Flexible(
-                child: Text(
-                  label,
-                  style: GoogleFonts.cairo(
-                    fontSize: 12.sp,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.primary,
+    return SizedBox(
+      height: _fieldHeight,
+      child: Material(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(8.r),
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(8.r),
+          child: Container(
+            alignment: Alignment.center,
+            padding: EdgeInsets.symmetric(horizontal: 4.w),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8.r),
+              border:
+                  Border.all(color: AppColors.primary.withValues(alpha: 0.45)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 14.sp, color: AppColors.primary),
+                SizedBox(width: 4.w),
+                Flexible(
+                  child: Text(
+                    label,
+                    style: GoogleFonts.cairo(
+                      fontSize: 11.sp,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primary,
+                      height: 1.0,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -737,38 +889,41 @@ class _QueueManagementDialogContentState
     required Color color,
     bool expanded = false,
   }) {
-    final child = Container(
-      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+    final textColumn = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(label, style: _labelStyle),
+        Text(
+          value,
+          style: GoogleFonts.cairo(
+            fontSize: 12.sp,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textPrimary,
+            height: 1.15,
+          ),
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
+        ),
+      ],
+    );
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 5.h),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12.r),
+        borderRadius: BorderRadius.circular(8.r),
         border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Row(
+        mainAxisSize: expanded ? MainAxisSize.max : MainAxisSize.min,
         children: [
-          Icon(icon, size: 18.sp, color: color),
-          SizedBox(width: 8.w),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: _labelStyle),
-              Text(
-                value,
-                style: GoogleFonts.cairo(
-                  fontSize: 13.sp,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
+          Icon(icon, size: 14.sp, color: color),
+          SizedBox(width: 6.w),
+          if (expanded) Expanded(child: textColumn) else textColumn,
         ],
       ),
     );
-
-    if (expanded) return child;
-    return child;
   }
 
   Widget _buildTable() {
@@ -793,7 +948,7 @@ class _QueueManagementDialogContentState
           Container(
             padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 11.h),
             decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.07),
+              color: const Color(0xFFD6E4EE),
               border: Border(
                 bottom: BorderSide(color: AppColors.divider),
               ),
@@ -801,8 +956,8 @@ class _QueueManagementDialogContentState
             child: Row(
               children: [
                 _headerCell('الرقم', flex: 1),
-                _headerCell('اسم المريض', flex: 4),
-                _headerCell('إجراءات', flex: 3, align: TextAlign.center),
+                _headerCell('اسم المريض', flex: 3),
+                _headerCell('إجراءات', flex: 4, align: TextAlign.center),
               ],
             ),
           ),
@@ -863,40 +1018,66 @@ class _QueueManagementDialogContentState
     );
   }
 
+  Color _statusAccent(QueueEntryStatus status) {
+    switch (status) {
+      case QueueEntryStatus.anesthesia:
+        return const Color(0xFFD35400); // برتقالي أغمق
+      case QueueEntryStatus.surgery:
+        return const Color(0xFF1E8449); // أخضر أغمق
+      case QueueEntryStatus.postponed:
+        return const Color(0xFF8B0000); // أحمر غامق
+      case QueueEntryStatus.waiting:
+        return const Color(0xFF2471A3); // أزرق أغمق
+    }
+  }
+
   Widget _buildTableRow(QueueEntry entry, int index) {
     final isEditingRow = _editingId == entry.id;
-    final isCalled = entry.status == QueueEntryStatus.called;
+    final status = entry.status;
+    final accent = _statusAccent(status);
     final nextEntry = _queueController?.nextEntry;
-    final isNext = nextEntry != null && entry.id == nextEntry.id;
+    final isNext = nextEntry != null &&
+        entry.id == nextEntry.id &&
+        status == QueueEntryStatus.waiting;
+    final canCallAnesthesia = status == QueueEntryStatus.waiting ||
+        status == QueueEntryStatus.anesthesia;
+    final canCallSurgery = status == QueueEntryStatus.anesthesia ||
+        status == QueueEntryStatus.surgery;
+    final canPostpone = status == QueueEntryStatus.waiting ||
+        status == QueueEntryStatus.anesthesia;
 
     Color? rowColor;
     if (isEditingRow) {
-      rowColor = AppColors.primary.withValues(alpha: 0.08);
-    } else if (isCalled) {
-      rowColor = AppColors.success.withValues(alpha: 0.07);
+      rowColor = AppColors.primary.withValues(alpha: 0.18);
+    } else if (status == QueueEntryStatus.anesthesia) {
+      rowColor = accent.withValues(alpha: 0.28);
+    } else if (status == QueueEntryStatus.surgery) {
+      rowColor = accent.withValues(alpha: 0.26);
+    } else if (status == QueueEntryStatus.postponed) {
+      rowColor = accent.withValues(alpha: 0.24);
     } else if (index.isEven) {
-      rowColor = AppColors.cardBackground;
+      rowColor = const Color(0xFFE8EEF2);
     }
 
     return Material(
       color: rowColor ?? AppColors.white,
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 9.h),
+        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 9.h),
         child: Row(
           children: [
             Expanded(
               flex: 1,
-              child: _numberBadge(entry.number, isCalled: isCalled),
+              child: _numberBadge(entry.number, accent: accent),
             ),
             Expanded(
-              flex: 4,
+              flex: 3,
               child: Row(
                 children: [
-                  if (isCalled) ...[
-                    _statusBadge('الآن', AppColors.success),
+                  if (status != QueueEntryStatus.waiting) ...[
+                    _statusBadge(status.labelAr, accent),
                     SizedBox(width: 8.w),
                   ] else if (isNext) ...[
-                    _statusBadge('التالي', AppColors.info),
+                    _statusBadge('التالي', const Color(0xFF2471A3)),
                     SizedBox(width: 8.w),
                   ],
                   Expanded(
@@ -906,8 +1087,9 @@ class _QueueManagementDialogContentState
                       textDirection: TextDirection.rtl,
                       style: GoogleFonts.cairo(
                         fontSize: 13.sp,
-                        fontWeight:
-                            isCalled ? FontWeight.w700 : FontWeight.w500,
+                        fontWeight: status == QueueEntryStatus.waiting
+                            ? FontWeight.w500
+                            : FontWeight.w700,
                         color: AppColors.textPrimary,
                       ),
                       overflow: TextOverflow.ellipsis,
@@ -917,34 +1099,55 @@ class _QueueManagementDialogContentState
               ),
             ),
             Expanded(
-              flex: 3,
+              flex: 4,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  _iconAction(
-                    icon: Icons.campaign_rounded,
-                    color: AppColors.success,
-                    tooltip: isCalled ? 'استدعاء مجدداً' : 'استدعاء',
-                    onTap: () => _recallEntry(entry),
-                  ),
-                  SizedBox(width: 6.w),
+                  if (canCallAnesthesia)
+                    _iconAction(
+                      icon: Icons.vaccines_rounded,
+                      color: const Color(0xFFD35400),
+                      tooltip: status == QueueEntryStatus.anesthesia
+                          ? 'إعادة استدعاء البنچ'
+                          : 'استدعاء البنچ',
+                      onTap: () => _callAnesthesiaEntry(entry),
+                    ),
+                  if (canCallAnesthesia) SizedBox(width: 4.w),
+                  if (canCallSurgery)
+                    _iconAction(
+                      icon: Icons.local_hospital_rounded,
+                      color: const Color(0xFF1E8449),
+                      tooltip: status == QueueEntryStatus.surgery
+                          ? 'إعادة نداء العملية'
+                          : 'استدعاء عملية',
+                      onTap: () => _callSurgeryEntry(entry),
+                    ),
+                  if (canCallSurgery) SizedBox(width: 4.w),
                   _iconAction(
                     icon: Icons.print_rounded,
-                    color: const Color(0xFF1B7A4E),
+                    color: const Color(0xFF145A32),
                     tooltip: 'طباعة الرقم',
                     onTap: () => _printEntryTicket(entry),
                   ),
-                  SizedBox(width: 6.w),
+                  SizedBox(width: 4.w),
                   _iconAction(
                     icon: Icons.edit_rounded,
-                    color: AppColors.primary,
+                    color: const Color(0xFF2471A3),
                     tooltip: 'تعديل',
                     onTap: () => _startEdit(entry),
                   ),
-                  SizedBox(width: 6.w),
+                  SizedBox(width: 4.w),
+                  if (canPostpone)
+                    _iconAction(
+                      icon: Icons.schedule_rounded,
+                      color: const Color(0xFF8B0000),
+                      tooltip: 'تأجيل',
+                      onTap: () => _confirmPostpone(entry),
+                    ),
+                  if (canPostpone) SizedBox(width: 4.w),
                   _iconAction(
                     icon: Icons.delete_outline_rounded,
-                    color: AppColors.error,
+                    color: const Color(0xFF8B0000),
                     tooltip: 'حذف',
                     onTap: () => _confirmDelete(entry),
                   ),
@@ -957,7 +1160,7 @@ class _QueueManagementDialogContentState
     );
   }
 
-  Widget _numberBadge(int number, {required bool isCalled}) {
+  Widget _numberBadge(int number, {required Color accent}) {
     return Align(
       alignment: Alignment.centerRight,
       child: Container(
@@ -965,17 +1168,16 @@ class _QueueManagementDialogContentState
         height: 36.w,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: isCalled
-              ? AppColors.success.withValues(alpha: 0.15)
-              : AppColors.primary.withValues(alpha: 0.1),
+          color: accent.withValues(alpha: 0.28),
           shape: BoxShape.circle,
+          border: Border.all(color: accent.withValues(alpha: 0.55)),
         ),
         child: Text(
           '$number',
           style: GoogleFonts.cairo(
             fontSize: 14.sp,
             fontWeight: FontWeight.w800,
-            color: isCalled ? AppColors.success : AppColors.primary,
+            color: accent,
           ),
         ),
       ),
@@ -993,7 +1195,7 @@ class _QueueManagementDialogContentState
         text,
         style: GoogleFonts.cairo(
           fontSize: 10.sp,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w800,
           color: Colors.white,
         ),
       ),

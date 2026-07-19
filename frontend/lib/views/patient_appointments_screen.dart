@@ -71,8 +71,10 @@ class PatientAppointmentsScreen extends StatelessWidget {
                     itemCount: appointments.length,
                     separatorBuilder: (_, __) => SizedBox(height: 10.h),
                     itemBuilder: (context, index) {
+                      final appointment = appointments[index];
                       return _buildAppointmentCard(
-                        appointment: appointments[index],
+                        appointment: appointment,
+                        isUpcoming: _isUpcomingAppointment(appointment),
                       );
                     },
                   );
@@ -134,9 +136,39 @@ class PatientAppointmentsScreen extends StatelessWidget {
     return [...upcoming, ...others];
   }
 
-  Widget _buildAppointmentCard({required AppointmentModel appointment}) {
+  bool _isUpcomingAppointment(AppointmentModel appointment) {
+    final status = appointment.status.toLowerCase();
+    if (status == 'completed' || status == 'cancelled') return false;
+
+    final timeParts = appointment.time.split(':');
+    final hour = int.tryParse(timeParts[0]) ?? 0;
+    final minute =
+        timeParts.length > 1 ? int.tryParse(timeParts[1]) ?? 0 : 0;
+    final appointmentDateTime = DateTime(
+      appointment.date.year,
+      appointment.date.month,
+      appointment.date.day,
+      hour,
+      minute,
+    );
+    return !appointmentDateTime.isBefore(DateTime.now());
+  }
+
+  Widget _buildAppointmentCard({
+    required AppointmentModel appointment,
+    required bool isUpcoming,
+  }) {
     const navy = Color(0xFF1E3A5F);
     const grayText = Color(0xFF8A97A8);
+    const pastGray = Color(0xFF9AA3B2);
+    const pastBg = Color(0xFFF3F5F7);
+    const pastAccent = Color(0xFFB0B8C4);
+    final accent = isUpcoming ? AppColors.primary : pastAccent;
+    final titleColor = isUpcoming ? navy : pastGray;
+    final dateBg = isUpcoming
+        ? AppColors.primary.withValues(alpha: 0.08)
+        : pastBg;
+    final cardBg = isUpcoming ? Colors.white : const Color(0xFFFAFBFC);
 
     final patientController = Get.find<PatientController>();
     final doctorName = appointment.doctorName.isNotEmpty
@@ -172,171 +204,207 @@ class PatientAppointmentsScreen extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cardBg,
         borderRadius: BorderRadius.circular(20.r),
-        border: Border.all(color: const Color(0xFFE8ECF0)),
+        border: Border.all(
+          color: isUpcoming
+              ? AppColors.primary.withValues(alpha: 0.22)
+              : const Color(0xFFE4E7EC),
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: Colors.black.withValues(alpha: isUpcoming ? 0.05 : 0.03),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: Column(
-        children: [
-          Directionality(
-            textDirection: ui.TextDirection.rtl,
-            child: IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Container(
-                    width: 78.w,
-                    padding: EdgeInsets.symmetric(
-                      vertical: 14.h,
-                      horizontal: 8.w,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.only(
-                        topRight: Radius.circular(20.r),
-                      ),
-                      border: Border(
-                        left: BorderSide(
-                          color: AppColors.primary.withValues(alpha: 0.15),
-                          width: 1,
-                        ),
-                      ),
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          dayName,
-                          style: AppFonts.lamaSans(
-                            fontSize: 11.sp,
-                            fontWeight: FontWeight.w600,
-                            color: grayText,
-                          ),
-                        ),
-                        SizedBox(height: 4.h),
-                        Text(
-                          dayNumber,
-                          style: AppFonts.lamaSans(
-                            fontSize: 28.sp,
-                            fontWeight: FontWeight.w800,
-                            color: navy,
-                            height: 1,
-                          ),
-                        ),
-                        SizedBox(height: 4.h),
-                        Text(
-                          monthYear,
-                          textAlign: TextAlign.center,
-                          style: AppFonts.lamaSans(
-                            fontSize: 9.sp,
-                            fontWeight: FontWeight.w600,
-                            color: grayText,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: Padding(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20.r),
+        child: Column(
+          children: [
+            Directionality(
+              textDirection: ui.TextDirection.rtl,
+              child: IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // شريط التمييز على يمين البطاقة
+                    Container(width: 5.w, color: accent),
+                    Container(
+                      width: 78.w,
                       padding: EdgeInsets.symmetric(
-                        horizontal: 14.w,
-                        vertical: 16.h,
+                        vertical: 14.h,
+                        horizontal: 8.w,
+                      ),
+                      decoration: BoxDecoration(
+                        color: dateBg,
+                        border: Border(
+                          left: BorderSide(
+                            color: accent.withValues(alpha: 0.25),
+                            width: 1,
+                          ),
+                        ),
                       ),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Text(
-                            'د. $doctorName',
+                            dayName,
                             style: AppFonts.lamaSans(
-                              fontSize: 14.sp,
-                              fontWeight: FontWeight.w800,
-                              color: navy,
+                              fontSize: 11.sp,
+                              fontWeight: FontWeight.w600,
+                              color: isUpcoming ? grayText : pastGray,
                             ),
                           ),
                           SizedBox(height: 4.h),
                           Text(
-                            serviceText,
+                            dayNumber,
                             style: AppFonts.lamaSans(
-                              fontSize: 11.sp,
-                              fontWeight: FontWeight.w500,
-                              color: grayText,
+                              fontSize: 28.sp,
+                              fontWeight: FontWeight.w800,
+                              color: titleColor,
+                              height: 1,
+                            ),
+                          ),
+                          SizedBox(height: 4.h),
+                          Text(
+                            monthYear,
+                            textAlign: TextAlign.center,
+                            style: AppFonts.lamaSans(
+                              fontSize: 9.sp,
+                              fontWeight: FontWeight.w600,
+                              color: isUpcoming ? grayText : pastGray,
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ),
-                  Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 14.w,
-                      vertical: 16.h,
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          timeText,
-                          style: AppFonts.lamaSans(
-                            fontSize: 18.sp,
-                            fontWeight: FontWeight.w800,
-                            color: navy,
-                          ),
+                    Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 14.w,
+                          vertical: 14.h,
                         ),
-                        Text(
-                          periodText,
-                          style: AppFonts.lamaSans(
-                            fontSize: 11.sp,
-                            fontWeight: FontWeight.w600,
-                            color: grayText,
-                          ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 8.w,
+                                vertical: 3.h,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isUpcoming
+                                    ? AppColors.primary.withValues(alpha: 0.12)
+                                    : pastAccent.withValues(alpha: 0.18),
+                                borderRadius: BorderRadius.circular(8.r),
+                              ),
+                              child: Text(
+                                isUpcoming ? 'قادم' : 'سابق',
+                                style: AppFonts.lamaSans(
+                                  fontSize: 10.sp,
+                                  fontWeight: FontWeight.w700,
+                                  color: isUpcoming
+                                      ? AppColors.primary
+                                      : pastGray,
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: 6.h),
+                            Text(
+                              'د. $doctorName',
+                              style: AppFonts.lamaSans(
+                                fontSize: 14.sp,
+                                fontWeight: FontWeight.w800,
+                                color: titleColor,
+                              ),
+                            ),
+                            SizedBox(height: 4.h),
+                            Text(
+                              serviceText,
+                              style: AppFonts.lamaSans(
+                                fontSize: 11.sp,
+                                fontWeight: FontWeight.w500,
+                                color: isUpcoming ? grayText : pastGray,
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
-                  ),
-                ],
+                    Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 14.w,
+                        vertical: 16.h,
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            timeText,
+                            style: AppFonts.lamaSans(
+                              fontSize: 18.sp,
+                              fontWeight: FontWeight.w800,
+                              color: titleColor,
+                            ),
+                          ),
+                          Text(
+                            periodText,
+                            style: AppFonts.lamaSans(
+                              fontSize: 11.sp,
+                              fontWeight: FontWeight.w600,
+                              color: isUpcoming ? grayText : pastGray,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          Divider(
-            height: 1,
-            thickness: 1,
-            color: const Color(0xFFE8ECF0),
-          ),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
-            child: Directionality(
-              textDirection: ui.TextDirection.rtl,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Image.asset(
-                    _AppointmentsAssets.dateIcon,
-                    width: 18.w,
-                    height: 18.w,
-                    fit: BoxFit.contain,
-                  ),
-                  SizedBox(width: 8.w),
-                  Text(
-                    'الرجاء الحضور قبل الموعد ب نصف ساعة',
-                    style: AppFonts.lamaSans(
-                      fontSize: 11.sp,
-                      fontWeight: FontWeight.w500,
-                      color: grayText,
+            Divider(
+              height: 1,
+              thickness: 1,
+              color: isUpcoming
+                  ? const Color(0xFFE8ECF0)
+                  : const Color(0xFFE4E7EC),
+            ),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
+              child: Directionality(
+                textDirection: ui.TextDirection.rtl,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Image.asset(
+                      _AppointmentsAssets.dateIcon,
+                      width: 18.w,
+                      height: 18.w,
+                      fit: BoxFit.contain,
+                      color: isUpcoming ? null : pastGray,
+                      colorBlendMode:
+                          isUpcoming ? null : BlendMode.srcIn,
                     ),
-                  ),
-                ],
+                    SizedBox(width: 8.w),
+                    Text(
+                      isUpcoming
+                          ? 'الرجاء الحضور قبل الموعد ب نصف ساعة'
+                          : 'موعد سابق',
+                      style: AppFonts.lamaSans(
+                        fontSize: 11.sp,
+                        fontWeight: FontWeight.w500,
+                        color: isUpcoming ? grayText : pastGray,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
