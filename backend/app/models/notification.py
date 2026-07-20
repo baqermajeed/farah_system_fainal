@@ -19,6 +19,8 @@ class DeviceToken(Document):
 class Notification(Document):
     """إشعار محفوظ للمستخدم (يُعرض في التطبيق ويُرسل عبر Push)."""
     user_id: Indexed(OID)
+    # ملف طبي محدد (فرد عائلة). None = إشعار عام للحساب.
+    patient_id: Indexed(OID) | None = None
     title: str
     body: str
     type: Indexed(str) = "general"

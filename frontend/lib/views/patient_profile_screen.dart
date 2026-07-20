@@ -249,7 +249,8 @@ class PatientProfileScreen extends GetView<PatientProfileController> {
                 children: [
                   _buildTopBar(context),
                   SizedBox(height: 20.h),
-                  _buildProfileAvatar(profile?.imageUrl ?? user?.imageUrl),
+                  // لا نرجع لصورة حساب الهاتف — لكل فرد صورة ملفه الطبي
+                  _buildProfileAvatar(profile?.imageUrl),
                   SizedBox(height: 16.h),
                   Text(
                     name,

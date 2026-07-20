@@ -860,9 +860,11 @@ async def create_appointment(
             title="موعد جديد",
             body=body,
             type="appointment_created",
+            patient_id=str(patient.id),
             data={
                 "appointmentId": str(ap.id),
                 "doctorId": str(doctor_id),
+                "patientId": str(patient.id),
             },
         )
     except Exception:
@@ -1167,9 +1169,11 @@ async def update_appointment_datetime(
                     title="تعديل موعد",
                     body=body,
                     type="appointment_updated",
+                    patient_id=str(patient.id),
                     data={
                         "appointmentId": str(appointment.id),
                         "doctorId": str(doctor_id),
+                        "patientId": str(patient.id),
                     },
                 )
             except Exception:

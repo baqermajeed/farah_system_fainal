@@ -133,6 +133,28 @@ class PatientService {
     }
   }
 
+  /// رفع صورة بروفايل للملف الطبي النشط (فرد العائلة).
+  Future<PatientModel> uploadMyProfileImage({
+    required File imageFile,
+    String? patientId,
+  }) async {
+    try {
+      final multipartFile = await _buildMultipartFile(imageFile: imageFile);
+      final response = await _api.post(
+        ApiConstants.patientUploadImage,
+        formData: dio.FormData.fromMap({'image': multipartFile}),
+        queryParameters: _patientQuery(patientId),
+      );
+      if (response.statusCode == 200) {
+        return _mapPatientOutToModel(response.data);
+      }
+      throw ApiException('فشل رفع صورة الملف الشخصي');
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('فشل رفع صورة الملف الشخصي: ${e.toString()}');
+    }
+  }
+
   // رفع صورة بروفايل للمريض (للاستقبال)
   Future<void> uploadPatientImageForReception({
     required String patientId,

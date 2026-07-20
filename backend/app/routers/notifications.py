@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from datetime import timezone
 
 from app.schemas import (
     DeviceTokenIn,
@@ -14,6 +15,17 @@ from app.services import notification_service
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 
+def _sent_at_iso(value) -> str:
+    """Always emit UTC with timezone so clients don't treat it as local time."""
+    if value is None:
+        return ""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    else:
+        value = value.astimezone(timezone.utc)
+    return value.isoformat().replace("+00:00", "Z")
+
+
 def _to_out(n) -> NotificationOut:
     return NotificationOut(
         id=str(n.id),
@@ -22,7 +34,7 @@ def _to_out(n) -> NotificationOut:
         type=getattr(n, "type", None) or "general",
         data=getattr(n, "data", None) or {},
         is_read=bool(getattr(n, "is_read", False)),
-        sent_at=n.sent_at.isoformat() if n.sent_at else "",
+        sent_at=_sent_at_iso(getattr(n, "sent_at", None)),
     )
 
 
@@ -42,22 +54,30 @@ async def list_notifications(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
     unread_only: bool = False,
+    patient_id: str | None = Query(None, description="تصفية حسب فرد العائلة النشط"),
     current=Depends(get_current_user),
 ):
-    """قائمة إشعارات المستخدم الحالي."""
+    """قائمة إشعارات المستخدم الحالي (اختيارياً لملف طبي محدد)."""
     items = await notification_service.list_user_notifications(
         user_id=current.id,
         skip=skip,
         limit=limit,
         unread_only=unread_only,
+        patient_id=patient_id,
     )
     return [_to_out(n) for n in items]
 
 
 @router.get("/unread-count", response_model=UnreadCountOut)
-async def get_unread_count(current=Depends(get_current_user)):
+async def get_unread_count(
+    patient_id: str | None = Query(None, description="تصفية حسب فرد العائلة النشط"),
+    current=Depends(get_current_user),
+):
     """عدد الإشعارات غير المقروءة."""
-    count = await notification_service.unread_count(user_id=current.id)
+    count = await notification_service.unread_count(
+        user_id=current.id,
+        patient_id=patient_id,
+    )
     return UnreadCountOut(count=count)
 
 
@@ -74,9 +94,15 @@ async def mark_notification_read(notification_id: str, current=Depends(get_curre
 
 
 @router.post("/mark-all-read", response_model=UnreadCountOut)
-async def mark_all_read(current=Depends(get_current_user)):
-    """تعليم كل الإشعارات كمقروءة."""
-    updated = await notification_service.mark_all_as_read(user_id=current.id)
+async def mark_all_read(
+    patient_id: str | None = Query(None, description="تعليم مقروء لفرد العائلة النشط فقط"),
+    current=Depends(get_current_user),
+):
+    """تعليم كل الإشعارات كمقروءة (ضمن نطاق الفرد إن وُجد)."""
+    updated = await notification_service.mark_all_as_read(
+        user_id=current.id,
+        patient_id=patient_id,
+    )
     return UnreadCountOut(count=updated)
 
 

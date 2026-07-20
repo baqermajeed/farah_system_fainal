@@ -7,13 +7,11 @@ import 'package:image_picker/image_picker.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/controllers/patient_controller.dart';
-import 'package:farah_sys_final/services/auth_service.dart';
 
 /// Controller لشاشة الملف الشخصي للمريض — المنطق والحالة خارج الـ View.
 class PatientProfileController extends GetxController {
   AuthController get authController => Get.find<AuthController>();
   PatientController get patientController => Get.find<PatientController>();
-  final AuthService _authService = AuthService();
   final ImagePicker _imagePicker = ImagePicker();
 
   final RxBool isUploadingImage = false.obs;
@@ -62,10 +60,7 @@ class PatientProfileController extends GetxController {
 
       isUploadingImage.value = true;
 
-      await _authService.uploadProfileImage(File(croppedFile.path));
-      await authController.checkLoggedInUser(navigate: false);
-      await patientController.loadMyProfile();
-
+      await patientController.uploadMyProfileImage(File(croppedFile.path));
       imageTimestamp.value = DateTime.now().millisecondsSinceEpoch;
       Get.snackbar('نجح', 'تم تحديث الصورة بنجاح');
     } catch (e) {

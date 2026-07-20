@@ -50,7 +50,8 @@ class NotificationsScreen extends GetView<NotificationsScreenController> {
               _buildHeader(),
               Expanded(
                 child: Obx(() {
-                  if (controller.isLoading.value) {
+                  if (controller.isLoading.value &&
+                      controller.notifications.isEmpty) {
                     return Center(
                       child: CircularProgressIndicator(
                         color: _navy,
@@ -69,15 +70,19 @@ class NotificationsScreen extends GetView<NotificationsScreenController> {
 
                   final unreadCount =
                       controller.notifications.where((n) => !n.isRead).length;
+                  final loadingMore = controller.isLoadingMore.value;
+                  final headerOffset = unreadCount > 0 ? 1 : 0;
 
                   return RefreshIndicator(
                     color: _navy,
-                    onRefresh: controller.loadNotifications,
+                    onRefresh: () =>
+                        controller.loadNotifications(forceRefresh: true),
                     child: ListView.builder(
+                      controller: controller.scrollController,
                       padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 24.h),
-                      itemCount:
-                          controller.notifications.length +
-                          (unreadCount > 0 ? 1 : 0),
+                      itemCount: controller.notifications.length +
+                          headerOffset +
+                          (loadingMore ? 1 : 0),
                       itemBuilder: (context, index) {
                         if (unreadCount > 0 && index == 0) {
                           return Padding(
@@ -110,8 +115,23 @@ class NotificationsScreen extends GetView<NotificationsScreenController> {
                           );
                         }
 
-                        final notifIndex =
-                            unreadCount > 0 ? index - 1 : index;
+                        final notifIndex = index - headerOffset;
+                        if (loadingMore &&
+                            notifIndex == controller.notifications.length) {
+                          return Padding(
+                            padding: EdgeInsets.symmetric(vertical: 16.h),
+                            child: const Center(
+                              child: SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            ),
+                          );
+                        }
+
                         return _buildNotificationItem(
                           controller.notifications[notifIndex],
                         );
@@ -360,18 +380,23 @@ class NotificationsScreen extends GetView<NotificationsScreenController> {
 
   String _getTimeAgo(DateTime time) {
     final now = DateTime.now();
-    final difference = now.difference(time);
+    // وحّد المقارنة بالتوقيت المحلي دائماً
+    final local = time.isUtc ? time.toLocal() : time;
+    final difference = now.difference(local);
 
-    if (difference.inMinutes < 1) {
+    if (difference.isNegative || difference.inMinutes < 1) {
       return 'الآن';
     } else if (difference.inMinutes < 60) {
-      return 'منذ ${difference.inMinutes} دقيقة';
+      final m = difference.inMinutes;
+      return m == 1 ? 'منذ دقيقة' : 'منذ $m دقيقة';
     } else if (difference.inHours < 24) {
-      return 'منذ ${difference.inHours} ساعة';
+      final h = difference.inHours;
+      return h == 1 ? 'منذ ساعة' : 'منذ $h ساعات';
     } else if (difference.inDays < 7) {
-      return 'منذ ${difference.inDays} يوم';
+      final d = difference.inDays;
+      return d == 1 ? 'منذ يوم' : 'منذ $d أيام';
     } else {
-      return DateFormat('yyyy/MM/dd', 'ar').format(time);
+      return DateFormat('yyyy/MM/dd', 'ar').format(local);
     }
   }
 }

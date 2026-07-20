@@ -28,7 +28,13 @@ class AppointmentController extends GetxController {
       final box = Hive.box('appointments');
       final authController = Get.find<AuthController>();
       final userType = authController.currentUser.value?.userType;
-      final cacheKey = 'patient_${userType ?? 'unknown'}';
+      final activePatientId = authController.patientProfileId.value;
+      // كاش منفصل لكل فرد عائلة حتى لا تظهر مواعيد شخص آخر بعد التبديل
+      final cacheKey = userType == 'patient' &&
+              activePatientId != null &&
+              activePatientId.isNotEmpty
+          ? 'patient_${userType}_$activePatientId'
+          : 'patient_${userType ?? 'unknown'}';
       
       final cachedList = box.get(cacheKey);
       if (cachedList != null && cachedList is List) {

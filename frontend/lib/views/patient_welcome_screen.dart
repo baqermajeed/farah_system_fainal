@@ -90,14 +90,22 @@ class PatientWelcomeScreen extends GetView<PatientWelcomeController> {
                           top: 40.h,
                         ),
                         child: Obx(
-                          () => Text(
-                            'مرحبا عزيزي "${controller.authController.currentUser.value?.name ?? 'المريض'}" انتظر\n'
-                            'حتى يتم تحويلك من قبل موظف\n'
-                            'الاستقبال الى طبيب معين لتبدأ رحلتك\n'
-                            'العلاجية معنا',
-                            textAlign: TextAlign.center,
-                            style: messageStyle,
-                          ),
+                          () {
+                            final profileName = controller
+                                .patientController.myProfile.value?.name;
+                            final userName = controller
+                                .authController.currentUser.value?.name;
+                            final displayName =
+                                profileName ?? userName ?? 'المريض';
+                            return Text(
+                              'مرحبا عزيزي "$displayName" انتظر\n'
+                              'حتى يتم تحويلك من قبل موظف\n'
+                              'الاستقبال الى طبيب معين لتبدأ رحلتك\n'
+                              'العلاجية معنا',
+                              textAlign: TextAlign.center,
+                              style: messageStyle,
+                            );
+                          },
                         ),
                       ),
                     ],

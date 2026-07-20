@@ -57,26 +57,51 @@ class PatientAppointmentsScreen extends StatelessWidget {
                       _sortedAppointments(appointmentController);
 
                   if (appointments.isEmpty) {
-                    return const EmptyStateWidget(
-                      title: 'لا توجد مواعيد',
-                      icon: Icons.calendar_today,
+                    return RefreshIndicator(
+                      color: AppColors.primary,
+                      onRefresh: () async {
+                        await Future.wait([
+                          appointmentController.loadPatientAppointments(),
+                          patientController.loadMyDoctor(),
+                        ]);
+                      },
+                      child: ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: [
+                          SizedBox(height: 120.h),
+                          const EmptyStateWidget(
+                            title: 'لا توجد مواعيد',
+                            icon: Icons.calendar_today,
+                          ),
+                        ],
+                      ),
                     );
                   }
 
-                  return ListView.separated(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 16.w,
-                      vertical: 16.h,
-                    ),
-                    itemCount: appointments.length,
-                    separatorBuilder: (_, __) => SizedBox(height: 10.h),
-                    itemBuilder: (context, index) {
-                      final appointment = appointments[index];
-                      return _buildAppointmentCard(
-                        appointment: appointment,
-                        isUpcoming: _isUpcomingAppointment(appointment),
-                      );
+                  return RefreshIndicator(
+                    color: AppColors.primary,
+                    onRefresh: () async {
+                      await Future.wait([
+                        appointmentController.loadPatientAppointments(),
+                        patientController.loadMyDoctor(),
+                      ]);
                     },
+                    child: ListView.separated(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 16.w,
+                        vertical: 16.h,
+                      ),
+                      itemCount: appointments.length,
+                      separatorBuilder: (_, __) => SizedBox(height: 10.h),
+                      itemBuilder: (context, index) {
+                        final appointment = appointments[index];
+                        return _buildAppointmentCard(
+                          appointment: appointment,
+                          isUpcoming: _isUpcomingAppointment(appointment),
+                        );
+                      },
+                    ),
                   );
                 }),
               ),

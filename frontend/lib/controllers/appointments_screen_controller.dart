@@ -27,7 +27,7 @@ class AppointmentsScreenController extends GetxController
     tabController = TabController(length: 3, vsync: this);
 
     // Ensure controller exists once for this screen session.
-    implantStageController = Get.put(ImplantStageController());
+    implantStageController = Get.find<ImplantStageController>();
 
     // Recompute implant appointments whenever patients or stages change
     // (debounced by GetX microtask scheduling).

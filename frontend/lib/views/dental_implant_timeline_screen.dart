@@ -82,32 +82,37 @@ class DentalImplantTimelineScreen
                   controller.lastCompletedIndex(patientStages);
               final startDate = controller.treatmentStartDate(patientStages);
 
-              return SingleChildScrollView(
-                padding: EdgeInsets.only(bottom: 20.h),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _buildHeader(),
-                    if (startDate != null) ...[
-                      SizedBox(height: 8.h),
+              return RefreshIndicator(
+                color: _navy,
+                onRefresh: controller.refreshData,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: EdgeInsets.only(bottom: 20.h),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _buildHeader(),
+                      if (startDate != null) ...[
+                        SizedBox(height: 8.h),
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 16.w),
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: _buildTreatmentStartCard(startDate),
+                          ),
+                        ),
+                      ],
+                      SizedBox(height: 16.h),
                       Padding(
                         padding: EdgeInsets.symmetric(horizontal: 16.w),
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: _buildTreatmentStartCard(startDate),
+                        child: _buildTimelineCard(
+                          patientStages: patientStages,
+                          patientId: patientId,
+                          lastCompletedIndex: lastCompletedIndex,
                         ),
                       ),
                     ],
-                    SizedBox(height: 16.h),
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16.w),
-                      child: _buildTimelineCard(
-                        patientStages: patientStages,
-                        patientId: patientId,
-                        lastCompletedIndex: lastCompletedIndex,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               );
             }),

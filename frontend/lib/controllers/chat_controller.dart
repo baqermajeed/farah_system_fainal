@@ -13,6 +13,8 @@ class ChatController extends GetxController {
 
   final RxList<MessageModel> messages = <MessageModel>[].obs;
   final RxBool isLoading = false.obs;
+  final RxBool isLoadingMore = false.obs;
+  final RxBool hasMoreMessages = true.obs;
   final RxBool isConnected = false.obs;
   String? currentPatientId;
   String? currentDoctorId;
@@ -30,6 +32,8 @@ class ChatController extends GetxController {
 
   /// Bumped on every conversation open so stale API responses are ignored.
   int _loadGeneration = 0;
+
+  static const int pageSize = 30;
 
   void resetChatStateForUserChange({required bool disconnectSocket}) {
     final socketService = _chatService.socketService;
@@ -84,6 +88,8 @@ class ChatController extends GetxController {
     currentRoomId = null;
     currentPatientId = patientId;
     currentDoctorId = doctorId;
+    hasMoreMessages.value = true;
+    isLoadingMore.value = false;
     isLoading.value = true;
   }
 
@@ -108,8 +114,8 @@ class ChatController extends GetxController {
       prepareConversation(patientId: patientId, doctorId: doctorId);
     }
 
-    // Load messages (this leaves previous room and resets currentRoomId)
-    await loadMessages(patientId: patientId, doctorId: doctorId);
+    // Load latest page (this leaves previous room and resets currentRoomId)
+    await loadMessages(patientId: patientId, doctorId: doctorId, limit: pageSize);
 
     // Connect/join room (if already connected, connectSocket will reuse)
     await connectSocket(patientId, doctorId: doctorId);
@@ -140,10 +146,10 @@ class ChatController extends GetxController {
     super.onClose();
   }
 
-  // جلب الرسائل من API
+  // جلب الرسائل من API (صفحة حديثة أو أقدم عبر before)
   Future<void> loadMessages({
     required String patientId,
-    int limit = 50,
+    int limit = pageSize,
     String? before,
     String? doctorId,
   }) async {
@@ -157,25 +163,15 @@ class ChatController extends GetxController {
       if (!alreadyPrepared) {
         prepareConversation(patientId: patientId, doctorId: doctorId);
       }
+      hasMoreMessages.value = true;
     } else {
-      isLoading.value = true;
+      if (isLoadingMore.value || !hasMoreMessages.value) return;
+      isLoadingMore.value = true;
     }
 
     final loadId = _loadGeneration;
 
     try {
-      print(
-        '📨 [ChatController] Loading messages for patient: $patientId, doctor: $doctorId (gen=$loadId)',
-      );
-
-      // Check if we need to reload due to user change (for when chat opens after login)
-      if (_shouldReloadAfterUserChange) {
-        print(
-          '🔄 [ChatController] User changed since last load, ensuring fresh data...',
-        );
-        _shouldReloadAfterUserChange = false;
-      }
-
       final messagesList = await _chatService.getMessages(
         patientId: patientId,
         limit: limit,
@@ -187,105 +183,103 @@ class ChatController extends GetxController {
       if (loadId != _loadGeneration ||
           currentPatientId != patientId ||
           currentDoctorId != doctorId) {
-        print(
-          '⏭️ [ChatController] Ignoring stale messages response (gen=$loadId, current=$_loadGeneration)',
-        );
         return;
       }
-
-      print('✅ [ChatController] Loaded ${messagesList.length} messages');
 
       // Ensure currentUser is loaded before processing messages
       var currentUser = _authController.currentUser.value;
       if (currentUser == null) {
-        print('⏳ [ChatController] currentUser not loaded yet, waiting...');
-        // Wait up to 2 seconds for currentUser to load
         for (int i = 0; i < 20 && currentUser == null; i++) {
           await Future.delayed(const Duration(milliseconds: 100));
           currentUser = _authController.currentUser.value;
         }
-        if (currentUser != null) {
-          print(
-            '✅ [ChatController] currentUser loaded: ${currentUser.id} (${currentUser.userType})',
-          );
-        } else {
-          print(
-            '⚠️ [ChatController] currentUser still null, messages may display incorrectly',
-          );
-        }
-      } else {
-        print(
-          '✅ [ChatController] currentUser already loaded: ${currentUser.id} (${currentUser.userType})',
-        );
       }
 
       if (loadId != _loadGeneration ||
           currentPatientId != patientId ||
           currentDoctorId != doctorId) {
-        print(
-          '⏭️ [ChatController] Ignoring stale messages after user wait (gen=$loadId)',
-        );
         return;
       }
 
-      // Clear sending message IDs when loading fresh messages
-      sendingMessageIds.clear();
-
-      messages.assignAll(messagesList);
-      messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
-
-      // Log first few messages for debugging
-      if (messagesList.isNotEmpty && currentUser != null) {
-        print(
-          '📋 [ChatController] First message: senderId="${messagesList.first.senderId}", currentUserId="${currentUser.id}", isSent=${isMessageFromCurrentUser(messagesList.first)}',
-        );
+      if (messagesList.length < limit) {
+        hasMoreMessages.value = false;
       }
 
-      // Extract room_id from first message if available
-      if (messagesList.isNotEmpty && messagesList.first.roomId != null) {
-        currentRoomId = messagesList.first.roomId;
-        print('📋 [ChatController] Extracted room_id: $currentRoomId');
-      }
+      if (isFreshLoad) {
+        sendingMessageIds.clear();
+        messages.assignAll(messagesList);
+        messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
-      // Mark all unread messages as read when opening the chat
-      if (currentUser != null) {
-        final unreadMessages = messagesList
-            .where((m) => !m.isRead && m.senderId != currentUser!.id)
-            .toList();
+        if (messagesList.isNotEmpty && messagesList.first.roomId != null) {
+          currentRoomId = messagesList.first.roomId;
+        }
 
-        if (unreadMessages.isNotEmpty) {
-          print(
-            '📖 [ChatController] Marking ${unreadMessages.length} messages as read',
-          );
-          // Mark all unread messages as read (do this in background to not block UI)
-          Future.microtask(() async {
-            for (final message in unreadMessages) {
-              try {
-                await markAsRead(message.id);
-              } catch (e) {
-                print(
-                  '⚠️ [ChatController] Error marking message ${message.id} as read: $e',
-                );
+        if (currentUser != null) {
+          final unreadMessages = messagesList
+              .where((m) => !m.isRead && m.senderId != currentUser!.id)
+              .toList();
+
+          if (unreadMessages.isNotEmpty) {
+            Future.microtask(() async {
+              for (final message in unreadMessages) {
+                try {
+                  await markAsRead(message.id);
+                } catch (_) {}
               }
-            }
-          });
+            });
+          }
+        }
+      } else {
+        // صفحات أقدم: دمج بدون تكرار في بداية القائمة (أقدم → أحدث)
+        final existingIds = messages.map((m) => m.id).toSet();
+        final older = messagesList
+            .where((m) => !existingIds.contains(m.id))
+            .toList();
+        if (older.isNotEmpty) {
+          messages.insertAll(0, older);
+          messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
         }
       }
     } on ApiException catch (e) {
-      print('❌ [ChatController] API Error: ${e.message}');
-      if (loadId == _loadGeneration) {
+      if (loadId == _loadGeneration && isFreshLoad) {
         await NetworkUtils.showError(e);
       }
     } catch (e) {
-      print('❌ [ChatController] Error loading messages: $e');
-      if (loadId == _loadGeneration) {
-        await NetworkUtils.showError(e, fallbackMessage: 'حدث خطأ أثناء تحميل الرسائل: ${e.toString()}');
+      if (loadId == _loadGeneration && isFreshLoad) {
+        await NetworkUtils.showError(
+          e,
+          fallbackMessage: 'حدث خطأ أثناء تحميل الرسائل',
+        );
       }
     } finally {
       if (loadId == _loadGeneration) {
-        isLoading.value = false;
+        if (isFreshLoad) {
+          isLoading.value = false;
+        } else {
+          isLoadingMore.value = false;
+        }
       }
     }
+  }
+
+  /// تحميل 30 رسالة أقدم عند السكرول لأعلى.
+  Future<void> loadOlderMessages() async {
+    if (isLoadingMore.value ||
+        isLoading.value ||
+        !hasMoreMessages.value ||
+        messages.isEmpty ||
+        currentPatientId == null) {
+      return;
+    }
+
+    final oldest = messages.first;
+    final before = oldest.timestamp.toUtc().toIso8601String();
+    await loadMessages(
+      patientId: currentPatientId!,
+      doctorId: currentDoctorId,
+      limit: pageSize,
+      before: before,
+    );
   }
 
   // الاتصال بـ Socket.IO
@@ -674,6 +668,7 @@ class ChatController extends GetxController {
     String? content,
     required File image,
   }) async {
+    String? tempId;
     try {
       if (currentPatientId == null) {
         throw ApiException('لا يوجد مريض محدد');
@@ -681,7 +676,7 @@ class ChatController extends GetxController {
 
       // Create a temporary message to show with loading indicator
       final currentUser = _authController.currentUser.value;
-      final tempId = 'sending_image_${DateTime.now().millisecondsSinceEpoch}';
+      tempId = 'sending_image_${DateTime.now().millisecondsSinceEpoch}';
       final tempMessage = MessageModel(
         id: tempId,
         senderId: currentUser?.id ?? '',
@@ -700,7 +695,6 @@ class ChatController extends GetxController {
       }
       messages.add(tempMessage);
       messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
-      isLoading.value = true;
 
       // Upload image and send message via REST API
       // The REST API will automatically broadcast via Socket.IO
@@ -727,17 +721,26 @@ class ChatController extends GetxController {
           messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
         }
       }
-
-      print(
-        '✅ [ChatController] Image message sent: ${message.id}, imageUrl: ${message.imageUrl}',
-      );
     } on ApiException catch (e) {
-      await NetworkUtils.showError(e);
+      // إذا Socket أكّد الرسالة مسبقاً (استبدال المؤقتة) لا نظهر خطأ مضلل
+      final stillTemp =
+          tempId != null && messages.any((m) => m.id == tempId);
+      if (stillTemp) {
+        sendingMessageIds.remove(tempId);
+        messages.removeWhere((m) => m.id == tempId);
+        await NetworkUtils.showError(e);
+      }
     } catch (e) {
-      print('❌ [ChatController] Error sending image: $e');
-      await NetworkUtils.showError(e, fallbackMessage: 'حدث خطأ أثناء إرسال الصورة: ${e.toString()}');
-    } finally {
-      isLoading.value = false;
+      final stillTemp =
+          tempId != null && messages.any((m) => m.id == tempId);
+      if (stillTemp) {
+        sendingMessageIds.remove(tempId);
+        messages.removeWhere((m) => m.id == tempId);
+        await NetworkUtils.showError(
+          e,
+          fallbackMessage: 'حدث خطأ أثناء إرسال الصورة',
+        );
+      }
     }
   }
 

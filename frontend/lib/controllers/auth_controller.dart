@@ -9,6 +9,9 @@ import 'package:farah_sys_final/services/patient_service.dart';
 import 'package:farah_sys_final/services/fcm_service.dart';
 import 'package:farah_sys_final/services/token_storage.dart';
 import 'package:farah_sys_final/controllers/chat_controller.dart';
+import 'package:farah_sys_final/controllers/patient_controller.dart';
+import 'package:farah_sys_final/controllers/appointment_controller.dart';
+import 'package:farah_sys_final/controllers/notifications_screen_controller.dart';
 import 'package:farah_sys_final/controllers/presence_controller.dart';
 import 'package:farah_sys_final/core/utils/network_utils.dart';
 
@@ -225,6 +228,35 @@ class AuthController extends GetxController {
     final patientService = PatientService();
     final profile = await patientService.getMyProfile(patientId: patientId);
     final hasDoctor = profile.doctorIds.isNotEmpty;
+
+    // حدّث الملف الطبي النشط فوراً حتى لا تبقى بيانات/صورة فرد سابق في الـ UI
+    try {
+      final patientController = Get.find<PatientController>();
+      patientController.applyActiveFamilyProfile(profile);
+    } catch (e) {
+      _logError(e, 'selectFamilyMember/applyActiveFamilyProfile');
+    }
+
+    // امسح مواعيد الفرد السابق من الذاكرة (الكاش الآن مفصول حسب patient_id)
+    try {
+      final appointmentController = Get.find<AppointmentController>();
+      appointmentController.appointments.clear();
+      appointmentController.primaryAppointments.clear();
+      appointmentController.secondaryAppointments.clear();
+    } catch (e) {
+      _logError(e, 'selectFamilyMember/clearAppointments');
+    }
+
+    // امسح إشعارات الفرد السابق من الذاكرة إن كانت شاشة الإشعارات محمّلة
+    try {
+      if (Get.isRegistered<NotificationsScreenController>()) {
+        final n = Get.find<NotificationsScreenController>();
+        n.notifications.clear();
+        n.hasMore.value = true;
+      }
+    } catch (e) {
+      _logError(e, 'selectFamilyMember/clearNotifications');
+    }
 
     await _afterPatientAuthSetup(showSuccessSnackbar: showSuccessSnackbar);
 

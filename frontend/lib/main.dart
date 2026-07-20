@@ -50,6 +50,7 @@ import 'package:farah_sys_final/controllers/patient_controller.dart';
 import 'package:farah_sys_final/controllers/appointment_controller.dart';
 import 'package:farah_sys_final/controllers/chat_controller.dart';
 import 'package:farah_sys_final/controllers/presence_controller.dart';
+import 'package:farah_sys_final/controllers/implant_stage_controller.dart';
 import 'package:farah_sys_final/controllers/splash_controller.dart';
 import 'package:farah_sys_final/controllers/patient_login_controller.dart';
 import 'package:farah_sys_final/controllers/doctor_login_controller.dart';
@@ -112,6 +113,8 @@ void main() async {
   await Hive.openBox('medicalRecords');
   await Hive.openBox('messages');
   await Hive.openBox('gallery');
+  await Hive.openBox('implantStages');
+  await Hive.openBox('notifications');
 
   // Initialize Services (TokenStorage أولاً مثل قريب)
   final tokenStorage = TokenStorage();
@@ -124,6 +127,7 @@ void main() async {
   Get.put(AppointmentController());
   Get.put(ChatController());
   Get.put(PresenceController());
+  Get.put(ImplantStageController(), permanent: true);
 
   // Screen controllers (lazy + fenix مثل قريب)
   Get.lazyPut<SplashController>(() => SplashController(), fenix: true);

@@ -131,9 +131,11 @@ async def _send_3d_reminder(appointment: Appointment):
             title="تذكير موعد",
             body=await _reminder_body(patient, "بعد 3 أيام"),
             type="appointment_reminder",
+            patient_id=str(patient.id),
             data={
                 "appointmentId": str(appointment.id),
                 "reminder": "3d",
+                "patientId": str(patient.id),
             },
         )
         
@@ -158,9 +160,11 @@ async def _send_1d_reminder(appointment: Appointment):
             title="تذكير موعد",
             body=await _reminder_body(patient, "غداً"),
             type="appointment_reminder",
+            patient_id=str(patient.id),
             data={
                 "appointmentId": str(appointment.id),
                 "reminder": "1d",
+                "patientId": str(patient.id),
             },
         )
         
@@ -187,9 +191,11 @@ async def _send_day_reminder(appointment: Appointment):
             title="تذكير موعد",
             body=await _reminder_body(patient, f"اليوم في الساعة {appointment_time}"),
             type="appointment_reminder",
+            patient_id=str(patient.id),
             data={
                 "appointmentId": str(appointment.id),
                 "reminder": "day",
+                "patientId": str(patient.id),
             },
         )
         

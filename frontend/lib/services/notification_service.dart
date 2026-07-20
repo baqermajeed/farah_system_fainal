@@ -1,4 +1,6 @@
 import 'package:farah_sys_final/services/api_service.dart';
+import 'package:get/get.dart';
+import 'package:farah_sys_final/controllers/auth_controller.dart';
 
 class NotificationModel {
   final String id;
@@ -20,25 +22,48 @@ class NotificationModel {
   });
 
   factory NotificationModel.fromJson(Map<String, dynamic> json) {
-    DateTime sentAt;
-    try {
-      sentAt = DateTime.parse(json['sent_at']?.toString() ?? '').toLocal();
-    } catch (_) {
-      sentAt = DateTime.now();
-    }
-
-    final rawData = json['data'];
     return NotificationModel(
       id: json['id']?.toString() ?? '',
       title: json['title']?.toString() ?? '',
       body: json['body']?.toString() ?? '',
       type: json['type']?.toString() ?? 'general',
-      data: rawData is Map<String, dynamic>
-          ? Map<String, dynamic>.from(rawData)
-          : <String, dynamic>{},
+      data: _parseData(json['data']),
       isRead: json['is_read'] == true,
-      sentAt: sentAt,
+      sentAt: _parseSentAt(json['sent_at']),
     );
+  }
+
+  static Map<String, dynamic> _parseData(dynamic rawData) {
+    if (rawData is Map<String, dynamic>) {
+      return Map<String, dynamic>.from(rawData);
+    }
+    if (rawData is Map) {
+      return Map<String, dynamic>.from(rawData);
+    }
+    return <String, dynamic>{};
+  }
+
+  /// السيرفر يخزّن UTC؛ إن جاء بدون Z/+00:00 نفترض UTC ثم نحوّل للمحلي.
+  static DateTime _parseSentAt(dynamic raw) {
+    try {
+      var s = raw?.toString().trim() ?? '';
+      if (s.isEmpty) return DateTime.now();
+
+      if (s.endsWith('+00:00')) {
+        s = '${s.substring(0, s.length - 6)}Z';
+      }
+
+      final hasTz = s.endsWith('Z') ||
+          RegExp(r'[+-]\d{2}:\d{2}$').hasMatch(s);
+      if (!hasTz && s.length >= 19) {
+        s = '${s}Z';
+      }
+
+      final parsed = DateTime.parse(s);
+      return parsed.toLocal();
+    } catch (_) {
+      return DateTime.now();
+    }
   }
 
   NotificationModel copyWith({bool? isRead}) {
@@ -52,23 +77,47 @@ class NotificationModel {
       sentAt: sentAt,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'body': body,
+      'type': type,
+      'data': data,
+      'is_read': isRead,
+      'sent_at': sentAt.toUtc().toIso8601String(),
+    };
+  }
 }
 
 class NotificationService {
   final ApiService _api = ApiService();
 
+  String? get _activePatientId {
+    if (!Get.isRegistered<AuthController>()) return null;
+    return Get.find<AuthController>().patientProfileId.value;
+  }
+
   Future<List<NotificationModel>> getNotifications({
     int skip = 0,
-    int limit = 50,
+    int limit = 30,
     bool unreadOnly = false,
+    String? patientId,
   }) async {
+    final query = <String, dynamic>{
+      'skip': skip,
+      'limit': limit,
+      'unread_only': unreadOnly,
+    };
+    final pid = patientId ?? _activePatientId;
+    if (pid != null && pid.isNotEmpty) {
+      query['patient_id'] = pid;
+    }
+
     final response = await _api.get(
       '/notifications',
-      queryParameters: {
-        'skip': skip,
-        'limit': limit,
-        'unread_only': unreadOnly,
-      },
+      queryParameters: query,
     );
     final list = response.data as List? ?? [];
     return list
@@ -77,8 +126,16 @@ class NotificationService {
         .toList();
   }
 
-  Future<int> getUnreadCount() async {
-    final response = await _api.get('/notifications/unread-count');
+  Future<int> getUnreadCount({String? patientId}) async {
+    final pid = patientId ?? _activePatientId;
+    final query = <String, dynamic>{};
+    if (pid != null && pid.isNotEmpty) {
+      query['patient_id'] = pid;
+    }
+    final response = await _api.get(
+      '/notifications/unread-count',
+      queryParameters: query.isEmpty ? null : query,
+    );
     final data = response.data;
     if (data is Map) {
       return (data['count'] as num?)?.toInt() ?? 0;
@@ -95,8 +152,14 @@ class NotificationService {
     return null;
   }
 
-  Future<int> markAllAsRead() async {
-    final response = await _api.post('/notifications/mark-all-read');
+  Future<int> markAllAsRead({String? patientId}) async {
+    final pid = patientId ?? _activePatientId;
+    final response = await _api.post(
+      '/notifications/mark-all-read',
+      queryParameters: (pid != null && pid.isNotEmpty)
+          ? {'patient_id': pid}
+          : null,
+    );
     final data = response.data;
     if (data is Map) {
       return (data['count'] as num?)?.toInt() ?? 0;

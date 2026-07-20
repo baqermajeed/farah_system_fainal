@@ -175,7 +175,8 @@ class ChatScreen extends GetView<ChatScreenController> {
   Widget _buildMessagesArea() {
     return Obx(() {
       // Always show loader while fetching so old chat / empty flash never appears.
-      if (controller.chatController.isLoading.value) {
+      if (controller.chatController.isLoading.value &&
+          controller.chatController.messages.isEmpty) {
         return const LoadingWidget(message: 'جاري تحميل الرسائل...');
       }
 
@@ -190,30 +191,50 @@ class ChatScreen extends GetView<ChatScreenController> {
             child: _buildDateChip(controller.todayLabel()),
           ),
           Expanded(
-            child: ListView.builder(
-              controller: controller.scrollController,
-              padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-              reverse: true,
-              itemCount: controller.chatController.messages.length,
-              itemBuilder: (context, index) {
-                final currentUserId =
-                    controller.authController.currentUser.value?.id ?? '';
-                final messages = controller.chatController.messages;
-                final message = messages[messages.length - 1 - index];
+            child: Obx(() {
+              final loadingMore = controller.chatController.isLoadingMore.value;
+              final count = controller.chatController.messages.length;
+              final itemCount = count + (loadingMore ? 1 : 0);
 
-                controller.onMessagesRendered();
+              return ListView.builder(
+                controller: controller.scrollController,
+                padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+                reverse: true,
+                itemCount: itemCount,
+                itemBuilder: (context, index) {
+                  // مع reverse: آخر عنصر في القائمة = أعلى الشاشة (رسائل أقدم)
+                  if (loadingMore && index == itemCount - 1) {
+                    return Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12.h),
+                      child: const Center(
+                        child: SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    );
+                  }
 
-                final isSent =
-                    message.senderId.trim() == currentUserId.trim();
-                final time = controller.formatMessageTime(message.timestamp);
+                  final currentUserId =
+                      controller.authController.currentUser.value?.id ?? '';
+                  final messages = controller.chatController.messages;
+                  final message = messages[messages.length - 1 - index];
 
-                return _buildMessageBubble(
-                  message: message,
-                  isSent: isSent,
-                  time: time,
-                );
-              },
-            ),
+                  controller.onMessagesRendered();
+
+                  final isSent =
+                      message.senderId.trim() == currentUserId.trim();
+                  final time = controller.formatMessageTime(message.timestamp);
+
+                  return _buildMessageBubble(
+                    message: message,
+                    isSent: isSent,
+                    time: time,
+                  );
+                },
+              );
+            }),
           ),
         ],
       );
@@ -386,7 +407,7 @@ class ChatScreen extends GetView<ChatScreenController> {
               color: _navy,
               iconColor: Colors.white,
               onTap: controller.sendMessage,
-              rotateIcon: true,
+              rotateIcon: false,
             ),
           ],
         ),

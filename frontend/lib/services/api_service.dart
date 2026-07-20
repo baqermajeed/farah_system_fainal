@@ -176,12 +176,14 @@ class ApiService {
     String endpoint, {
     dynamic data,
     dio.FormData? formData,
+    Map<String, dynamic>? queryParameters,
     dio.Options? options,
   }) async {
     try {
       return await _dio.post(
         endpoint,
         data: formData ?? data,
+        queryParameters: queryParameters,
         options: options,
       );
     } on DioException catch (e) {

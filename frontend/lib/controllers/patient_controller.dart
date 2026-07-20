@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:get/get.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:farah_sys_final/models/patient_model.dart';
@@ -152,6 +154,13 @@ class PatientController extends GetxController {
     } finally {
       isLoading.value = false;
     }
+  }
+
+  /// تطبيق ملف فرد العائلة المختار فوراً (بدون انتظار إعادة تحميل الشاشة).
+  void applyActiveFamilyProfile(PatientModel profile) {
+    myProfile.value = profile;
+    myDoctor.value = null;
+    myDoctors.clear();
   }
 
   // جلب بيانات المريض الحالي (للمريض)
@@ -423,6 +432,15 @@ class PatientController extends GetxController {
     } finally {
       isLoading.value = false;
     }
+  }
+
+  Future<void> uploadMyProfileImage(File imageFile) async {
+    final authController = Get.find<AuthController>();
+    final updated = await _patientService.uploadMyProfileImage(
+      imageFile: imageFile,
+      patientId: authController.patientProfileId.value,
+    );
+    myProfile.value = updated;
   }
 
   Future<void> loadMyDoctor() async {

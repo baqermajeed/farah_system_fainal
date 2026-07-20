@@ -129,10 +129,9 @@ class PatientHomeScreen extends GetView<PatientHomeController> {
             child: Obx(() {
               final user = controller.authController.currentUser.value;
               final profile = controller.patientController.myProfile.value;
-              final patientName = user?.name ?? profile?.name ?? 'مريض';
-              final imageUrl = ImageUtils.convertToValidUrl(
-                user?.imageUrl ?? profile?.imageUrl,
-              );
+              // هوية العرض = الملف الطبي النشط (فرد العائلة)، وليس حساب الهاتف
+              final patientName = profile?.name ?? user?.name ?? 'مريض';
+              final imageUrl = ImageUtils.convertToValidUrl(profile?.imageUrl);
 
               return Row(
                 children: [

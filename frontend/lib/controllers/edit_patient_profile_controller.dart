@@ -9,13 +9,11 @@ import 'package:farah_sys_final/core/constants/app_strings.dart';
 import 'package:farah_sys_final/core/constants/iraq_governorates.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/controllers/patient_controller.dart';
-import 'package:farah_sys_final/services/auth_service.dart';
 
 /// Controller لشاشة تعديل الملف الشخصي للمريض — المنطق والحالة خارج الـ View.
 class EditPatientProfileController extends GetxController {
   AuthController get authController => Get.find<AuthController>();
   PatientController get patientController => Get.find<PatientController>();
-  final AuthService _authService = AuthService();
   final ImagePicker _imagePicker = ImagePicker();
 
   final TextEditingController nameController = TextEditingController();
@@ -56,11 +54,13 @@ class EditPatientProfileController extends GetxController {
     final user = authController.currentUser.value;
     final profile = patientController.myProfile.value;
 
-    nameController.text = user?.name ?? profile?.name ?? '';
-    phoneController.text = user?.phoneNumber ?? profile?.phoneNumber ?? '';
-    ageController.text = (user?.age ?? profile?.age ?? 0).toString();
+    // بيانات العرض/التعديل من الملف الطبي النشط (فرد العائلة)
+    nameController.text = profile?.name ?? user?.name ?? '';
+    phoneController.text =
+        user?.phoneNumber ?? profile?.phoneNumber ?? '';
+    ageController.text = (profile?.age ?? user?.age ?? 0).toString();
 
-    final gender = user?.gender ?? profile?.gender;
+    final gender = profile?.gender ?? user?.gender;
     if (gender == 'male') {
       selectedGender.value = AppStrings.male;
     } else if (gender == 'female') {
@@ -69,7 +69,7 @@ class EditPatientProfileController extends GetxController {
       selectedGender.value = gender;
     }
 
-    final cityFromData = user?.city ?? profile?.city;
+    final cityFromData = profile?.city ?? user?.city;
     var city = IraqGovernorates.toArabic(cityFromData);
     if (city != null && !cities.contains(city)) {
       city = null;
@@ -143,9 +143,7 @@ class EditPatientProfileController extends GetxController {
 
       isUploadingImage.value = true;
 
-      await _authService.uploadProfileImage(File(croppedFile.path));
-      await authController.checkLoggedInUser();
-
+      await patientController.uploadMyProfileImage(File(croppedFile.path));
       imageTimestamp.value = DateTime.now().millisecondsSinceEpoch;
       Get.snackbar('نجح', 'تم تحديث الصورة بنجاح');
     } catch (e) {

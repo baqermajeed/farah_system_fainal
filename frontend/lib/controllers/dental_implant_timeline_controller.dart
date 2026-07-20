@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:get/get.dart';
 
 import 'package:farah_sys_final/controllers/auth_controller.dart';
@@ -5,9 +7,8 @@ import 'package:farah_sys_final/controllers/implant_stage_controller.dart';
 import 'package:farah_sys_final/controllers/patient_controller.dart';
 import 'package:farah_sys_final/models/implant_stage_model.dart';
 
-/// Controller لشاشة تايم لاين زراعة الأسنان — حالة/منطق العرض هنا،
-/// بينما بيانات المراحل تُدار عبر [ImplantStageController] الخاص بالشاشة
-/// (نسخة جديدة في كل زيارة، مثل نمط AppointmentsScreenController).
+/// Controller لشاشة تايم لاين زراعة الأسنان.
+/// يستخدم [ImplantStageController] المشترك (كاش Hive + تحديث خلفي).
 class DentalImplantTimelineController extends GetxController {
   /// أسماء المراحل كما هي مخزّنة في الـ API
   static const List<String> allStageNames = [
@@ -44,18 +45,12 @@ class DentalImplantTimelineController extends GetxController {
     'تم التركيب النهائي بنجاح',
   ];
 
-  late ImplantStageController implantStageController;
+  ImplantStageController get implantStageController =>
+      Get.find<ImplantStageController>();
   PatientController get patientController => Get.find<PatientController>();
   AuthController get authController => Get.find<AuthController>();
 
   String get patientId => authController.patientProfileId.value ?? '';
-
-  @override
-  void onInit() {
-    super.onInit();
-    // Ensure controller exists once for this screen session (fresh copy per visit).
-    implantStageController = Get.put(ImplantStageController());
-  }
 
   @override
   void onReady() {
@@ -67,9 +62,20 @@ class DentalImplantTimelineController extends GetxController {
     final id = authController.patientProfileId.value;
     if (id == null || id.isEmpty) return;
 
+    // الطبيب يمكن أن يُحدَّث بالخلفية؛ المراحل: كاش فوري + تحديث صامت إن وُجدت
+    unawaited(patientController.loadMyDoctor());
+    final hasLocal = implantStageController.hasStagesForPatient(id);
+    await implantStageController.loadStages(id, silent: hasLocal);
+  }
+
+  /// تحديث يدوي (سحب للتحديث) — يجلب من السيرفر دائماً.
+  Future<void> refreshData() async {
+    final id = authController.patientProfileId.value;
+    if (id == null || id.isEmpty) return;
+
     await Future.wait([
       patientController.loadMyDoctor(),
-      implantStageController.loadStages(id),
+      implantStageController.loadStages(id, silent: true),
     ]);
   }
 

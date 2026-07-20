@@ -319,26 +319,43 @@ async def send_message(
     # رفع الصورة إذا كانت موجودة
     image_url = None
     if image:
-        if image.content_type not in ("image/jpeg", "image/png", "image/webp"):
-            raise HTTPException(status_code=400, detail="نوع الملف غير مدعوم. فقط JPEG, PNG, WEBP")
-        
+        content_type = (image.content_type or "").lower()
+        allowed = {
+            "image/jpeg",
+            "image/jpg",
+            "image/png",
+            "image/webp",
+            "image/heic",
+            "image/heif",
+            "application/octet-stream",
+        }
+        if content_type and content_type not in allowed:
+            raise HTTPException(
+                status_code=400,
+                detail="نوع الملف غير مدعوم. فقط JPEG, PNG, WEBP",
+            )
+
         file_bytes = await image.read()
+        if not file_bytes:
+            raise HTTPException(status_code=400, detail="الصورة فارغة")
+
+        # بعض الأجهزة ترسل octet-stream — نفترض jpeg
+        upload_ct = content_type if content_type.startswith("image/") else "image/jpeg"
         patient_name_hint = await patient_name_hint_for_id(patient_id)
         image_path = await upload_clinic_image(
             patient_id=patient_id,
             folder="chat",
             file_bytes=file_bytes,
-            content_type=image.content_type,
+            content_type=upload_ct,
             name_hint=patient_name_hint,
         )
-        # upload_clinic_image now returns a direct /media/... URL
         image_url = image_path
     
     # إنشاء الرسالة
     message = ChatMessage(
         room_id=room.id,
         sender_user_id=current.id,
-        sender_role=current.role,
+        sender_role=str(current.role.value if hasattr(current.role, "value") else current.role),
         content=content or "",
         imageUrl=image_url,
         is_read=False
@@ -351,13 +368,11 @@ async def send_message(
         
         # Determine receiver based on sender role
         if current.role == Role.DOCTOR:
-            # If sender is doctor, receiver is patient
             receiver_id = str(room.patient_user_id) if room.patient_user_id else None
-            receiver_role = Role.PATIENT
+            receiver_role = Role.PATIENT.value
         elif current.role == Role.PATIENT:
-            # If sender is patient, receiver is doctor
             receiver_id = str(room.doctor_user_id) if room.doctor_user_id else None
-            receiver_role = Role.DOCTOR
+            receiver_role = Role.DOCTOR.value
         else:
             receiver_id = None
             receiver_role = None
@@ -374,7 +389,7 @@ async def send_message(
                 "content": message.content,
                 "imageUrl": message.imageUrl,
                 "is_read": message.is_read,
-                "created_at": message.created_at.isoformat(),
+                "created_at": message.created_at.isoformat() if message.created_at else "",
                 "doctor_id": str(room.doctor_id) if room.doctor_id else None,
                 "doctor_user_id": str(room.doctor_user_id) if room.doctor_user_id else None,
                 "patient_id": str(room.patient_id) if room.patient_id else None,
@@ -396,12 +411,15 @@ async def send_message(
         receiver_id = None
         receiver_role = None
     
-    logger.info(
-        f"📨 [REST] Message saved - Room: {room.id}, "
-        f"Sender: {current.id} (role={current.role}), "
-        f"Receiver: {receiver_id} (role={receiver_role}), "
-        f"sender_user_id={message.sender_user_id}, sender_role={message.sender_role}"
-    )
+    try:
+        logger.info(
+            f"📨 [REST] Message saved - Room: {room.id}, "
+            f"Sender: {current.id} (role={current.role}), "
+            f"Receiver: {receiver_id} (role={receiver_role}), "
+            f"sender_user_id={message.sender_user_id}, sender_role={message.sender_role}"
+        )
+    except Exception:
+        pass
 
     # إشعار المريض عند رسالة من الطبيب
     if current.role == Role.DOCTOR and room.patient_user_id:
@@ -417,16 +435,30 @@ async def send_message(
         except Exception as e:
             print(f"⚠️ Failed to notify patient about chat message: {e}")
 
-    return ChatMessageOut(
-        id=str(message.id),
-        room_id=str(message.room_id),
-        sender_user_id=str(message.sender_user_id) if message.sender_user_id else None,
-        sender_role=message.sender_role,
-        content=message.content,
-        imageUrl=message.imageUrl,
-        is_read=message.is_read,
-        created_at=message.created_at.isoformat()
-    )
+    # بعد الحفظ الناجح نرجع دائماً 200 حتى لو فشل شيء ثانوي في التسلسل
+    try:
+        return ChatMessageOut(
+            id=str(message.id),
+            room_id=str(message.room_id),
+            sender_user_id=str(message.sender_user_id) if message.sender_user_id else None,
+            sender_role=str(message.sender_role) if message.sender_role is not None else None,
+            content=message.content or "",
+            imageUrl=message.imageUrl,
+            is_read=bool(message.is_read),
+            created_at=message.created_at.isoformat() if message.created_at else "",
+        )
+    except Exception as e:
+        print(f"⚠️ Failed to build ChatMessageOut, using fallback: {e}")
+        return ChatMessageOut(
+            id=str(message.id),
+            room_id=str(message.room_id),
+            sender_user_id=str(message.sender_user_id) if message.sender_user_id else None,
+            sender_role="patient",
+            content=message.content or "",
+            imageUrl=message.imageUrl,
+            is_read=False,
+            created_at="",
+        )
 
 @router.put("/rooms/{room_id}/messages/{message_id}/read", response_model=ChatMessageOut)
 async def mark_message_as_read(

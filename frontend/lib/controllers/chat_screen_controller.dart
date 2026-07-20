@@ -27,6 +27,7 @@ class ChatScreenController extends GetxController {
   String? doctorName;
   String? doctorUserId;
   int _lastMessageCount = 0;
+  bool _loadingOlder = false;
 
   @override
   void onInit() {
@@ -36,6 +37,8 @@ class ChatScreenController extends GetxController {
     doctorId = args?['doctorId'];
     doctorName = args?['doctorName'];
     doctorUserId = args?['doctorUserId']?.toString();
+
+    scrollController.addListener(_onScroll);
 
     // Clear previous conversation before first frame to avoid flash of old/empty chat.
     if (patientId != null) {
@@ -161,9 +164,37 @@ class ChatScreenController extends GetxController {
     }
   }
 
+  void _onScroll() {
+    if (!scrollController.hasClients) return;
+    final pos = scrollController.position;
+    // reverse:true → أعلى المحادثة = maxScrollExtent
+    if (pos.pixels >= pos.maxScrollExtent - 80) {
+      _loadOlderIfNeeded();
+    }
+  }
+
+  Future<void> _loadOlderIfNeeded() async {
+    if (_loadingOlder) return;
+    if (!chatController.hasMoreMessages.value) return;
+    if (chatController.isLoadingMore.value || chatController.isLoading.value) {
+      return;
+    }
+
+    _loadingOlder = true;
+    try {
+      await chatController.loadOlderMessages();
+    } finally {
+      _loadingOlder = false;
+    }
+  }
+
   /// Called while building the message list; scrolls to bottom whenever a
-  /// new message shows up (mirrors previous StatefulWidget behavior).
+  /// new message shows up (not when loading older pages).
   void onMessagesRendered() {
+    if (chatController.isLoadingMore.value) {
+      _lastMessageCount = chatController.messages.length;
+      return;
+    }
     if (chatController.messages.length != _lastMessageCount) {
       _lastMessageCount = chatController.messages.length;
       WidgetsBinding.instance.addPostFrameCallback((_) => scrollToBottom());

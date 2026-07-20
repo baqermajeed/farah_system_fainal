@@ -718,8 +718,8 @@ class EditPatientProfileScreen extends GetView<EditPatientProfileController> {
   }
 
   Widget _buildProfileImage() {
-    final user = controller.authController.currentUser.value;
-    final imageUrl = user?.imageUrl;
+    final profile = controller.patientController.myProfile.value;
+    final imageUrl = profile?.imageUrl;
     final validImageUrl = ImageUtils.convertToValidUrl(imageUrl);
     final hasImage =
         validImageUrl != null && ImageUtils.isValidImageUrl(validImageUrl);

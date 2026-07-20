@@ -1,6 +1,6 @@
-import 'dart:convert';
 import 'dart:io';
-import 'package:http/http.dart' as http;
+
+import 'package:dio/dio.dart' as dio;
 import 'package:http_parser/http_parser.dart';
 import 'package:farah_sys_final/services/api_service.dart';
 import 'package:farah_sys_final/core/network/api_constants.dart';
@@ -11,6 +11,18 @@ import 'package:farah_sys_final/services/socket_service.dart';
 class ChatService {
   final _api = ApiService();
   final SocketService _socketService = SocketService();
+
+  MediaType? _guessImageContentType(String path) {
+    final lower = path.toLowerCase();
+    if (lower.endsWith('.png')) return MediaType('image', 'png');
+    if (lower.endsWith('.webp')) return MediaType('image', 'webp');
+    if (lower.endsWith('.heic')) return MediaType('image', 'heic');
+    if (lower.endsWith('.heif')) return MediaType('image', 'heif');
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+      return MediaType('image', 'jpeg');
+    }
+    return MediaType('image', 'jpeg');
+  }
 
   // جلب قائمة المحادثات
   Future<List<Map<String, dynamic>>> getChatList() async {
@@ -33,7 +45,7 @@ class ChatService {
   // جلب الرسائل من API
   Future<List<MessageModel>> getMessages({
     required String patientId,
-    int limit = 50,
+    int limit = 30,
     String? before,
     String? doctorId,
   }) async {
@@ -49,9 +61,7 @@ class ChatService {
 
       if (response.statusCode == 200) {
         final data = response.data as List;
-        return data
-            .map((json) => MessageModel.fromJson(json))
-            .toList();
+        return data.map((json) => MessageModel.fromJson(json)).toList();
       } else {
         throw ApiException('فشل جلب الرسائل');
       }
@@ -63,7 +73,7 @@ class ChatService {
     }
   }
 
-  // إرسال رسالة مع صورة (multipart)
+  // إرسال رسالة مع صورة (multipart عبر Dio)
   Future<MessageModel> sendMessageWithImage({
     required String patientId,
     String? content,
@@ -71,51 +81,34 @@ class ChatService {
     String? doctorId,
   }) async {
     try {
-      final token = await _api.getToken();
-      if (token == null) {
-        throw ApiException('غير مصرح به');
-      }
-
-      final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.chatSendMessage(patientId)}');
-      
-      final request = http.MultipartRequest('POST', uri);
-      request.headers.addAll({
-        'Authorization': 'Bearer $token',
-      });
-
+      final map = <String, dynamic>{};
       if (content != null && content.isNotEmpty) {
-        request.fields['content'] = content;
+        map['content'] = content;
       }
-      if (doctorId != null) {
-        request.fields['doctor_id'] = doctorId;
+      if (doctorId != null && doctorId.isNotEmpty) {
+        map['doctor_id'] = doctorId;
       }
-
       if (image != null) {
-        final fileStream = image.openRead();
-        final fileLength = await image.length();
-        final multipartFile = http.MultipartFile(
-          'image',
-          fileStream,
-          fileLength,
-          filename: image.path.split('/').last,
-          contentType: MediaType('image', 'jpeg'),
+        final filename = image.path.split(Platform.pathSeparator).last;
+        map['image'] = await dio.MultipartFile.fromFile(
+          image.path,
+          filename: filename,
+          contentType: _guessImageContentType(image.path),
         );
-        request.files.add(multipartFile);
       }
 
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
+      final response = await _api.post(
+        ApiConstants.chatSendMessage(patientId),
+        formData: dio.FormData.fromMap(map),
+      );
 
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        final data = json.decode(response.body);
-        return MessageModel.fromJson(data);
-      } else {
-        throw ApiException('فشل إرسال الرسالة: ${response.statusCode}');
+      final data = response.data;
+      if (data is Map) {
+        return MessageModel.fromJson(Map<String, dynamic>.from(data));
       }
+      throw ApiException('فشل إرسال الرسالة');
     } catch (e) {
-      if (e is ApiException) {
-        rethrow;
-      }
+      if (e is ApiException) rethrow;
       throw ApiException('فشل إرسال الرسالة: ${e.toString()}');
     }
   }
@@ -127,38 +120,23 @@ class ChatService {
     String? doctorId,
   }) async {
     try {
-      final token = await _api.getToken();
-      if (token == null) {
-        throw ApiException('غير مصرح به');
-      }
+      final map = <String, dynamic>{
+        if (content.isNotEmpty) 'content': content,
+        if (doctorId != null && doctorId.isNotEmpty) 'doctor_id': doctorId,
+      };
 
-      final uri = Uri.parse('${ApiConstants.baseUrl}${ApiConstants.chatSendMessage(patientId)}');
-      
-      final request = http.MultipartRequest('POST', uri);
-      request.headers.addAll({
-        'Authorization': 'Bearer $token',
-      });
+      final response = await _api.post(
+        ApiConstants.chatSendMessage(patientId),
+        formData: dio.FormData.fromMap(map),
+      );
 
-      if (content.isNotEmpty) {
-        request.fields['content'] = content;
+      final data = response.data;
+      if (data is Map) {
+        return MessageModel.fromJson(Map<String, dynamic>.from(data));
       }
-      if (doctorId != null) {
-        request.fields['doctor_id'] = doctorId;
-      }
-
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        final data = json.decode(response.body);
-        return MessageModel.fromJson(data);
-      } else {
-        throw ApiException('فشل إرسال الرسالة: ${response.statusCode}');
-      }
+      throw ApiException('فشل إرسال الرسالة');
     } catch (e) {
-      if (e is ApiException) {
-        rethrow;
-      }
+      if (e is ApiException) rethrow;
       throw ApiException('فشل إرسال الرسالة: ${e.toString()}');
     }
   }
@@ -191,4 +169,3 @@ class ChatService {
   // التحقق من حالة الاتصال
   bool get isConnected => _socketService.isConnected;
 }
-
