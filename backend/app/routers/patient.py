@@ -176,12 +176,15 @@ async def my_doctor(
     if not user:
         raise HTTPException(status_code=404, detail="Doctor user not found")
 
+    from app.services.presence_service import is_user_online
+
     return DoctorOut(
         id=str(doctor.id),
         user_id=str(doctor.user_id),
         name=user.name,
         phone=user.phone,
         imageUrl=user.imageUrl,
+        is_online=await is_user_online(str(doctor.user_id)),
     )
 
 
@@ -192,6 +195,8 @@ async def my_doctors(
 ):
     """قائمة الأطباء المرتبطين بالملف الطبي النشط."""
     from beanie.operators import In
+
+    from app.services.presence_service import is_user_online
 
     patient, _ = await _resolve_active_patient(current, patient_id)
 
@@ -213,6 +218,7 @@ async def my_doctors(
                 name=u.name,
                 phone=u.phone,
                 imageUrl=u.imageUrl,
+                is_online=await is_user_online(str(d.user_id)),
             ))
     return out
 

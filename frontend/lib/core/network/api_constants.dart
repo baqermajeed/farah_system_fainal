@@ -145,6 +145,10 @@ class ApiConstants {
   static const int connectionTimeout = 30000; // 30 seconds
   static const int receiveTimeout = 30000;
 
+  // Presence (مثل frontend_desktop) — الطبيب متصل فقط أثناء فتح التطبيق
+  static const String presenceHeartbeat = '/presence/heartbeat';
+  static const String presenceOnlineDoctors = '/presence/online-doctors';
+
   // Storage Keys — التوكنات فقط في Secure Storage؛ بيانات المستخدم في الذاكرة (AuthController)
   static const String tokenKey = 'auth_token';
   static const String refreshTokenKey = 'refresh_token';

@@ -132,8 +132,12 @@ async def connect(sid: str, environ: dict, auth: dict):
         print(f"✅ User connected: {user_id_key} ({user.name}) - Socket: {sid}")
         if role == Role.DOCTOR.value and not was_online:
             await _broadcast_doctor_presence(user_id_key, True)
-        # Reception / doctor managers joining late need the current roster.
-        if role in (Role.DOCTOR.value, Role.RECEPTIONIST.value):
+        # Patients / reception / doctors need the current online roster.
+        if role in (
+            Role.DOCTOR.value,
+            Role.RECEPTIONIST.value,
+            Role.PATIENT.value,
+        ):
             await _emit_presence_snapshot(sid)
         return True
     except Exception as e:

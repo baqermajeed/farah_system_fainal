@@ -571,6 +571,7 @@ class PatientHomeScreen extends GetView<PatientHomeController> {
                     arguments: {
                       'patientId': profile.id,
                       'doctorId': doctorId.toString(),
+                      'doctorUserId': doctor['user_id']?.toString(),
                       'doctorName': 'د. $doctorName',
                     },
                   );

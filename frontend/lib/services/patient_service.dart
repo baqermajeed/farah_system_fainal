@@ -403,9 +403,11 @@ class PatientService {
         final data = response.data as List;
         return data.map((doctor) => {
           'id': doctor['id'] ?? '',
+          'user_id': doctor['user_id'] ?? doctor['userId'] ?? '',
           'name': doctor['name'] ?? '',
           'phone': doctor['phone'] ?? '',
           'imageUrl': doctor['imageUrl'] ?? doctor['image_url'],
+          'is_online': doctor['is_online'] == true || doctor['isOnline'] == true,
         }).toList();
       } else {
         throw ApiException('فشل جلب قائمة الأطباء');

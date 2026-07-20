@@ -9,6 +9,7 @@ import 'package:farah_sys_final/services/patient_service.dart';
 import 'package:farah_sys_final/services/fcm_service.dart';
 import 'package:farah_sys_final/services/token_storage.dart';
 import 'package:farah_sys_final/controllers/chat_controller.dart';
+import 'package:farah_sys_final/controllers/presence_controller.dart';
 import 'package:farah_sys_final/core/utils/network_utils.dart';
 
 class AuthController extends GetxController {
@@ -89,6 +90,7 @@ class AuthController extends GetxController {
         await _syncPatientProfileId();
         _connectSocketAfterSession();
         _syncFcmAfterSession();
+        _syncPresenceAfterSession();
       } else {
         await _tokenStorage.clearSession();
         currentUser.value = null;
@@ -117,6 +119,18 @@ class AuthController extends GetxController {
     try {
       if (Get.isRegistered<FcmService>()) {
         Get.find<FcmService>().reRegisterToken();
+      }
+    } catch (e) {
+      _logError(e);
+    }
+  }
+
+  void _syncPresenceAfterSession() {
+    try {
+      final user = currentUser.value;
+      if (user == null) return;
+      if (Get.isRegistered<PresenceController>()) {
+        Get.find<PresenceController>().connectForUser(user);
       }
     } catch (e) {
       _logError(e);
@@ -162,6 +176,8 @@ class AuthController extends GetxController {
     } catch (e) {
       _logError(e);
     }
+
+    _syncPresenceAfterSession();
 
     if (showSuccessSnackbar) {
       Get.snackbar('نجح', 'تم تسجيل الدخول بنجاح');
@@ -487,6 +503,8 @@ class AuthController extends GetxController {
             _logError(e);
           }
 
+          _syncPresenceAfterSession();
+
           Get.offAllNamed(targetRoute);
           // انتظار قليلاً حتى تكتمل عملية التنقل قبل عرض Snackbar
           await Future.delayed(const Duration(milliseconds: 300));
@@ -545,6 +563,9 @@ class AuthController extends GetxController {
   // تسجيل الخروج
   Future<void> logout() async {
     try {
+      if (Get.isRegistered<PresenceController>()) {
+        Get.find<PresenceController>().disconnect();
+      }
       await _authService.logout();
       currentUser.value = null;
       patientProfileId.value = null;

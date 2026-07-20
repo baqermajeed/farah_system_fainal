@@ -5,6 +5,7 @@ import 'package:farah_sys_final/services/patient_service.dart';
 import 'package:farah_sys_final/services/doctor_service.dart';
 import 'package:farah_sys_final/core/network/api_exception.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
+import 'package:farah_sys_final/controllers/presence_controller.dart';
 import 'package:farah_sys_final/core/utils/network_utils.dart';
 
 class PatientController extends GetxController {
@@ -458,6 +459,9 @@ class PatientController extends GetxController {
         myDoctor.value = doctorsList[0];
       } else {
         myDoctor.value = null;
+      }
+      if (Get.isRegistered<PresenceController>()) {
+        Get.find<PresenceController>().seedFromDoctors(doctorsList);
       }
     } on ApiException catch (e) {
       print('❌ [PatientController] Error loading doctors: ${e.message}');

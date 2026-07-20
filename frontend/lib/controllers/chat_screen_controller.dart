@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/controllers/chat_controller.dart';
 import 'package:farah_sys_final/controllers/patient_controller.dart';
+import 'package:farah_sys_final/controllers/presence_controller.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
 
 /// Controller لشاشة الدردشة الفردية — يملك حالة الواجهة الخاصة بهذه الشاشة
@@ -24,6 +25,7 @@ class ChatScreenController extends GetxController {
   String? patientId;
   String? doctorId;
   String? doctorName;
+  String? doctorUserId;
   int _lastMessageCount = 0;
 
   @override
@@ -33,6 +35,7 @@ class ChatScreenController extends GetxController {
     patientId = args?['patientId'];
     doctorId = args?['doctorId'];
     doctorName = args?['doctorName'];
+    doctorUserId = args?['doctorUserId']?.toString();
 
     // Clear previous conversation before first frame to avoid flash of old/empty chat.
     if (patientId != null) {
@@ -51,6 +54,7 @@ class ChatScreenController extends GetxController {
         if (patientController.myDoctors.isEmpty) {
           await patientController.loadMyDoctors();
         }
+        _resolveDoctorUserId();
       }
       if (patientId != null) {
         try {
@@ -73,6 +77,34 @@ class ChatScreenController extends GetxController {
         Get.snackbar('خطأ', 'لم يتم تحديد المريض');
       }
     });
+  }
+
+  void _resolveDoctorUserId() {
+    if (doctorUserId != null && doctorUserId!.isNotEmpty) return;
+    for (final doctor in patientController.myDoctors) {
+      final id = doctor['id']?.toString();
+      if (doctorId != null && id == doctorId) {
+        doctorUserId = doctor['user_id']?.toString();
+        return;
+      }
+    }
+    doctorUserId = patientController.myDoctor.value?['user_id']?.toString();
+  }
+
+  /// هل نظهر حالة الاتصال؟ (للمريض فقط تجاه الطبيب)
+  bool get showsDoctorPresence {
+    return authController.currentUser.value?.userType.toLowerCase() ==
+        'patient';
+  }
+
+  /// حالة الطبيب الحقيقية من PresenceController.
+  bool get isDoctorOnline {
+    final userId = doctorUserId;
+    if (userId == null || userId.isEmpty) return false;
+    if (!Get.isRegistered<PresenceController>()) return false;
+    // قراءة الـ RxSet لتفعيل Obx
+    Get.find<PresenceController>().onlineDoctorUserIds.length;
+    return Get.find<PresenceController>().isDoctorOnline(userId);
   }
 
   @override

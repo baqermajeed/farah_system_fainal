@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -10,42 +11,38 @@ import 'auth_controller.dart';
 class SplashController extends GetxController {
   AuthController get auth => Get.find<AuthController>();
 
+  bool _started = false;
+
   @override
   void onReady() {
     super.onReady();
-    Future.delayed(const Duration(seconds: 1), start);
+    start();
   }
 
   Future<void> start() async {
+    if (_started) return;
+    _started = true;
+
+    // عرض الشعار لحظة قصيرة ثم متابعة الإقلاع
+    await Future.delayed(const Duration(milliseconds: 800));
+
     final connected = await _ensureInternetConnection();
-    if (!connected) return;
-
-    try {
-      await auth.loadStoredAuth();
-    } catch (e) {
-      print('❌ [SplashController] Error restoring session: $e');
-      Get.offAllNamed(AppRoutes.userSelection);
-      return;
-    }
-
-    if (!auth.isAuthenticated) {
+    if (!connected) {
       Get.offAllNamed(AppRoutes.onboarding);
       return;
     }
 
-    final userType = auth.currentUser.value?.userType.toLowerCase();
-    switch (userType) {
-      case 'patient':
-        Get.offAllNamed(AppRoutes.patientHome);
-        return;
-      case 'doctor':
-        Get.offAllNamed(AppRoutes.doctorHome);
-        return;
-      case 'receptionist':
-        Get.offAllNamed(AppRoutes.receptionHome);
-        return;
-      default:
-        Get.offAllNamed(AppRoutes.userSelection);
+    try {
+      // ينتظر استعادة الجلسة إن كانت جارية من main، ثم يوجّه حسب الدور
+      await auth.checkLoggedInUser(navigate: true);
+      if (!auth.isAuthenticated) {
+        Get.offAllNamed(AppRoutes.onboarding);
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[SplashController] start error: $e');
+      }
+      Get.offAllNamed(AppRoutes.userSelection);
     }
   }
 

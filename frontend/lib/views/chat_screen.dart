@@ -92,27 +92,32 @@ class ChatScreen extends GetView<ChatScreenController> {
                           ),
                         ),
                         SizedBox(height: 3.h),
-                        Row(
-                          children: [
-                            Container(
-                              width: 7.w,
-                              height: 7.w,
-                              decoration: const BoxDecoration(
-                                color: Color(0xFF34C759),
-                                shape: BoxShape.circle,
+                        if (controller.showsDoctorPresence)
+                          Row(
+                            children: [
+                              Container(
+                                width: 7.w,
+                                height: 7.w,
+                                decoration: BoxDecoration(
+                                  color: controller.isDoctorOnline
+                                      ? const Color(0xFF34C759)
+                                      : const Color(0xFF9CA3AF),
+                                  shape: BoxShape.circle,
+                                ),
                               ),
-                            ),
-                            SizedBox(width: 5.w),
-                            Text(
-                              'متصل الآن',
-                              style: AppFonts.lamaSans(
-                                fontSize: 11.sp,
-                                fontWeight: FontWeight.w500,
-                                color: _grayText,
+                              SizedBox(width: 5.w),
+                              Text(
+                                controller.isDoctorOnline
+                                    ? 'متصل الآن'
+                                    : 'غير متصل',
+                                style: AppFonts.lamaSans(
+                                  fontSize: 11.sp,
+                                  fontWeight: FontWeight.w500,
+                                  color: _grayText,
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
+                            ],
+                          ),
                       ],
                     ),
                   ),

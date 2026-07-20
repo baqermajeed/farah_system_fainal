@@ -22,8 +22,8 @@ async def presence_heartbeat(current: User = Depends(get_current_user)):
 
 @router.get("/online-doctors")
 async def list_online_doctors(current: User = Depends(get_current_user)):
-    """Online doctor user_ids for reception / doctor managers."""
-    if current.role not in (Role.DOCTOR, Role.RECEPTIONIST):
+    """Online doctor user_ids for patients / reception / doctors."""
+    if current.role not in (Role.DOCTOR, Role.RECEPTIONIST, Role.PATIENT):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="غير مصرح",

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/models/message_model.dart';
 import 'package:farah_sys_final/services/chat_service.dart';
+import 'package:farah_sys_final/services/socket_service.dart';
 import 'package:farah_sys_final/core/network/api_exception.dart';
 import 'package:farah_sys_final/core/utils/network_utils.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
@@ -16,6 +17,9 @@ class ChatController extends GetxController {
   String? currentPatientId;
   String? currentDoctorId;
   String? currentRoomId;
+
+  /// وصول PresenceController لنفس Socket.IO المستخدم للشات.
+  SocketService get chatServiceSocket => _chatService.socketService;
 
   // Track message IDs that are being sent (to show loading indicator)
   final RxList<String> sendingMessageIds = <String>[].obs;

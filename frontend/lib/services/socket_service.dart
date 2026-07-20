@@ -13,6 +13,10 @@ class SocketService {
   /// Callback for connection status changes
   Function(bool)? onConnectionStatusChanged;
 
+  /// Presence callbacks (doctor online/offline) — مثل frontend_desktop
+  Function(String userId, bool isOnline)? onPresenceChanged;
+  Function(List<String> onlineUserIds)? onPresenceSnapshot;
+
   /// Get socket instance
   IO.Socket? get socket => _socket;
   
@@ -184,6 +188,26 @@ class SocketService {
       _isConnected = false;
       _isConnecting = false;
       onConnectionStatusChanged?.call(false);
+    });
+
+    _socket!.on('presence_changed', (data) {
+      if (data is! Map) return;
+      final userId = data['user_id']?.toString();
+      final isOnline = data['is_online'] == true;
+      if (userId != null && userId.isNotEmpty) {
+        onPresenceChanged?.call(userId, isOnline);
+      }
+    });
+
+    _socket!.on('presence_snapshot', (data) {
+      if (data is! Map) return;
+      final raw = data['online_user_ids'];
+      if (raw is! List) return;
+      final ids = raw
+          .map((e) => e?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toList();
+      onPresenceSnapshot?.call(ids);
     });
   }
 
