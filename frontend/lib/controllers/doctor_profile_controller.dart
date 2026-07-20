@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/services/auth_service.dart';
+import 'package:farah_sys_final/core/utils/image_cropper_settings.dart';
 
 /// Controller لشاشة الملف الشخصي للطبيب — المنطق والحالة خارج الـ View.
 class DoctorProfileController extends GetxController {
@@ -25,28 +26,13 @@ class DoctorProfileController extends GetxController {
 
       if (image == null) return;
 
-      // Crop the image
       final croppedFile = await ImageCropper().cropImage(
         sourcePath: image.path,
         aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
         compressQuality: 80,
         maxWidth: 1024,
         maxHeight: 1024,
-        uiSettings: [
-          AndroidUiSettings(
-            toolbarTitle: 'تعديل الصورة',
-            toolbarColor: AppColors.primary,
-            toolbarWidgetColor: Colors.white,
-            initAspectRatio: CropAspectRatioPreset.square,
-            lockAspectRatio: true,
-            hideBottomControls: false,
-          ),
-          IOSUiSettings(
-            title: 'تعديل الصورة',
-            aspectRatioLockEnabled: true,
-            resetAspectRatioEnabled: false,
-          ),
-        ],
+        uiSettings: appImageCropperUiSettings(),
       );
 
       if (croppedFile == null) return;

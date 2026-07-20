@@ -1,12 +1,11 @@
 import 'dart:io';
 
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/services/auth_service.dart';
+import 'package:farah_sys_final/core/utils/image_cropper_settings.dart';
 
 /// Controller لشاشة الملف الشخصي لموظف الاستقبال — المنطق والحالة خارج الـ View.
 class ReceptionProfileController extends GetxController {
@@ -33,21 +32,7 @@ class ReceptionProfileController extends GetxController {
         compressQuality: 80,
         maxWidth: 1024,
         maxHeight: 1024,
-        uiSettings: [
-          AndroidUiSettings(
-            toolbarTitle: 'تعديل الصورة',
-            toolbarColor: AppColors.primary,
-            toolbarWidgetColor: Colors.white,
-            initAspectRatio: CropAspectRatioPreset.square,
-            lockAspectRatio: true,
-            hideBottomControls: false,
-          ),
-          IOSUiSettings(
-            title: 'تعديل الصورة',
-            aspectRatioLockEnabled: true,
-            resetAspectRatioEnabled: false,
-          ),
-        ],
+        uiSettings: appImageCropperUiSettings(),
       );
 
       if (croppedFile == null) return;

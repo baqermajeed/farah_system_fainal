@@ -1,12 +1,11 @@
 import 'dart:io';
 
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/controllers/patient_controller.dart';
+import 'package:farah_sys_final/core/utils/image_cropper_settings.dart';
 
 /// Controller لشاشة الملف الشخصي للمريض — المنطق والحالة خارج الـ View.
 class PatientProfileController extends GetxController {
@@ -41,20 +40,7 @@ class PatientProfileController extends GetxController {
         compressQuality: 80,
         maxWidth: 1024,
         maxHeight: 1024,
-        uiSettings: [
-          AndroidUiSettings(
-            toolbarTitle: 'تعديل الصورة',
-            toolbarColor: AppColors.primary,
-            toolbarWidgetColor: Colors.white,
-            initAspectRatio: CropAspectRatioPreset.square,
-            lockAspectRatio: true,
-          ),
-          IOSUiSettings(
-            title: 'تعديل الصورة',
-            aspectRatioLockEnabled: true,
-            resetAspectRatioEnabled: false,
-          ),
-        ],
+        uiSettings: appImageCropperUiSettings(),
       );
       if (croppedFile == null) return;
 

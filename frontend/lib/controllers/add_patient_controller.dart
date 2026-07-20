@@ -11,6 +11,7 @@ import '../core/constants/app_colors.dart';
 import '../core/constants/iraq_governorates.dart';
 import '../core/network/api_exception.dart';
 import '../core/routes/app_routes.dart';
+import '../core/utils/image_cropper_settings.dart';
 import '../core/utils/operation_dialog.dart';
 import 'auth_controller.dart';
 import 'patient_controller.dart';
@@ -206,21 +207,7 @@ class AddPatientController extends GetxController {
         compressQuality: 80,
         maxWidth: 1024,
         maxHeight: 1024,
-        uiSettings: [
-          AndroidUiSettings(
-            toolbarTitle: 'تعديل الصورة',
-            toolbarColor: AppColors.primary,
-            toolbarWidgetColor: Colors.white,
-            initAspectRatio: CropAspectRatioPreset.square,
-            lockAspectRatio: true,
-            hideBottomControls: false,
-          ),
-          IOSUiSettings(
-            title: 'تعديل الصورة',
-            aspectRatioLockEnabled: true,
-            resetAspectRatioEnabled: false,
-          ),
-        ],
+        uiSettings: appImageCropperUiSettings(),
       );
 
       if (croppedFile == null) return;
