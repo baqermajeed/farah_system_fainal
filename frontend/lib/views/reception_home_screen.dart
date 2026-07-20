@@ -5,45 +5,17 @@ import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
-import 'package:farah_sys_final/controllers/patient_controller.dart';
+import 'package:farah_sys_final/controllers/reception_home_controller.dart';
 import 'package:farah_sys_final/models/patient_model.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
-class ReceptionHomeScreen extends StatefulWidget {
+class ReceptionHomeScreen extends GetView<ReceptionHomeController> {
   const ReceptionHomeScreen({super.key});
-
-  @override
-  State<ReceptionHomeScreen> createState() => _ReceptionHomeScreenState();
-}
-
-class _ReceptionHomeScreenState extends State<ReceptionHomeScreen> {
-  final TextEditingController _searchController = TextEditingController();
-  final RxString _searchQuery = ''.obs;
-
-  @override
-  void initState() {
-    super.initState();
-    _searchController.addListener(() {
-      _searchQuery.value = _searchController.text;
-    });
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
     final authController = Get.find<AuthController>();
-    final patientController = Get.find<PatientController>();
-
-    // Load patients on first build
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      patientController.loadPatients();
-    });
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4FEFF),
@@ -186,8 +158,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen> {
                         ),
                         alignment: Alignment.center,
                         child: TextField(
-                          controller: _searchController,
-                          onChanged: (value) => _searchQuery.value = value,
+                          controller: controller.searchController,
                           textDirection: TextDirection.rtl,
                           textAlign: TextAlign.right,
                           decoration: InputDecoration(
@@ -303,13 +274,9 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen> {
                     ),
                     // All Patients Vertical List
                     Obx(() {
-                      final allPatients = _searchQuery.value.isEmpty
-                          ? patientController.patients
-                          : patientController.searchPatients(
-                              _searchQuery.value,
-                            );
+                      final allPatients = controller.filteredPatients;
 
-                      if (patientController.isLoading.value) {
+                      if (controller.isLoading.value) {
                         return Center(
                           child: Padding(
                             padding: EdgeInsets.all(32.h),
@@ -356,14 +323,7 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen> {
 
   Widget _buildPatientCard(PatientModel patient) {
     return GestureDetector(
-      onTap: () {
-        final patientController = Get.find<PatientController>();
-        patientController.selectPatient(patient);
-        Get.toNamed(
-          AppRoutes.patientDetails,
-          arguments: {'patientId': patient.id},
-        );
-      },
+      onTap: () => controller.openPatient(patient),
       child: Container(
         margin: EdgeInsets.only(bottom: 12.h),
         padding: EdgeInsets.only(left: 20.w, right: 0.w, top: 2.h, bottom: 2.h),

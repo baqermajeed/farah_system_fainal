@@ -93,19 +93,11 @@ class AppointmentController extends GetxController {
       }
     } on ApiException catch (e) {
       print('❌ [AppointmentController] ApiException: ${e.message}');
-      if (NetworkUtils.isNetworkError(e)) {
-        NetworkUtils.showNetworkErrorDialog();
-      } else {
-        Get.snackbar('خطأ', e.message);
-      }
+      await NetworkUtils.showError(e);
     } catch (e, stackTrace) {
       print('❌ [AppointmentController] Error loading appointments: $e');
       print('❌ [AppointmentController] Stack trace: $stackTrace');
-      if (NetworkUtils.isNetworkError(e)) {
-        NetworkUtils.showNetworkErrorDialog();
-      } else {
-        Get.snackbar('خطأ', 'حدث خطأ أثناء تحميل المواعيد');
-      }
+      await NetworkUtils.showError(e, fallbackMessage: 'حدث خطأ أثناء تحميل المواعيد');
     } finally {
       isLoading.value = false;
       print('📅 [AppointmentController] loadPatientAppointments finished');
@@ -156,17 +148,9 @@ class AppointmentController extends GetxController {
       appointments.value = appointmentsList;
       print('📅 [AppointmentController] Loaded ${appointmentsList.length} appointments');
     } on ApiException catch (e) {
-      if (NetworkUtils.isNetworkError(e)) {
-        NetworkUtils.showNetworkErrorDialog();
-      } else {
-        Get.snackbar('خطأ', e.message);
-      }
+      await NetworkUtils.showError(e);
     } catch (e) {
-      if (NetworkUtils.isNetworkError(e)) {
-        NetworkUtils.showNetworkErrorDialog();
-      } else {
-        Get.snackbar('خطأ', 'حدث خطأ أثناء تحميل المواعيد');
-      }
+      await NetworkUtils.showError(e, fallbackMessage: 'حدث خطأ أثناء تحميل المواعيد');
     } finally {
       isLoading.value = false;
     }
@@ -184,17 +168,9 @@ class AppointmentController extends GetxController {
           .where((apt) => apt.patientId == patientId)
           .toList();
     } on ApiException catch (e) {
-      if (NetworkUtils.isNetworkError(e)) {
-        NetworkUtils.showNetworkErrorDialog();
-      } else {
-        Get.snackbar('خطأ', e.message);
-      }
+      await NetworkUtils.showError(e);
     } catch (e) {
-      if (NetworkUtils.isNetworkError(e)) {
-        NetworkUtils.showNetworkErrorDialog();
-      } else {
-        Get.snackbar('خطأ', 'حدث خطأ أثناء تحميل المواعيد');
-      }
+      await NetworkUtils.showError(e, fallbackMessage: 'حدث خطأ أثناء تحميل المواعيد');
     } finally {
       isLoading.value = false;
     }
@@ -216,18 +192,10 @@ class AppointmentController extends GetxController {
         throw ApiException('فشل حذف الموعد');
       }
     } on ApiException catch (e) {
-      if (NetworkUtils.isNetworkError(e)) {
-        NetworkUtils.showNetworkErrorDialog();
-      } else {
-        Get.snackbar('خطأ', e.message);
-      }
+      await NetworkUtils.showError(e);
       rethrow;
     } catch (e) {
-      if (NetworkUtils.isNetworkError(e)) {
-        NetworkUtils.showNetworkErrorDialog();
-      } else {
-        Get.snackbar('خطأ', 'حدث خطأ أثناء حذف الموعد');
-      }
+      await NetworkUtils.showError(e, fallbackMessage: 'حدث خطأ أثناء حذف الموعد');
       rethrow;
     } finally {
       isLoading.value = false;
@@ -288,22 +256,14 @@ class AppointmentController extends GetxController {
         appointments.removeWhere((apt) => apt.id == tempAppointment!.id);
       }
 
-      if (NetworkUtils.isNetworkError(e)) {
-        NetworkUtils.showNetworkErrorDialog();
-      } else {
-        Get.snackbar('خطأ', e.message);
-      }
+      await NetworkUtils.showError(e);
       rethrow;
     } catch (e) {
       if (tempAppointment != null) {
         appointments.removeWhere((apt) => apt.id == tempAppointment!.id);
       }
 
-      if (NetworkUtils.isNetworkError(e)) {
-        NetworkUtils.showNetworkErrorDialog();
-      } else {
-        Get.snackbar('خطأ', 'حدث خطأ أثناء إضافة الموعد');
-      }
+      await NetworkUtils.showError(e, fallbackMessage: 'حدث خطأ أثناء إضافة الموعد');
       rethrow;
     } finally {
       // لا نستخدم isLoading هنا حتى لا نظهر تحميل عام على كامل الشاشة
@@ -332,18 +292,10 @@ class AppointmentController extends GetxController {
 
       Get.snackbar('نجح', 'تم تحديث حالة الموعد بنجاح');
     } on ApiException catch (e) {
-      if (NetworkUtils.isNetworkError(e)) {
-        NetworkUtils.showNetworkErrorDialog();
-      } else {
-        Get.snackbar('خطأ', e.message);
-      }
+      await NetworkUtils.showError(e);
       rethrow;
     } catch (e) {
-      if (NetworkUtils.isNetworkError(e)) {
-        NetworkUtils.showNetworkErrorDialog();
-      } else {
-        Get.snackbar('خطأ', 'حدث خطأ أثناء تحديث حالة الموعد');
-      }
+      await NetworkUtils.showError(e, fallbackMessage: 'حدث خطأ أثناء تحديث حالة الموعد');
       rethrow;
     } finally {
       isLoading.value = false;

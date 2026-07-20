@@ -7,36 +7,11 @@ import 'package:farah_sys_final/core/constants/app_strings.dart';
 import 'package:farah_sys_final/core/widgets/custom_text_field.dart';
 import 'package:farah_sys_final/core/widgets/gender_selector.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
-import 'package:farah_sys_final/controllers/auth_controller.dart';
-import 'package:farah_sys_final/core/constants/iraq_governorates.dart';
+import 'package:farah_sys_final/controllers/patient_registration_controller.dart';
 
-class PatientRegistrationScreen extends StatefulWidget {
-  final String phoneNumber;
-
-  const PatientRegistrationScreen({
-    super.key,
-    required this.phoneNumber,
-  });
-
-  @override
-  State<PatientRegistrationScreen> createState() => _PatientRegistrationScreenState();
-}
-
-class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
-  final AuthController _authController = Get.find<AuthController>();
-  final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _ageController = TextEditingController();
-  String? selectedGender;
-  String? selectedCity;
-
-  List<String> get cities => IraqGovernorates.arabicNames;
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _ageController.dispose();
-    super.dispose();
-  }
+/// شاشة تسجيل حساب المريض — GetView؛ المنطق في PatientRegistrationController.
+class PatientRegistrationScreen extends GetView<PatientRegistrationController> {
+  const PatientRegistrationScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -99,7 +74,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                     CustomTextField(
                       labelText: AppStrings.name,
                       hintText: AppStrings.enterYourName,
-                      controller: _nameController,
+                      controller: controller.nameController,
                     ),
                     SizedBox(height: 36.h),
                     Column(
@@ -114,13 +89,13 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                           ),
                         ),
                         SizedBox(height: 8.h),
-                        GenderSelector(
-                          selectedGender: selectedGender,
-                          onGenderChanged: (gender) {
-                            setState(() {
-                              selectedGender = gender;
-                            });
-                          },
+                        Obx(
+                          () => GenderSelector(
+                            selectedGender: controller.selectedGender.value,
+                            onGenderChanged: (gender) {
+                              controller.selectedGender.value = gender;
+                            },
+                          ),
                         ),
                       ],
                     ),
@@ -128,13 +103,15 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                     Row(
                       children: [
                         Expanded(
-                          child: CustomTextField(
-                            labelText: AppStrings.city,
-                            hintText: AppStrings.selectCity,
-                            readOnly: true,
-                            onTap: () => _showCityPicker(),
-                            controller: TextEditingController(
-                              text: selectedCity ?? '',
+                          child: Obx(
+                            () => CustomTextField(
+                              labelText: AppStrings.city,
+                              hintText: AppStrings.selectCity,
+                              readOnly: true,
+                              onTap: () => controller.showCityPicker(context),
+                              controller: TextEditingController(
+                                text: controller.selectedCity.value ?? '',
+                              ),
                             ),
                           ),
                         ),
@@ -143,7 +120,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                           child: CustomTextField(
                             labelText: AppStrings.age,
                             hintText: AppStrings.selectCity,
-                            controller: _ageController,
+                            controller: controller.ageController,
                             keyboardType: TextInputType.number,
                           ),
                         ),
@@ -156,7 +133,7 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                         width: double.infinity,
                         height: 50.h,
                         decoration: BoxDecoration(
-                          color: _authController.isLoading.value
+                          color: controller.authController.isLoading.value
                               ? AppColors.textHint
                               : AppColors.secondary,
                           borderRadius: BorderRadius.circular(16.r),
@@ -164,51 +141,12 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
                         child: Material(
                           color: Colors.transparent,
                           child: InkWell(
-                            onTap: _authController.isLoading.value
+                            onTap: controller.authController.isLoading.value
                                 ? null
-                                : () async {
-                                    if (_nameController.text.isEmpty ||
-                                        selectedGender == null ||
-                                        selectedCity == null ||
-                                        _ageController.text.isEmpty) {
-                                      Get.snackbar(
-                                        'خطأ',
-                                        'يرجى ملء جميع الحقول',
-                                        snackPosition: SnackPosition.TOP,
-                                      );
-                                      return;
-                                    }
-
-                                    final age = int.tryParse(_ageController.text);
-                                    if (age == null || age < 1 || age > 120) {
-                                      Get.snackbar(
-                                        'خطأ',
-                                        'يرجى إدخال عمر صحيح',
-                                        snackPosition: SnackPosition.TOP,
-                                      );
-                                      return;
-                                    }
-
-                                    // تحويل الجنس من 'ذكر'/'أنثى' إلى 'male'/'female'
-                                    String? genderValue;
-                                    if (selectedGender == AppStrings.male) {
-                                      genderValue = 'male';
-                                    } else if (selectedGender == AppStrings.female) {
-                                      genderValue = 'female';
-                                    }
-
-                                    // إنشاء الحساب
-                                    await _authController.createPatientAccount(
-                                      phoneNumber: widget.phoneNumber,
-                                      name: _nameController.text.trim(),
-                                      gender: genderValue,
-                                      age: age,
-                                      city: selectedCity!,
-                                    );
-                                  },
+                                : controller.submit,
                             borderRadius: BorderRadius.circular(16.r),
                             child: Center(
-                              child: _authController.isLoading.value
+                              child: controller.authController.isLoading.value
                                   ? SizedBox(
                                       width: 20.w,
                                       height: 20.h,
@@ -246,52 +184,4 @@ class _PatientRegistrationScreenState extends State<PatientRegistrationScreen> {
       ),
     );
   }
-
-  void _showCityPicker() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppColors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20.r)),
-      ),
-      builder: (context) {
-        return Container(
-          padding: EdgeInsets.symmetric(vertical: 16.h),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40.w,
-                height: 4.h,
-                decoration: BoxDecoration(
-                  color: AppColors.divider,
-                  borderRadius: BorderRadius.circular(2.r),
-                ),
-              ),
-              SizedBox(height: 16.h),
-              ...cities.map((city) {
-                return ListTile(
-                  title: Text(
-                    city,
-                    textAlign: TextAlign.right,
-                    style: TextStyle(
-                      fontSize: 16.sp,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  onTap: () {
-                    setState(() {
-                      selectedCity = city;
-                    });
-                    Navigator.pop(context);
-                  },
-                );
-              }),
-            ],
-          ),
-        );
-      },
-    );
-  }
 }
-

@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:math' show pi;
 import 'dart:ui' as ui;
 
@@ -7,40 +6,26 @@ import 'package:flutter/material.dart';
 import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
-import 'package:image_cropper/image_cropper.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
 import 'package:farah_sys_final/core/routes/app_routes.dart';
-import 'package:farah_sys_final/controllers/auth_controller.dart';
-import 'package:farah_sys_final/controllers/patient_controller.dart';
+import 'package:farah_sys_final/controllers/patient_profile_controller.dart';
 import 'package:farah_sys_final/core/widgets/loading_widget.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
-import 'package:farah_sys_final/services/auth_service.dart';
 
 class _ProfileAssets {
   static const back = 'assets/icon/backblack.png';
 }
 
-class PatientProfileScreen extends StatefulWidget {
+/// شاشة الملف الشخصي للمريض — GetView؛ المنطق في PatientProfileController.
+class PatientProfileScreen extends GetView<PatientProfileController> {
   const PatientProfileScreen({super.key});
 
-  @override
-  State<PatientProfileScreen> createState() => _PatientProfileScreenState();
-}
-
-class _PatientProfileScreenState extends State<PatientProfileScreen> {
   static const Color _bg = Color(0xFFF8FAFF);
   static const Color _navy = Color(0xFF1A3263);
   static const Color _grayText = Color(0xFF8A97A8);
   static const double _headerBoxSize = 50;
   static const double _headerBoxRadius = 16;
-
-  final AuthService _authService = AuthService();
-  final ImagePicker _imagePicker = ImagePicker();
-  bool _isUploadingImage = false;
-  int _imageTimestamp = DateTime.now().millisecondsSinceEpoch;
 
   static List<BoxShadow> get _softShadow => [
         BoxShadow(
@@ -58,71 +43,8 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
         ),
       ];
 
-  @override
-  void initState() {
-    super.initState();
-    _loadData();
-  }
-
-  void _loadData() {
-    final patientController = Get.find<PatientController>();
-    patientController.loadMyProfile();
-    patientController.loadMyDoctor();
-  }
-
-  Future<void> _pickAndUploadImage() async {
-    try {
-      final XFile? image = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
-      );
-      if (image == null) return;
-
-      final croppedFile = await ImageCropper().cropImage(
-        sourcePath: image.path,
-        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
-        compressQuality: 80,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        uiSettings: [
-          AndroidUiSettings(
-            toolbarTitle: 'تعديل الصورة',
-            toolbarColor: AppColors.primary,
-            toolbarWidgetColor: Colors.white,
-            initAspectRatio: CropAspectRatioPreset.square,
-            lockAspectRatio: true,
-          ),
-          IOSUiSettings(
-            title: 'تعديل الصورة',
-            aspectRatioLockEnabled: true,
-            resetAspectRatioEnabled: false,
-          ),
-        ],
-      );
-      if (croppedFile == null) return;
-
-      setState(() => _isUploadingImage = true);
-
-      await _authService.uploadProfileImage(File(croppedFile.path));
-      await Get.find<AuthController>().checkLoggedInUser(navigate: false);
-      await Get.find<PatientController>().loadMyProfile();
-
-      if (mounted) {
-        setState(() {
-          _imageTimestamp = DateTime.now().millisecondsSinceEpoch;
-        });
-        Get.snackbar('نجح', 'تم تحديث الصورة بنجاح');
-      }
-    } catch (e) {
-      if (mounted) {
-        Get.snackbar('خطأ', 'فشل تحديث الصورة');
-      }
-    } finally {
-      if (mounted) setState(() => _isUploadingImage = false);
-    }
-  }
-
-  void _showSettingsSheet() {
-    final authController = Get.find<AuthController>();
+  void _showSettingsSheet(BuildContext context) {
+    final authController = controller.authController;
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -286,8 +208,8 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final authController = Get.find<AuthController>();
-    final patientController = Get.find<PatientController>();
+    final authController = controller.authController;
+    final patientController = controller.patientController;
 
     final baseTheme = Theme.of(context);
     final theme = baseTheme.copyWith(
@@ -325,7 +247,7 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
               padding: EdgeInsets.only(bottom: 24.h),
               child: Column(
                 children: [
-                  _buildTopBar(),
+                  _buildTopBar(context),
                   SizedBox(height: 20.h),
                   _buildProfileAvatar(profile?.imageUrl ?? user?.imageUrl),
                   SizedBox(height: 16.h),
@@ -395,7 +317,7 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
     );
   }
 
-  Widget _buildTopBar() {
+  Widget _buildTopBar(BuildContext context) {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
       child: Row(
@@ -404,7 +326,7 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
         children: [
           const BackButtonWidget(assetPath: _ProfileAssets.back),
           GestureDetector(
-            onTap: _showSettingsSheet,
+            onTap: () => _showSettingsSheet(context),
             child: Container(
               width: _headerBoxSize.w,
               height: _headerBoxSize.w,
@@ -429,10 +351,12 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
     final validImageUrl = ImageUtils.convertToValidUrl(imageUrl);
     final hasImage =
         validImageUrl != null && ImageUtils.isValidImageUrl(validImageUrl);
+    final isUploadingImage = controller.isUploadingImage.value;
+    final imageTimestamp = controller.imageTimestamp.value;
 
     Widget avatar;
     if (hasImage) {
-      final url = '$validImageUrl?t=$_imageTimestamp';
+      final url = '$validImageUrl?t=$imageTimestamp';
       avatar = CircleAvatar(
         radius: 52.r,
         backgroundColor: const Color(0xFFE8ECF0),
@@ -468,18 +392,18 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
       alignment: Alignment.center,
       children: [
         avatar,
-        if (_isUploadingImage)
+        if (isUploadingImage)
           SizedBox(
             width: 104.w,
             height: 104.w,
             child: const CircularProgressIndicator(strokeWidth: 2),
           ),
-        if (!_isUploadingImage)
+        if (!isUploadingImage)
           Positioned(
             bottom: 0,
             right: 0,
             child: GestureDetector(
-              onTap: _pickAndUploadImage,
+              onTap: controller.pickAndUploadImage,
               child: Container(
                 width: 34.w,
                 height: 34.w,
@@ -653,7 +577,7 @@ class _PatientProfileScreenState extends State<PatientProfileScreen> {
     return GestureDetector(
       onTap: () async {
         await Get.toNamed(AppRoutes.editPatientProfile);
-        _loadData();
+        controller.loadData();
       },
       child: Container(
         width: double.infinity,

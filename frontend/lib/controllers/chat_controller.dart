@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:farah_sys_final/models/message_model.dart';
 import 'package:farah_sys_final/services/chat_service.dart';
 import 'package:farah_sys_final/core/network/api_exception.dart';
+import 'package:farah_sys_final/core/utils/network_utils.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 
 class ChatController extends GetxController {
@@ -22,6 +23,9 @@ class ChatController extends GetxController {
 
   // Flag to track if we need to reload messages after user change
   bool _shouldReloadAfterUserChange = false;
+
+  /// Bumped on every conversation open so stale API responses are ignored.
+  int _loadGeneration = 0;
 
   void resetChatStateForUserChange({required bool disconnectSocket}) {
     final socketService = _chatService.socketService;
@@ -62,6 +66,23 @@ class ChatController extends GetxController {
     });
   }
 
+  /// Clears previous conversation UI immediately (call from initState before first paint).
+  void prepareConversation({required String patientId, String? doctorId}) {
+    final socketService = _chatService.socketService;
+    if (currentRoomId != null && socketService.isConnected) {
+      print('👋 [ChatController] Leaving previous room: $currentRoomId');
+      socketService.leaveConversation(currentRoomId!);
+    }
+
+    _loadGeneration++;
+    messages.clear();
+    sendingMessageIds.clear();
+    currentRoomId = null;
+    currentPatientId = patientId;
+    currentDoctorId = doctorId;
+    isLoading.value = true;
+  }
+
   Future<void> openChat({required String patientId, String? doctorId}) async {
     // Ensure current user is available (login race protection)
     var currentUser = _authController.currentUser.value;
@@ -72,7 +93,15 @@ class ChatController extends GetxController {
       }
     }
     if (currentUser == null) {
+      isLoading.value = false;
       throw ApiException('لم يتم تحميل بيانات المستخدم بعد');
+    }
+
+    // Sync reset if prepareConversation was not called (or args changed)
+    if (currentPatientId != patientId ||
+        currentDoctorId != doctorId ||
+        !isLoading.value) {
+      prepareConversation(patientId: patientId, doctorId: doctorId);
     }
 
     // Load messages (this leaves previous room and resets currentRoomId)
@@ -114,21 +143,25 @@ class ChatController extends GetxController {
     String? before,
     String? doctorId,
   }) async {
-    try {
-      isLoading.value = true;
+    final isFreshLoad = before == null;
 
-      // Leave previous room before loading new messages
-      if (currentRoomId != null && _chatService.socketService.isConnected) {
-        print('👋 [ChatController] Leaving previous room: $currentRoomId');
-        _chatService.socketService.leaveConversation(currentRoomId!);
+    if (isFreshLoad) {
+      final alreadyPrepared = isLoading.value &&
+          currentPatientId == patientId &&
+          currentDoctorId == doctorId &&
+          messages.isEmpty;
+      if (!alreadyPrepared) {
+        prepareConversation(patientId: patientId, doctorId: doctorId);
       }
+    } else {
+      isLoading.value = true;
+    }
 
-      // Clear previous room_id to ensure we get the correct one from new messages
-      currentRoomId = null;
-      currentPatientId = patientId;
-      currentDoctorId = doctorId;
+    final loadId = _loadGeneration;
+
+    try {
       print(
-        '📨 [ChatController] Loading messages for patient: $patientId, doctor: $doctorId',
+        '📨 [ChatController] Loading messages for patient: $patientId, doctor: $doctorId (gen=$loadId)',
       );
 
       // Check if we need to reload due to user change (for when chat opens after login)
@@ -145,6 +178,16 @@ class ChatController extends GetxController {
         before: before,
         doctorId: doctorId,
       );
+
+      // Ignore stale response if user opened another chat meanwhile
+      if (loadId != _loadGeneration ||
+          currentPatientId != patientId ||
+          currentDoctorId != doctorId) {
+        print(
+          '⏭️ [ChatController] Ignoring stale messages response (gen=$loadId, current=$_loadGeneration)',
+        );
+        return;
+      }
 
       print('✅ [ChatController] Loaded ${messagesList.length} messages');
 
@@ -172,10 +215,19 @@ class ChatController extends GetxController {
         );
       }
 
+      if (loadId != _loadGeneration ||
+          currentPatientId != patientId ||
+          currentDoctorId != doctorId) {
+        print(
+          '⏭️ [ChatController] Ignoring stale messages after user wait (gen=$loadId)',
+        );
+        return;
+      }
+
       // Clear sending message IDs when loading fresh messages
       sendingMessageIds.clear();
 
-      messages.value = messagesList;
+      messages.assignAll(messagesList);
       messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
       // Log first few messages for debugging
@@ -217,12 +269,18 @@ class ChatController extends GetxController {
       }
     } on ApiException catch (e) {
       print('❌ [ChatController] API Error: ${e.message}');
-      Get.snackbar('خطأ', e.message);
+      if (loadId == _loadGeneration) {
+        await NetworkUtils.showError(e);
+      }
     } catch (e) {
       print('❌ [ChatController] Error loading messages: $e');
-      Get.snackbar('خطأ', 'حدث خطأ أثناء تحميل الرسائل: ${e.toString()}');
+      if (loadId == _loadGeneration) {
+        await NetworkUtils.showError(e, fallbackMessage: 'حدث خطأ أثناء تحميل الرسائل: ${e.toString()}');
+      }
     } finally {
-      isLoading.value = false;
+      if (loadId == _loadGeneration) {
+        isLoading.value = false;
+      }
     }
   }
 
@@ -276,11 +334,7 @@ class ChatController extends GetxController {
 
           if (!connected) {
             _isConnecting = false;
-            Get.snackbar(
-              'تحذير',
-              'فشل الاتصال بالدردشة. تأكد من اتصال الإنترنت وحاول مرة أخرى',
-              duration: const Duration(seconds: 3),
-            );
+            await NetworkUtils.showNetworkErrorDialog();
             return;
           }
         }
@@ -313,6 +367,17 @@ class ChatController extends GetxController {
           print('📩 [ChatController] Received message via Socket.IO: $data');
           final messageData = data['message'] as Map<String, dynamic>? ?? data;
           final message = MessageModel.fromJson(messageData);
+
+          // Skip while switching conversations, or when no chat is open (home screen).
+          if (isLoading.value || currentRoomId == null) {
+            return;
+          }
+          if (message.roomId != null && message.roomId != currentRoomId) {
+            print(
+              '⏭️ [ChatController] Ignoring message for other room: ${message.roomId}',
+            );
+            return;
+          }
 
           final currentUser = _authController.currentUser.value;
           print(
@@ -439,15 +504,15 @@ class ChatController extends GetxController {
 
       // Listen for errors
       socketService.on('error', (data) {
-        final errorMessage = data['message'] ?? 'حدث خطأ';
-        Get.snackbar('خطأ', errorMessage);
+        final errorMessage = data['message']?.toString() ?? 'حدث خطأ';
+        NetworkUtils.showError(errorMessage);
       });
 
       isConnected.value = socketService.isConnected;
       _isConnecting = false;
     } catch (e) {
       print('❌ [ChatController] Error connecting socket: $e');
-      Get.snackbar('خطأ', 'فشل الاتصال');
+      await NetworkUtils.showNetworkErrorDialog();
       _isConnecting = false;
       isConnected.value = false;
     } finally {
@@ -593,10 +658,10 @@ class ChatController extends GetxController {
         }
       });
     } on ApiException catch (e) {
-      Get.snackbar('خطأ', e.message);
+      await NetworkUtils.showError(e);
     } catch (e) {
       print('❌ [ChatController] Error sending message: $e');
-      Get.snackbar('خطأ', 'حدث خطأ أثناء إرسال الرسالة: ${e.toString()}');
+      await NetworkUtils.showError(e, fallbackMessage: 'حدث خطأ أثناء إرسال الرسالة: ${e.toString()}');
     }
   }
 
@@ -663,10 +728,10 @@ class ChatController extends GetxController {
         '✅ [ChatController] Image message sent: ${message.id}, imageUrl: ${message.imageUrl}',
       );
     } on ApiException catch (e) {
-      Get.snackbar('خطأ', e.message);
+      await NetworkUtils.showError(e);
     } catch (e) {
       print('❌ [ChatController] Error sending image: $e');
-      Get.snackbar('خطأ', 'حدث خطأ أثناء إرسال الصورة: ${e.toString()}');
+      await NetworkUtils.showError(e, fallbackMessage: 'حدث خطأ أثناء إرسال الصورة: ${e.toString()}');
     } finally {
       isLoading.value = false;
     }

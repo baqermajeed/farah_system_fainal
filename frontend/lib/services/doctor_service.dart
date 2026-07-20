@@ -164,11 +164,11 @@ class DoctorService {
             } else {
               print('❌ [DoctorService] Response is a Map but no data/patients key found');
               print('   Keys: ${responseData.keys}');
-              throw ApiException('تنسيق استجابة غير متوقع من السيرفر');
+              throw ApiException('تنسيق استجابة غير متوقع');
             }
           } else {
             print('❌ [DoctorService] Response is neither List nor Map');
-            throw ApiException('تنسيق استجابة غير متوقع من السيرفر');
+            throw ApiException('تنسيق استجابة غير متوقع');
           }
         }
         

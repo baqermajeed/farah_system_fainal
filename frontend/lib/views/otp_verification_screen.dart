@@ -1,144 +1,29 @@
-﻿import 'dart:async';
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
-import 'package:farah_sys_final/controllers/auth_controller.dart';
+import 'package:farah_sys_final/controllers/otp_verification_controller.dart';
 
 class _OtpAssets {
   static const back = 'assets/icon/backblack.png';
 }
 
-class OtpVerificationScreen extends StatefulWidget {
-  final String phoneNumber;
-
-  const OtpVerificationScreen({
-    super.key,
-    required this.phoneNumber,
-  });
-
-  @override
-  State<OtpVerificationScreen> createState() => _OtpVerificationScreenState();
-}
-
-class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
-  static const Color _otpNumberColor = Color(0xFF032252);
-
-  final AuthController _authController = Get.find<AuthController>();
-  static const int _otpLength = 6;
-  final List<TextEditingController> _otpControllers =
-      List.generate(_otpLength, (_) => TextEditingController());
-  final List<FocusNode> _otpFocusNodes =
-      List.generate(_otpLength, (_) => FocusNode());
-  Timer? _timer;
-  int _remainingSeconds = 60;
-
-  @override
-  void initState() {
-    super.initState();
-    _startTimer();
-  }
-
-  void _startTimer() {
-    _timer?.cancel(); // Cancel existing timer if any
-    setState(() {
-      _remainingSeconds = 60; // Reset to 60 seconds
-    });
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) {
-        if (_remainingSeconds > 0) {
-          setState(() {
-            _remainingSeconds--;
-          });
-        } else {
-          timer.cancel();
-          setState(() {}); // Update UI when timer reaches 0
-        }
-      } else {
-        timer.cancel();
-      }
-    });
-  }
-
-  String _formatTime(int seconds) {
-    final minutes = seconds ~/ 60;
-    final secs = seconds % 60;
-    return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
-  }
-
-  void _clearOtpFields() {
-    for (final controller in _otpControllers) {
-      controller.clear();
-    }
-    _otpFocusNodes.first.requestFocus();
-    setState(() {});
-  }
-
-  void _onOtpChanged(int index, String value) {
-    if (value.isNotEmpty && index < _otpControllers.length - 1) {
-      _otpFocusNodes[index + 1].requestFocus();
-    }
-    if (value.isEmpty && index > 0) {
-      _otpFocusNodes[index - 1].requestFocus();
-    }
-    _verifyOtp();
-  }
-
-  void _verifyOtp() {
-    final otp = _otpControllers.map((c) => c.text).join();
-    if (otp.length == _otpLength) {
-      _authController.verifyOtpAndLogin(
-        phoneNumber: widget.phoneNumber,
-        code: otp,
-      );
-    }
-  }
-
-  void _onKeypadPressed(String value) {
-    for (int i = 0; i < _otpControllers.length; i++) {
-      if (_otpControllers[i].text.isEmpty) {
-        _otpControllers[i].text = value;
-        _onOtpChanged(i, value);
-        break;
-      }
-    }
-  }
-
-  void _onBackspacePressed() {
-    for (int i = _otpControllers.length - 1; i >= 0; i--) {
-      if (_otpControllers[i].text.isNotEmpty) {
-        _otpControllers[i].clear();
-        _otpFocusNodes[i].requestFocus();
-        break;
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    for (var controller in _otpControllers) {
-      controller.dispose();
-    }
-    for (var focusNode in _otpFocusNodes) {
-      focusNode.dispose();
-    }
-    super.dispose();
-  }
+/// شاشة OTP — GetView؛ المنطق في OtpVerificationController.
+class OtpVerificationScreen extends GetView<OtpVerificationController> {
+  const OtpVerificationScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final c = controller;
     return Scaffold(
       backgroundColor: AppColors.onboardingBackground,
       body: SafeArea(
         child: Stack(
           children: [
-            // Main content
             Column(
               children: [
-                // Top section with logo and OTP fields
                 Expanded(
                   child: SingleChildScrollView(
                     child: Padding(
@@ -147,7 +32,6 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                         children: [
                           SizedBox(height: 56.h),
                           SizedBox(height: 12.h),
-                          // Logo
                           Image.asset(
                             'assets/images/logo.png',
                             width: 120.w,
@@ -172,18 +56,18 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                             },
                           ),
                           SizedBox(height: 24.h),
-                          // Timer
-                          Text(
-                            _formatTime(_remainingSeconds),
-                            style: TextStyle(
-                              fontFamily: AppFonts.family,
-                              fontSize: 48.sp,
-                              fontWeight: FontWeight.bold,
-                              color: _otpNumberColor,
+                          Obx(
+                            () => Text(
+                              c.formatTime(c.remainingSeconds.value),
+                              style: TextStyle(
+                                fontFamily: AppFonts.family,
+                                fontSize: 48.sp,
+                                fontWeight: FontWeight.bold,
+                                color: OtpVerificationController.otpNumberColor,
+                              ),
                             ),
                           ),
                           SizedBox(height: 16.h),
-                          // Instruction text
                           Text(
                             'يرجى إدخال رمز التحقق الذي أرسلناه إلى هاتفك الخاص',
                             textAlign: TextAlign.center,
@@ -195,134 +79,135 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                             ),
                           ),
                           SizedBox(height: 32.h),
-                          // OTP Input Fields
-                          LayoutBuilder(
-                            builder: (context, constraints) {
-                              // Make the 6 boxes responsive to avoid overflow on small devices.
-                              final gap = 8.w;
-                              final available =
-                                  constraints.maxWidth - gap * (_otpLength - 1);
-                              final boxSize =
-                                  (available / _otpLength).clamp(44.0, 50.0);
+                          Obx(() {
+                            c.otpUiTick.value; // rebuild trigger
+                            return LayoutBuilder(
+                              builder: (context, constraints) {
+                                final gap = 8.w;
+                                final available = constraints.maxWidth -
+                                    gap * (OtpVerificationController.otpLength - 1);
+                                final boxSize =
+                                    (available / OtpVerificationController.otpLength)
+                                        .clamp(44.0, 50.0);
 
-                              final otps = <Widget>[];
-                              for (int index = 0; index < _otpLength; index++) {
-                                if (index > 0) {
-                                  otps.add(SizedBox(width: gap));
-                                }
-
-                                final reversedIndex =
-                                    (_otpLength - 1) - index; // RTL
-
-                                otps.add(
-                                  SizedBox(
-                                    width: boxSize,
-                                    height: boxSize,
-                                    child: TextField(
-                                      controller: _otpControllers[reversedIndex],
-                                      focusNode: _otpFocusNodes[reversedIndex],
-                                      textAlign: TextAlign.center,
-                                      keyboardType: TextInputType.number,
-                                      maxLength: 1,
-                                      readOnly: true,
-                                      showCursor: false,
-                                      enableInteractiveSelection: false,
-                                      style: TextStyle(
-                                        fontFamily: AppFonts.family,
-                                        fontSize: 22.sp,
-                                        fontWeight: FontWeight.bold,
-                                        color: _otpControllers[reversedIndex]
-                                                .text
-                                                .isNotEmpty
-                                            ? Colors.white
-                                            : _otpNumberColor,
-                                      ),
-                                      decoration: InputDecoration(
-                                        counterText: '',
-                                        filled: true,
-                                        fillColor:
-                                            _otpControllers[reversedIndex]
-                                                    .text
-                                                    .isNotEmpty
-                                                ? _otpNumberColor
-                                                : Colors.transparent,
-                                        contentPadding: EdgeInsets.zero,
-                                        isDense: true,
-                                        border: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(12.r),
-                                          borderSide: BorderSide(
-                                            color:
-                                                _otpControllers[reversedIndex]
-                                                        .text
-                                                        .isNotEmpty
-                                                    ? _otpNumberColor
-                                                    : AppColors.primaryLight
-                                                        .withValues(alpha: 0.5),
-                                            width: 2,
-                                          ),
-                                        ),
-                                        enabledBorder: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(12.r),
-                                          borderSide: BorderSide(
-                                            color:
-                                                _otpControllers[reversedIndex]
-                                                        .text
-                                                        .isNotEmpty
-                                                    ? _otpNumberColor
-                                                    : AppColors.primaryLight
-                                                        .withValues(alpha: 0.5),
-                                            width: 2,
-                                          ),
-                                        ),
-                                        focusedBorder: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(12.r),
-                                          borderSide: BorderSide(
-                                            color: _otpNumberColor,
-                                            width: 2,
-                                          ),
-                                        ),
-                                      ),
-                                      onChanged: (value) =>
-                                          _onOtpChanged(reversedIndex, value),
-                                      onTap: () {
-                                        _otpFocusNodes[reversedIndex]
-                                            .requestFocus();
-                                      },
-                                    ),
-                                  ),
-                                );
-                              }
-
-                              return Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: otps,
-                              );
-                            },
-                          ),
-                          SizedBox(height: 24.h),
-                          // Resend code link
-                          GestureDetector(
-                            onTap: _remainingSeconds == 0
-                                ? () async {
-                                    _clearOtpFields();
-                                    _startTimer();
-                                    await _authController.requestOtp(widget.phoneNumber);
+                                final otps = <Widget>[];
+                                for (int index = 0;
+                                    index < OtpVerificationController.otpLength;
+                                    index++) {
+                                  if (index > 0) {
+                                    otps.add(SizedBox(width: gap));
                                   }
-                                : null,
-                            child: Text(
-                              'إعادة إرسال الكود',
-                              textAlign: TextAlign.center,
-                              textDirection: TextDirection.rtl,
-                              style: TextStyle(
-                                fontFamily: AppFonts.family,
-                                fontSize: 16.sp,
-                                color: _remainingSeconds == 0
-                                    ? _otpNumberColor
-                                    : AppColors.textSecondary.withValues(alpha: 0.5),
-                                fontWeight: FontWeight.w500,
+                                  final reversedIndex =
+                                      (OtpVerificationController.otpLength - 1) -
+                                          index;
+                                  final filled = c.otpControllers[reversedIndex]
+                                      .text
+                                      .isNotEmpty;
+                                  otps.add(
+                                    SizedBox(
+                                      width: boxSize,
+                                      height: boxSize,
+                                      child: TextField(
+                                        controller:
+                                            c.otpControllers[reversedIndex],
+                                        focusNode:
+                                            c.otpFocusNodes[reversedIndex],
+                                        textAlign: TextAlign.center,
+                                        keyboardType: TextInputType.number,
+                                        maxLength: 1,
+                                        readOnly: true,
+                                        showCursor: false,
+                                        enableInteractiveSelection: false,
+                                        style: TextStyle(
+                                          fontFamily: AppFonts.family,
+                                          fontSize: 22.sp,
+                                          fontWeight: FontWeight.bold,
+                                          color: filled
+                                              ? Colors.white
+                                              : OtpVerificationController
+                                                  .otpNumberColor,
+                                        ),
+                                        decoration: InputDecoration(
+                                          counterText: '',
+                                          filled: true,
+                                          fillColor: filled
+                                              ? OtpVerificationController
+                                                  .otpNumberColor
+                                              : Colors.transparent,
+                                          contentPadding: EdgeInsets.zero,
+                                          isDense: true,
+                                          border: OutlineInputBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(12.r),
+                                            borderSide: BorderSide(
+                                              color: filled
+                                                  ? OtpVerificationController
+                                                      .otpNumberColor
+                                                  : AppColors.primaryLight
+                                                      .withValues(alpha: 0.5),
+                                              width: 2,
+                                            ),
+                                          ),
+                                          enabledBorder: OutlineInputBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(12.r),
+                                            borderSide: BorderSide(
+                                              color: filled
+                                                  ? OtpVerificationController
+                                                      .otpNumberColor
+                                                  : AppColors.primaryLight
+                                                      .withValues(alpha: 0.5),
+                                              width: 2,
+                                            ),
+                                          ),
+                                          focusedBorder: OutlineInputBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(12.r),
+                                            borderSide: const BorderSide(
+                                              color: OtpVerificationController
+                                                  .otpNumberColor,
+                                              width: 2,
+                                            ),
+                                          ),
+                                        ),
+                                        onChanged: (value) => c.onOtpChanged(
+                                          reversedIndex,
+                                          value,
+                                        ),
+                                        onTap: () {
+                                          c.otpFocusNodes[reversedIndex]
+                                              .requestFocus();
+                                        },
+                                      ),
+                                    ),
+                                  );
+                                }
+                                return Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: otps,
+                                );
+                              },
+                            );
+                          }),
+                          SizedBox(height: 24.h),
+                          Obx(
+                            () => GestureDetector(
+                              onTap: c.remainingSeconds.value == 0
+                                  ? c.resendCode
+                                  : null,
+                              child: Text(
+                                'إعادة إرسال الكود',
+                                textAlign: TextAlign.center,
+                                textDirection: TextDirection.rtl,
+                                style: TextStyle(
+                                  fontFamily: AppFonts.family,
+                                  fontSize: 16.sp,
+                                  color: c.remainingSeconds.value == 0
+                                      ? OtpVerificationController.otpNumberColor
+                                      : AppColors.textSecondary
+                                          .withValues(alpha: 0.5),
+                                  fontWeight: FontWeight.w500,
+                                ),
                               ),
                             ),
                           ),
@@ -331,46 +216,42 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                     ),
                   ),
                 ),
-                // Numeric Keypad
                 Container(
-                  padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h),
+                  padding:
+                      EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h),
                   child: Column(
                     children: [
-                      // Row 1: 3, 2, 1 (RTL)
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         textDirection: TextDirection.rtl,
-                        children: ['3', '2', '1'].map((digit) {
-                          return _buildKeypadButton(digit);
-                        }).toList(),
+                        children: ['3', '2', '1']
+                            .map((d) => _KeypadButton(number: d, onTap: c.onKeypadPressed))
+                            .toList(),
                       ),
                       SizedBox(height: 16.h),
-                      // Row 2: 6, 5, 4 (RTL)
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         textDirection: TextDirection.rtl,
-                        children: ['6', '5', '4'].map((digit) {
-                          return _buildKeypadButton(digit);
-                        }).toList(),
+                        children: ['6', '5', '4']
+                            .map((d) => _KeypadButton(number: d, onTap: c.onKeypadPressed))
+                            .toList(),
                       ),
                       SizedBox(height: 16.h),
-                      // Row 3: 9, 8, 7 (RTL)
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         textDirection: TextDirection.rtl,
-                        children: ['9', '8', '7'].map((digit) {
-                          return _buildKeypadButton(digit);
-                        }).toList(),
+                        children: ['9', '8', '7']
+                            .map((d) => _KeypadButton(number: d, onTap: c.onKeypadPressed))
+                            .toList(),
                       ),
                       SizedBox(height: 16.h),
-                      // Row 4: backspace, 0 (RTL)
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         textDirection: TextDirection.rtl,
                         children: [
-                          _buildBackspaceButton(),
+                          _BackspaceButton(onTap: c.onBackspacePressed),
                           SizedBox(width: 60.w),
-                          _buildKeypadButton('0'),
+                          _KeypadButton(number: '0', onTap: c.onKeypadPressed),
                         ],
                       ),
                     ],
@@ -378,7 +259,6 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                 ),
               ],
             ),
-            // Back button
             Positioned(
               top: 16.h,
               left: 16,
@@ -389,12 +269,20 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       ),
     );
   }
+}
 
-  Widget _buildKeypadButton(String number) {
+class _KeypadButton extends StatelessWidget {
+  const _KeypadButton({required this.number, required this.onTap});
+
+  final String number;
+  final void Function(String) onTap;
+
+  @override
+  Widget build(BuildContext context) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () => _onKeypadPressed(number),
+        onTap: () => onTap(number),
         borderRadius: BorderRadius.circular(12.r),
         child: Container(
           width: 60.w,
@@ -410,7 +298,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                 fontFamily: AppFonts.family,
                 fontSize: 28.sp,
                 fontWeight: FontWeight.w600,
-                color: _otpNumberColor,
+                color: OtpVerificationController.otpNumberColor,
               ),
             ),
           ),
@@ -418,12 +306,19 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       ),
     );
   }
+}
 
-  Widget _buildBackspaceButton() {
+class _BackspaceButton extends StatelessWidget {
+  const _BackspaceButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: _onBackspacePressed,
+        onTap: onTap,
         borderRadius: BorderRadius.circular(12.r),
         child: Container(
           width: 60.w,
@@ -444,4 +339,3 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     );
   }
 }
-

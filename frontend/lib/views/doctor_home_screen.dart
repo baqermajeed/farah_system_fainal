@@ -6,87 +6,17 @@ import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
-import 'package:farah_sys_final/controllers/patient_controller.dart';
+import 'package:farah_sys_final/controllers/doctor_home_controller.dart';
 import 'package:farah_sys_final/models/patient_model.dart';
-import 'package:farah_sys_final/services/chat_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:farah_sys_final/widgets/portrait_network_image.dart';
 
-class DoctorHomeScreen extends StatefulWidget {
+class DoctorHomeScreen extends GetView<DoctorHomeController> {
   const DoctorHomeScreen({super.key});
-
-  @override
-  State<DoctorHomeScreen> createState() => _DoctorHomeScreenState();
-}
-
-class _DoctorHomeScreenState extends State<DoctorHomeScreen> {
-  final TextEditingController _searchController = TextEditingController();
-  final RxString _searchQuery = ''.obs;
-  final ChatService _chatService = ChatService();
-  final RxMap<String, int> _unreadCounts = <String, int>{}.obs;
-
-  // Extract MongoDB ObjectId timestamp (first 8 hex chars = seconds since epoch).
-  int _objectIdSeconds(String id) {
-    if (id.length < 8) return 0;
-    return int.tryParse(id.substring(0, 8), radix: 16) ?? 0;
-  }
-
-  List<PatientModel> _sortNewestFirst(Iterable<PatientModel> patients) {
-    final list = patients.toList(growable: false);
-    final sorted = List<PatientModel>.from(list);
-    sorted.sort((a, b) => _objectIdSeconds(b.id).compareTo(_objectIdSeconds(a.id)));
-    return sorted;
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _loadUnreadCounts();
-  }
-
-  Future<void> _loadUnreadCounts() async {
-    try {
-      final chatList = await _chatService.getChatList();
-      final unreadMap = <String, int>{};
-      for (var chat in chatList) {
-        final patientId = chat['patient_id']?.toString();
-        final unreadCount = chat['unread_count'] as int? ?? 0;
-        if (patientId != null) {
-          unreadMap[patientId] = unreadCount;
-        }
-      }
-      _unreadCounts.value = unreadMap;
-    } catch (e) {
-      print('❌ Error loading unread counts: $e');
-    }
-  }
-
-  int get _totalUnreadCount {
-    return _unreadCounts.values.fold(0, (sum, count) => sum + count);
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
     final authController = Get.find<AuthController>();
-    final patientController = Get.find<PatientController>();
-
-    // Load patients on first build - فقط المرضى المرتبطين بالطبيب الحالي
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      // التأكد من أن نوع المستخدم هو doctor
-      final userType = authController.currentUser.value?.userType;
-      if (userType == 'doctor') {
-        print('🏥 [DoctorHomeScreen] Loading patients for doctor...');
-        patientController.loadPatients();
-      } else {
-        print('⚠️ [DoctorHomeScreen] User is not a doctor: $userType');
-      }
-    });
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -186,15 +116,9 @@ Row(
 
                       // Chat Icon with notification dot
                       GestureDetector(
-                        onTap: () async {
-                          await Get.toNamed(AppRoutes.doctorChats);
-                          // Reload unread counts when returning from chats screen
-                          // Add small delay to ensure messages are marked as read
-                          await Future.delayed(const Duration(milliseconds: 300));
-                          _loadUnreadCounts();
-                        },
+                        onTap: controller.openChatsAndRefresh,
                         child: Obx(() {
-                          final hasUnread = _totalUnreadCount > 0;
+                          final hasUnread = controller.totalUnreadCount > 0;
                           return Stack(
                             children: [
                               Padding(
@@ -258,8 +182,8 @@ padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 6.h),
       ),
       alignment: Alignment.center,
       child: TextField(
-        controller: _searchController,
-        onChanged: (value) => _searchQuery.value = value,
+        controller: controller.searchController,
+        onChanged: (value) => controller.searchQuery.value = value,
         textDirection: TextDirection.rtl,
         textAlign: TextAlign.right,
         decoration: InputDecoration(
@@ -389,12 +313,7 @@ SizedBox(width: 12.w),
                     Obx(() {
                       // patientController.patients يحتوي فقط على المرضى المرتبطين بالطبيب
                       // (يتم جلبهم من /doctor/patients في loadPatients())
-                      final allPatientsRaw = _searchQuery.value.isEmpty
-                          ? patientController.patients
-                          : patientController.searchPatients(
-                              _searchQuery.value,
-                            );
-                      final allPatients = _sortNewestFirst(allPatientsRaw);
+                      final allPatients = controller.filteredPatients;
                       final recentPatients = allPatients.take(5).toList();
 
                       if (recentPatients.isEmpty) {
@@ -463,14 +382,9 @@ SizedBox(width: 12.w),
                     Obx(() {
                       // patientController.patients يحتوي فقط على المرضى المرتبطين بالطبيب
                       // (يتم جلبهم من /doctor/patients في loadPatients())
-                      final allPatientsRaw = _searchQuery.value.isEmpty
-                          ? patientController.patients
-                          : patientController.searchPatients(
-                              _searchQuery.value,
-                            );
-                      final allPatients = _sortNewestFirst(allPatientsRaw);
+                      final allPatients = controller.filteredPatients;
 
-                      if (patientController.isLoading.value) {
+                      if (controller.isLoading.value) {
                         return Center(
                           child: Padding(
                             padding: EdgeInsets.all(32.h),
@@ -517,14 +431,7 @@ SizedBox(width: 12.w),
 
   Widget _buildRecentPatientCard(PatientModel patient) {
     return GestureDetector(
-      onTap: () {
-        final patientController = Get.find<PatientController>();
-        patientController.selectPatient(patient);
-        Get.toNamed(
-          AppRoutes.patientDetails,
-          arguments: {'patientId': patient.id},
-        );
-      },
+      onTap: () => controller.openPatient(patient),
       child: Container(
         width: 100.w,
         height: 150.h,
@@ -598,14 +505,7 @@ SizedBox(width: 12.w),
 
   Widget _buildAllPatientCard(PatientModel patient) {
     return GestureDetector(
-      onTap: () {
-        final patientController = Get.find<PatientController>();
-        patientController.selectPatient(patient);
-        Get.toNamed(
-          AppRoutes.patientDetails,
-          arguments: {'patientId': patient.id},
-        );
-      },
+      onTap: () => controller.openPatient(patient),
       child: Container(
         margin: EdgeInsets.only(bottom: 12.h),
         padding: EdgeInsets.only(left: 20.w, right: 0.w, top: 2.h, bottom: 2.h),
@@ -701,18 +601,9 @@ SizedBox(width: 12.w),
                     SizedBox(width: 16.w),
                     // Chat Icon with notification dot (على اليسار في RTL - آخر عنصر)
                     GestureDetector(
-                      onTap: () async {
-                        await Get.toNamed(
-                          AppRoutes.chat,
-                          arguments: {'patientId': patient.id},
-                        );
-                        // Reload unread counts when returning from chat
-                        // Add small delay to ensure messages are marked as read
-                        await Future.delayed(const Duration(milliseconds: 300));
-                        _loadUnreadCounts();
-                      },
+                      onTap: () => controller.openPatientChatAndRefresh(patient.id),
                       child: Obx(() {
-                        final unreadCount = _unreadCounts[patient.id] ?? 0;
+                        final unreadCount = controller.unreadCounts[patient.id] ?? 0;
                         return Stack(
                           children: [
                             Image.asset(

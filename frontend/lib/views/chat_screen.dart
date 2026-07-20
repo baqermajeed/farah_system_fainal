@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:math' show pi;
 import 'dart:ui' as ui;
 
@@ -7,11 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
-import 'package:farah_sys_final/controllers/chat_controller.dart';
-import 'package:farah_sys_final/controllers/auth_controller.dart';
-import 'package:farah_sys_final/controllers/patient_controller.dart';
+import 'package:farah_sys_final/controllers/chat_screen_controller.dart';
 import 'package:farah_sys_final/core/widgets/loading_widget.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
@@ -22,114 +18,11 @@ class _ChatAssets {
   static const chatIcon = 'assets/icon/chatddd.png';
 }
 
-class ChatScreen extends StatefulWidget {
+class ChatScreen extends GetView<ChatScreenController> {
   const ChatScreen({super.key});
 
-  @override
-  State<ChatScreen> createState() => _ChatScreenState();
-}
-
-class _ChatScreenState extends State<ChatScreen> {
   static const Color _navy = Color(0xFF1A3263);
   static const Color _grayText = Color(0xFF8A97A8);
-
-  final ChatController _chatController = Get.find<ChatController>();
-  final AuthController _authController = Get.find<AuthController>();
-  final PatientController _patientController = Get.find<PatientController>();
-  final TextEditingController _messageController = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
-  final ImagePicker _imagePicker = ImagePicker();
-  String? patientId;
-  String? doctorId;
-  String? doctorName;
-  int _lastMessageCount = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    final args = Get.arguments as Map<String, dynamic>?;
-    patientId = args?['patientId'];
-    doctorId = args?['doctorId'];
-    doctorName = args?['doctorName'];
-
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (_authController.currentUser.value?.userType == 'patient') {
-        if (_patientController.myDoctors.isEmpty) {
-          await _patientController.loadMyDoctors();
-        }
-      }
-      if (patientId != null) {
-        try {
-          await _chatController.openChat(
-            patientId: patientId!,
-            doctorId: doctorId,
-          );
-          _lastMessageCount = _chatController.messages.length;
-          await Future.delayed(const Duration(milliseconds: 300));
-          if (_scrollController.hasClients) {
-            _scrollController.animateTo(
-              0,
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOut,
-            );
-          }
-        } catch (e) {
-          debugPrint('❌ [ChatScreen] Error initializing chat: $e');
-          Get.snackbar(
-            'خطأ',
-            'حدث خطأ أثناء تحميل المحادثة',
-            duration: const Duration(seconds: 3),
-          );
-        }
-      } else {
-        Get.snackbar('خطأ', 'لم يتم تحديد المريض');
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _messageController.dispose();
-    _scrollController.dispose();
-    _chatController.disconnect();
-    super.dispose();
-  }
-
-  String _displayName() {
-    final currentUser = _authController.currentUser.value;
-    final currentUserType = currentUser?.userType.toLowerCase();
-
-    if (currentUserType == 'patient') {
-      final name = doctorName ?? 'طبيب';
-      return name.startsWith('د.') ? name : 'د. $name';
-    }
-    if (patientId != null) {
-      final patient = _patientController.getPatientById(patientId!);
-      return patient?.name ?? 'مريض';
-    }
-    return 'محادثة';
-  }
-
-  String? _doctorImageUrl() {
-    for (final doctor in _patientController.myDoctors) {
-      final id = doctor['id']?.toString();
-      if (doctorId != null && id == doctorId) {
-        return ImageUtils.convertToValidUrl(doctor['imageUrl']);
-      }
-    }
-    return ImageUtils.convertToValidUrl(
-      _patientController.myDoctor.value?['imageUrl'],
-    );
-  }
-
-  String _todayLabel() {
-    final now = DateTime.now();
-    final hour = now.hour;
-    final minute = now.minute.toString().padLeft(2, '0');
-    final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
-    final period = hour >= 12 ? 'مساءً' : 'صباحاً';
-    return 'اليوم، $displayHour:$minute $period';
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -170,7 +63,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildHeader() {
-    final imageUrl = _doctorImageUrl();
+    final imageUrl = controller.doctorImageUrl();
 
     return Padding(
       padding: EdgeInsets.fromLTRB(12.w, 8.h, 16.w, 12.h),
@@ -191,7 +84,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _displayName(),
+                          controller.displayName(),
                           style: AppFonts.lamaSans(
                             fontSize: 16.sp,
                             fontWeight: FontWeight.w800,
@@ -276,12 +169,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildMessagesArea() {
     return Obx(() {
-      if (_chatController.isLoading.value &&
-          _chatController.messages.isEmpty) {
+      // Always show loader while fetching so old chat / empty flash never appears.
+      if (controller.chatController.isLoading.value) {
         return const LoadingWidget(message: 'جاري تحميل الرسائل...');
       }
 
-      if (_chatController.messages.isEmpty) {
+      if (controller.chatController.messages.isEmpty) {
         return _buildEmptyState();
       }
 
@@ -289,36 +182,25 @@ class _ChatScreenState extends State<ChatScreen> {
         children: [
           Padding(
             padding: EdgeInsets.symmetric(vertical: 12.h),
-            child: _buildDateChip(_todayLabel()),
+            child: _buildDateChip(controller.todayLabel()),
           ),
           Expanded(
             child: ListView.builder(
-              controller: _scrollController,
+              controller: controller.scrollController,
               padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
               reverse: true,
-              itemCount: _chatController.messages.length,
+              itemCount: controller.chatController.messages.length,
               itemBuilder: (context, index) {
                 final currentUserId =
-                    _authController.currentUser.value?.id ?? '';
-                final message = _chatController
-                    .messages[_chatController.messages.length - 1 - index];
+                    controller.authController.currentUser.value?.id ?? '';
+                final messages = controller.chatController.messages;
+                final message = messages[messages.length - 1 - index];
 
-                if (_chatController.messages.length != _lastMessageCount) {
-                  _lastMessageCount = _chatController.messages.length;
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (_scrollController.hasClients) {
-                      _scrollController.animateTo(
-                        0,
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeOut,
-                      );
-                    }
-                  });
-                }
+                controller.onMessagesRendered();
 
                 final isSent =
                     message.senderId.trim() == currentUserId.trim();
-                final time = _formatMessageTime(message.timestamp);
+                final time = controller.formatMessageTime(message.timestamp);
 
                 return _buildMessageBubble(
                   message: message,
@@ -464,12 +346,12 @@ class _ChatScreenState extends State<ChatScreen> {
               icon: Icons.image_outlined,
               color: _navy.withValues(alpha: 0.08),
               iconColor: _navy,
-              onTap: _pickImage,
+              onTap: controller.pickImage,
             ),
             SizedBox(width: 4.w),
             Expanded(
               child: TextField(
-                controller: _messageController,
+                controller: controller.messageController,
                 textAlign: TextAlign.right,
                 maxLines: 4,
                 minLines: 1,
@@ -498,7 +380,7 @@ class _ChatScreenState extends State<ChatScreen> {
               icon: Icons.send_rounded,
               color: _navy,
               iconColor: Colors.white,
-              onTap: _sendMessage,
+              onTap: controller.sendMessage,
               rotateIcon: true,
             ),
           ],
@@ -533,73 +415,6 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       ),
     );
-  }
-
-  Future<void> _sendMessage() async {
-    if (_messageController.text.trim().isNotEmpty && patientId != null) {
-      await _chatController.sendMessage(_messageController.text.trim());
-      _messageController.clear();
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          0,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
-    }
-  }
-
-  Future<void> _pickImage() async {
-    try {
-      final XFile? image = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 85,
-      );
-
-      if (image != null && patientId != null) {
-        await _chatController.sendMessageWithImage(
-          image: File(image.path),
-          content: _messageController.text.trim().isNotEmpty
-              ? _messageController.text.trim()
-              : null,
-        );
-        _messageController.clear();
-
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            0,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
-          );
-        }
-      }
-    } catch (e) {
-      Get.snackbar('خطأ', 'فشل اختيار الصورة');
-    }
-  }
-
-  String _formatMessageTime(DateTime localTime) {
-    final hour = localTime.hour;
-    final minute = localTime.minute.toString().padLeft(2, '0');
-
-    int displayHour;
-    String period;
-
-    if (hour == 0) {
-      displayHour = 12;
-      period = 'صباحاً';
-    } else if (hour < 12) {
-      displayHour = hour;
-      period = 'صباحاً';
-    } else if (hour == 12) {
-      displayHour = 12;
-      period = 'مساءً';
-    } else {
-      displayHour = hour - 12;
-      period = 'مساءً';
-    }
-
-    return '$displayHour:$minute $period';
   }
 
   Widget _buildMessageBubble({
@@ -746,8 +561,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 if (isSent) ...[
                   SizedBox(width: 4.w),
                   Obx(() {
-                    final isSending =
-                        _chatController.sendingMessageIds.contains(message.id);
+                    final isSending = controller.chatController
+                        .sendingMessageIds
+                        .contains(message.id);
                     if (isSending) {
                       return SizedBox(
                         width: 14.w,

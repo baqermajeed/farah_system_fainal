@@ -4,47 +4,16 @@ import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
-import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
 import 'package:farah_sys_final/core/widgets/empty_state_widget.dart';
 import 'package:farah_sys_final/core/widgets/loading_widget.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
-import 'package:farah_sys_final/services/chat_service.dart';
-import 'package:farah_sys_final/core/network/api_exception.dart';
+import 'package:farah_sys_final/controllers/doctor_chats_screen_controller.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 
-class DoctorChatsScreen extends StatefulWidget {
+class DoctorChatsScreen extends GetView<DoctorChatsScreenController> {
   const DoctorChatsScreen({super.key});
-
-  @override
-  State<DoctorChatsScreen> createState() => _DoctorChatsScreenState();
-}
-
-class _DoctorChatsScreenState extends State<DoctorChatsScreen> {
-  final ChatService _chatService = ChatService();
-  final RxList<Map<String, dynamic>> _chatList = <Map<String, dynamic>>[].obs;
-  final RxBool _isLoading = true.obs;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadChatList();
-  }
-
-  Future<void> _loadChatList() async {
-    try {
-      _isLoading.value = true;
-      final list = await _chatService.getChatList();
-      _chatList.value = list;
-    } on ApiException catch (e) {
-      Get.snackbar('خطأ', e.message);
-    } catch (e) {
-      Get.snackbar('خطأ', 'حدث خطأ أثناء تحميل المحادثات');
-    } finally {
-      _isLoading.value = false;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -91,11 +60,11 @@ class _DoctorChatsScreenState extends State<DoctorChatsScreen> {
         ),
         body: Obx(() {
         // Show loading widget when loading and list is empty
-        if (_isLoading.value && _chatList.isEmpty) {
+        if (controller.isLoading.value && controller.chatList.isEmpty) {
           return const LoadingWidget(message: 'جاري تحميل المحادثات...');
         }
 
-        if (_chatList.isEmpty) {
+        if (controller.chatList.isEmpty) {
           return EmptyStateWidget(
             icon: Icons.chat_bubble_outline,
             title: 'لا توجد محادثات',
@@ -104,11 +73,11 @@ class _DoctorChatsScreenState extends State<DoctorChatsScreen> {
         }
 
         return RefreshIndicator(
-          onRefresh: _loadChatList,
+          onRefresh: controller.loadChatList,
           child: ListView.separated(
             padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
             itemBuilder: (_, i) {
-              final chatItem = _chatList[i];
+              final chatItem = controller.chatList[i];
 
               // Get patient name
               String name = chatItem['patient_name'] ?? 'مريض';
@@ -170,16 +139,7 @@ class _DoctorChatsScreenState extends State<DoctorChatsScreen> {
 
               return InkWell(
                 borderRadius: BorderRadius.circular(16.r),
-                onTap: () async {
-                  await Get.toNamed(
-                    AppRoutes.chat,
-                    arguments: {'patientId': chatItem['patient_id']},
-                  );
-                  // Reload chat list when returning from chat
-                  // Add small delay to ensure messages are marked as read
-                  await Future.delayed(const Duration(milliseconds: 300));
-                  _loadChatList();
-                },
+                onTap: () => controller.openChat(chatItem['patient_id']),
                 child: Container(
                   padding: EdgeInsets.symmetric(vertical: 14.h),
                   child: Row(
@@ -350,7 +310,7 @@ class _DoctorChatsScreenState extends State<DoctorChatsScreen> {
             },
             separatorBuilder: (_, __) =>
                 Divider(color: AppColors.divider, height: 1),
-            itemCount: _chatList.length,
+            itemCount: controller.chatList.length,
           ),
         );
         }),

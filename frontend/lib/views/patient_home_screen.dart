@@ -8,34 +8,24 @@ import 'package:intl/intl.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
 import 'package:farah_sys_final/core/routes/app_routes.dart';
-import 'package:farah_sys_final/controllers/auth_controller.dart';
-import 'package:farah_sys_final/controllers/patient_controller.dart';
-import 'package:farah_sys_final/controllers/appointment_controller.dart';
+import 'package:farah_sys_final/controllers/patient_home_controller.dart';
 import 'package:farah_sys_final/models/appointment_model.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
-import 'package:farah_sys_final/services/chat_service.dart';
-import 'package:hive_flutter/hive_flutter.dart';
+import 'package:farah_sys_final/core/widgets/loading_widget.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 class _HomeAssets {
   static const chat = 'assets/icon/chatddd.png';
   static const notif = 'assets/icon/notd.png';
-  static const moon = 'assets/icon/Moon.png';
-  static const sun = 'assets/icon/sun.png';
   static const heroBg =
       'assets/icon/ChatGPT Image Jul 11, 2026, 06_28_08 PM.png';
   static const implant = 'assets/icon/implanticon.png';
   static const dateIcon = 'assets/icon/date23.png';
 }
 
-class PatientHomeScreen extends StatefulWidget {
+class PatientHomeScreen extends GetView<PatientHomeController> {
   const PatientHomeScreen({super.key});
 
-  @override
-  State<PatientHomeScreen> createState() => _PatientHomeScreenState();
-}
-
-class _PatientHomeScreenState extends State<PatientHomeScreen> {
   static const Color _navy = Color(0xFF1E3A5F);
   static const Color _grayText = Color(0xFF8A97A8);
   static const double _headerBoxSize = 50;
@@ -56,121 +46,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         boxShadow: _headerBoxShadow,
       );
 
-  final ChatService _chatService = ChatService();
-  final RxInt _unreadCount = 0.obs;
-  final RxInt _unreadNotificationsCount = 0.obs;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadUnreadCount();
-      _loadUnreadNotificationsCount();
-      _loadData();
-    });
-  }
-
-  void _loadData() {
-    final patientController = Get.find<PatientController>();
-    final appointmentController = Get.find<AppointmentController>();
-
-    patientController.loadMyProfile().catchError((e) {
-      debugPrint('❌ [PatientHomeScreen] Error loading profile: $e');
-    });
-    appointmentController.loadPatientAppointments().catchError((e) {
-      debugPrint('❌ [PatientHomeScreen] Error loading appointments: $e');
-    });
-    patientController.loadMyDoctors().catchError((e) {
-      debugPrint('❌ [PatientHomeScreen] Error loading doctors: $e');
-    });
-  }
-
-  Future<void> _loadUnreadCount() async {
-    try {
-      final chatList = await _chatService.getChatList();
-      if (chatList.isNotEmpty) {
-        _unreadCount.value = chatList[0]['unread_count'] as int? ?? 0;
-      } else {
-        _unreadCount.value = 0;
-      }
-    } catch (e) {
-      _unreadCount.value = 0;
-    }
-  }
-
-  Future<void> _loadUnreadNotificationsCount() async {
-    try {
-      final appointmentController = Get.find<AppointmentController>();
-      int count = 0;
-      final upcoming = appointmentController.getUpcomingAppointments();
-
-      try {
-        final box = await Hive.openBox('read_notifications');
-        for (final appointment in upcoming) {
-          final notificationId = 'appointment_${appointment.id}';
-          final isRead = box.get(notificationId, defaultValue: false) as bool;
-          if (!isRead) count++;
-        }
-      } catch (e) {
-        count = upcoming.length;
-      }
-
-      count += _unreadCount.value;
-      _unreadNotificationsCount.value = count;
-    } catch (e) {
-      _unreadNotificationsCount.value = 0;
-    }
-  }
-
-  bool get _isMorning => DateTime.now().hour < 12;
-
-  String _greeting() {
-    if (_isMorning) return 'صبــاح الخــير';
-    return 'مساء الخير';
-  }
-
-  String _greetingIcon() => _isMorning ? _HomeAssets.sun : _HomeAssets.moon;
-
-  /// رسائل اليوم — تتغير مع بداية كل يوم جديد (بعد 12:00 منتصف الليل)
-  static const List<String> _dailyMessages = [
-    'اليوم بداية ابتسامة جديدة',
-    'عنايتك تصنع فرقًا دائمًا',
-    'اسنان صحية لحياة سعيدة',
-    'ابدأ يومك بابتسامة مشرقة',
-    'ثقتك تبدأ بابتسامتك الجميلة',
-    'العناية تصنع ابتسامة تدوم',
-    'صحتك الفموية أولويتنا دائمًا',
-    'كل موعد خطوة للأفضل',
-    'لأن ابتسامتك تستحق الأفضل',
-    'أسنان أقوى ابتسامة أجمل',
-    'جمالك يبدأ بابتسامتك دائمًا',
-  ];
-
-  /// كلمتان في السطر الأول والباقي في السطر الثاني
-  (String line1, String line2) _dailyMessageLines() {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final dayIndex =
-        today.difference(DateTime(2020, 1, 1)).inDays.abs();
-    final message = _dailyMessages[dayIndex % _dailyMessages.length];
-    final words = message.trim().split(RegExp(r'\s+'));
-
-    if (words.length <= 2) {
-      return (message, '');
-    }
-
-    return (
-      words.take(2).join(' '),
-      words.skip(2).join(' '),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final authController = Get.find<AuthController>();
-    final patientController = Get.find<PatientController>();
-    final appointmentController = Get.find<AppointmentController>();
-
     final baseTheme = Theme.of(context);
     final cairoTheme = baseTheme.copyWith(
       textTheme: AppFonts.textTheme(baseTheme.textTheme),
@@ -182,33 +59,67 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
       child: Scaffold(
         backgroundColor: Colors.white,
         body: SafeArea(
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            padding: EdgeInsets.fromLTRB(20.w, 14.h, 20.w, 28.h),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _buildHeader(authController, patientController),
-                SizedBox(height: 18.h),
-                _buildHeroBanner(appointmentController),
-                SizedBox(height: 10.h),
-                _buildDoctorsSection(patientController, appointmentController),
-                SizedBox(height: 10.h),
-                _buildImplantSection(patientController),
-                SizedBox(height: 10.h),
-                _buildAppointmentsSection(appointmentController),
-              ],
-            ),
-          ),
+          child: Obx(() {
+            if (controller.isInitialLoading.value) {
+              return Padding(
+                padding: EdgeInsets.fromLTRB(20.w, 14.h, 20.w, 28.h),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildHeader(),
+                    Expanded(
+                      child: const LoadingWidget(
+                        message: 'جاري تحميل الصفحة الرئيسية...',
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            return RefreshIndicator(
+              color: _navy,
+              displacement: 40,
+              onRefresh: controller.onRefresh,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    // Clamping avoids the large white gap from bounce overscroll
+                    // when used with RefreshIndicator on Android.
+                    physics: const AlwaysScrollableScrollPhysics(
+                      parent: ClampingScrollPhysics(),
+                    ),
+                    padding: EdgeInsets.fromLTRB(20.w, 14.h, 20.w, 28.h),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: constraints.maxHeight,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildHeader(),
+                          SizedBox(height: 18.h),
+                          _buildHeroBanner(),
+                          SizedBox(height: 10.h),
+                          _buildDoctorsSection(),
+                          SizedBox(height: 10.h),
+                          _buildImplantSection(),
+                          SizedBox(height: 10.h),
+                          _buildAppointmentsSection(),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            );
+          }),
         ),
       ),
     );
   }
 
-  Widget _buildHeader(
-    AuthController authController,
-    PatientController patientController,
-  ) {
+  Widget _buildHeader() {
     return Directionality(
       textDirection: ui.TextDirection.rtl,
       child: Row(
@@ -216,8 +127,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         children: [
           Expanded(
             child: Obx(() {
-              final user = authController.currentUser.value;
-              final profile = patientController.myProfile.value;
+              final user = controller.authController.currentUser.value;
+              final profile = controller.patientController.myProfile.value;
               final patientName = user?.name ?? profile?.name ?? 'مريض';
               final imageUrl = ImageUtils.convertToValidUrl(
                 user?.imageUrl ?? profile?.imageUrl,
@@ -312,17 +223,11 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
           ),
           SizedBox(width: 10.w),
           Obx(() => _headerIconButton(
-                asset: _HomeAssets.chat,
-                showBadge: _unreadCount.value > 0,
-                onTap: () => _openChat(patientController),
-              )),
-          SizedBox(width: 10.w),
-          Obx(() => _headerIconButton(
                 asset: _HomeAssets.notif,
-                showBadge: _unreadNotificationsCount.value > 0,
+                showBadge: controller.unreadNotificationsCount.value > 0,
                 onTap: () async {
                   await Get.toNamed(AppRoutes.notifications);
-                  _loadUnreadNotificationsCount();
+                  controller.loadUnreadNotificationsCount();
                 },
               )),
         ],
@@ -371,31 +276,10 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     );
   }
 
-  Future<void> _openChat(PatientController patientController) async {
-    final doctors = patientController.myDoctors;
-    final profile = patientController.myProfile.value;
-    if (doctors.isEmpty || profile == null) return;
-
-    final doctor = doctors.first;
-    final doctorId = doctor['id'];
-    final doctorName = doctor['name'] ?? 'طبيبك';
-    if (doctorId == null) return;
-
-    await Get.toNamed(
-      AppRoutes.chat,
-      arguments: {
-        'patientId': profile.id,
-        'doctorId': doctorId.toString(),
-        'doctorName': 'د. $doctorName',
-      },
-    );
-    await Future.delayed(const Duration(milliseconds: 300));
-    _loadUnreadCount();
-  }
-
-  Widget _buildHeroBanner(AppointmentController appointmentController) {
+  Widget _buildHeroBanner() {
     return Obx(() {
-      final todayCount = appointmentController.getTodayAppointments().length;
+      final todayCount =
+          controller.appointmentController.getTodayAppointments().length;
       final countText = todayCount == 0
           ? 'لا توجد مواعيد اليوم'
           : 'لديك موعد اليوم';
@@ -440,13 +324,13 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Image.asset(
-                              _greetingIcon(),
+                              controller.greetingIcon(),
                               width: 35.w,
                               height: 35.h,
                             ),
                             SizedBox(width: 6.w),
                             Text(
-                              _greeting(),
+                              controller.greeting(),
                               style: AppFonts.lamaSans(
                                 fontSize: 16.sp,
                                 fontWeight: FontWeight.w500,
@@ -460,7 +344,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                     SizedBox(height: 10.h),
                     Builder(
                       builder: (context) {
-                        final (line1, line2) = _dailyMessageLines();
+                        final (line1, line2) = controller.dailyMessageLines();
                         return Directionality(
                           textDirection: ui.TextDirection.rtl,
                           child: Column(
@@ -556,10 +440,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     });
   }
 
-  Widget _buildDoctorsSection(
-    PatientController patientController,
-    AppointmentController appointmentController,
-  ) {
+  Widget _buildDoctorsSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -574,7 +455,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         ),
         SizedBox(height: 10.h),
         Obx(() {
-          final doctors = patientController.myDoctors;
+          final doctors = controller.patientController.myDoctors;
           if (doctors.isEmpty) {
             return _emptyCard('لا يوجد أطباء مرتبطين');
           }
@@ -588,12 +469,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                       ? doctors[i]['name']!
                       : 'طبيبك',
                   nextVisitText: _formatNextVisit(
-                    _nextAppointmentForDoctor(
-                      doctors[i]['id']?.toString(),
-                      appointmentController,
-                    ),
+                    _nextAppointmentForDoctor(doctors[i]['id']?.toString()),
                   ),
-                  patientController: patientController,
                 ),
                 if (i < doctors.length - 1) SizedBox(height: 10.h),
               ],
@@ -608,7 +485,6 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     required Map<String, dynamic> doctor,
     required String doctorName,
     required String nextVisitText,
-    required PatientController patientController,
   }) {
     final doctorImageUrl = ImageUtils.convertToValidUrl(doctor['imageUrl']);
 
@@ -687,7 +563,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
             ),
             GestureDetector(
               onTap: () async {
-                final profile = patientController.myProfile.value;
+                final profile = controller.patientController.myProfile.value;
                 final doctorId = doctor['id'];
                 if (profile != null && doctorId != null) {
                   await Get.toNamed(
@@ -699,7 +575,9 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                     },
                   );
                   await Future.delayed(const Duration(milliseconds: 300));
-                  _loadUnreadCount();
+                  await controller.loadUnreadCount();
+                  await controller.loadUnreadNotificationsCount();
+                  controller.listenForIncomingMessages();
                 }
               },
               child: Stack(
@@ -725,7 +603,15 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
                     ),
                   ),
                   Obx(() {
-                    if (_unreadCount.value <= 0) {
+                    final doctorId = doctor['id']?.toString();
+                    final doctorUserId = doctor['user_id']?.toString();
+                    final unread = doctorId != null &&
+                            controller.unreadByDoctorId.containsKey(doctorId)
+                        ? (controller.unreadByDoctorId[doctorId] ?? 0)
+                        : (doctorUserId != null
+                            ? (controller.unreadByDoctorId[doctorUserId] ?? 0)
+                            : 0);
+                    if (unread <= 0) {
                       return const SizedBox.shrink();
                     }
                     return Positioned(
@@ -750,9 +636,9 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     );
   }
 
-  Widget _buildImplantSection(PatientController patientController) {
+  Widget _buildImplantSection() {
     return Obx(() {
-      final profile = patientController.myProfile.value;
+      final profile = controller.patientController.myProfile.value;
       final hasImplant =
           profile?.treatmentHistory?.contains(AppStrings.implant) ?? false;
       if (!hasImplant) return const SizedBox.shrink();
@@ -886,7 +772,7 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     });
   }
 
-  Widget _buildAppointmentsSection(AppointmentController appointmentController) {
+  Widget _buildAppointmentsSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -919,7 +805,8 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
         ),
         SizedBox(height: 10.h),
         Obx(() {
-          final upcoming = appointmentController.getUpcomingAppointments();
+          final upcoming =
+              controller.appointmentController.getUpcomingAppointments();
           if (upcoming.isEmpty) {
             return _emptyCard('لا توجد مواعيد حالياً');
           }
@@ -930,10 +817,9 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
   }
 
   Widget _buildAppointmentCard({required AppointmentModel appointment}) {
-    final patientController = Get.find<PatientController>();
     final doctorName = appointment.doctorName.isNotEmpty
         ? appointment.doctorName
-        : (patientController.myDoctor.value?['name'] ?? 'طبيبك');
+        : (controller.patientController.myDoctor.value?['name'] ?? 'طبيبك');
 
     final weekDays = [
       'الأحد',
@@ -1149,12 +1035,9 @@ class _PatientHomeScreenState extends State<PatientHomeScreen> {
     );
   }
 
-  AppointmentModel? _nextAppointmentForDoctor(
-    String? doctorId,
-    AppointmentController controller,
-  ) {
+  AppointmentModel? _nextAppointmentForDoctor(String? doctorId) {
     if (doctorId == null) return null;
-    final upcoming = controller.getUpcomingAppointments();
+    final upcoming = controller.appointmentController.getUpcomingAppointments();
     for (final appt in upcoming) {
       if (appt.doctorId == doctorId) return appt;
     }

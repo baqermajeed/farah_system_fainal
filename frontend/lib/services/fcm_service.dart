@@ -1,21 +1,32 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/services/api_service.dart';
 import 'package:farah_sys_final/services/auth_service.dart';
+import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'dart:io';
+
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // Background handler — keep lightweight; navigation handled on open.
+  debugPrint(
+    '📨 [FCM] Background message: ${message.notification?.title} type=${message.data['type']}',
+  );
+}
 
 class FcmService extends GetxService {
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
-  
+
   ApiService get _apiService => Get.find<ApiService>();
 
   String? _currentToken;
+  bool _initialized = false;
 
   /// Initialize FCM and request permissions
   Future<void> initialize() async {
+    if (_initialized) return;
     try {
-      // Request notification permissions
-      NotificationSettings settings = await _firebaseMessaging.requestPermission(
+      final settings = await _firebaseMessaging.requestPermission(
         alert: true,
         badge: true,
         sound: true,
@@ -23,66 +34,109 @@ class FcmService extends GetxService {
       );
 
       if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-        print('✅ [FCM] User granted notification permission');
-      } else if (settings.authorizationStatus == AuthorizationStatus.provisional) {
-        print('⚠️ [FCM] User granted provisional notification permission');
+        debugPrint('✅ [FCM] User granted notification permission');
+      } else if (settings.authorizationStatus ==
+          AuthorizationStatus.provisional) {
+        debugPrint('⚠️ [FCM] User granted provisional notification permission');
       } else {
-        print('❌ [FCM] User declined or has not accepted notification permission');
+        debugPrint(
+          '❌ [FCM] User declined or has not accepted notification permission',
+        );
+        _initialized = true;
         return;
       }
 
-      // Get FCM token
-      String? token = await _firebaseMessaging.getToken();
+      final token = await _firebaseMessaging.getToken();
       if (token != null) {
         _currentToken = token;
-        print('📱 [FCM] Token obtained: ${token.substring(0, 20)}...');
+        debugPrint('📱 [FCM] Token obtained: ${token.substring(0, 20)}...');
         await _registerToken(token);
       }
 
-      // Listen for token refresh
       _firebaseMessaging.onTokenRefresh.listen((newToken) {
-        print('🔄 [FCM] Token refreshed: ${newToken.substring(0, 20)}...');
+        debugPrint('🔄 [FCM] Token refreshed: ${newToken.substring(0, 20)}...');
         _currentToken = newToken;
         _registerToken(newToken);
       });
 
-      // Handle foreground messages
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-        print('📨 [FCM] Foreground message received: ${message.notification?.title}');
-        // You can show a local notification here if needed
+        debugPrint(
+          '📨 [FCM] Foreground message: ${message.notification?.title}',
+        );
+        final title = message.notification?.title ?? 'إشعار جديد';
+        final body = message.notification?.body ?? '';
+        Get.snackbar(
+          title,
+          body,
+          snackPosition: SnackPosition.TOP,
+          duration: const Duration(seconds: 4),
+          onTap: (_) => handleNotificationNavigation(message.data),
+        );
       });
 
-      // Handle background messages (when app is in background)
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-        print('📨 [FCM] Message opened app: ${message.notification?.title}');
-        // Handle navigation here if needed
+        debugPrint('📨 [FCM] Message opened app: ${message.notification?.title}');
+        handleNotificationNavigation(message.data);
       });
 
-      // Check if app was opened from a notification
-      RemoteMessage? initialMessage = await _firebaseMessaging.getInitialMessage();
+      final initialMessage = await _firebaseMessaging.getInitialMessage();
       if (initialMessage != null) {
-        print('📨 [FCM] App opened from notification: ${initialMessage.notification?.title}');
-        // Handle navigation here if needed
+        debugPrint(
+          '📨 [FCM] App opened from notification: ${initialMessage.notification?.title}',
+        );
+        // Delay so routes are ready
+        Future.delayed(const Duration(milliseconds: 800), () {
+          handleNotificationNavigation(initialMessage.data);
+        });
       }
+
+      _initialized = true;
     } catch (e) {
-      print('❌ [FCM] Error initializing: $e');
+      debugPrint('❌ [FCM] Error initializing: $e');
     }
   }
 
-  /// Register FCM token with backend
+  /// Navigate based on notification type / data payload.
+  void handleNotificationNavigation(Map<String, dynamic> data) {
+    final type = data['type']?.toString() ?? '';
+    switch (type) {
+      case 'appointment_created':
+      case 'appointment_reminder':
+      case 'appointment_updated':
+        Get.toNamed(AppRoutes.patientAppointments);
+        break;
+      case 'message':
+        final patientId = data['patientId']?.toString();
+        if (patientId != null && patientId.isNotEmpty) {
+          Get.toNamed(
+            AppRoutes.chat,
+            arguments: {'patientId': patientId},
+          );
+        }
+        break;
+      case 'implant_stage':
+        Get.toNamed(AppRoutes.dentalImplantTimeline);
+        break;
+      case 'general':
+      default:
+        Get.toNamed(AppRoutes.notifications);
+        break;
+    }
+  }
+
   Future<void> _registerToken(String token) async {
     try {
-      // Check if user is logged in
       final authService = AuthService();
       final isLoggedIn = await authService.isLoggedIn();
-      
+
       if (!isLoggedIn) {
-        print('ℹ️ [FCM] User not logged in, skipping token registration');
+        debugPrint('ℹ️ [FCM] User not logged in, skipping token registration');
         return;
       }
-      
-      String platform = Platform.isAndroid ? 'android' : (Platform.isIOS ? 'ios' : 'web');
-      
+
+      final platform =
+          Platform.isAndroid ? 'android' : (Platform.isIOS ? 'ios' : 'web');
+
       await _apiService.post(
         '/notifications/register',
         data: {
@@ -90,22 +144,24 @@ class FcmService extends GetxService {
           'platform': platform,
         },
       );
-      
-      print('✅ [FCM] Token registered successfully');
+
+      debugPrint('✅ [FCM] Token registered successfully');
     } catch (e) {
-      print('❌ [FCM] Error registering token: $e');
+      debugPrint('❌ [FCM] Error registering token: $e');
     }
   }
 
-  /// Get current FCM token
   String? get currentToken => _currentToken;
 
-  /// Re-register token (useful after login)
   Future<void> reRegisterToken() async {
-    String? token = await _firebaseMessaging.getToken();
+    if (!_initialized) {
+      await initialize();
+      return;
+    }
+    final token = await _firebaseMessaging.getToken();
     if (token != null) {
+      _currentToken = token;
       await _registerToken(token);
     }
   }
 }
-

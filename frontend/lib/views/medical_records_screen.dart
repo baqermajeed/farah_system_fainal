@@ -9,50 +9,11 @@ import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/core/widgets/empty_state_widget.dart';
 import 'package:farah_sys_final/core/widgets/loading_widget.dart';
 import 'package:farah_sys_final/models/medical_record_model.dart';
-import 'package:farah_sys_final/services/doctor_service.dart';
-import 'package:farah_sys_final/controllers/patient_controller.dart';
-import 'package:farah_sys_final/core/network/api_exception.dart';
+import 'package:farah_sys_final/controllers/medical_records_screen_controller.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
 
-class MedicalRecordsScreen extends StatefulWidget {
+class MedicalRecordsScreen extends GetView<MedicalRecordsScreenController> {
   const MedicalRecordsScreen({super.key});
-
-  @override
-  State<MedicalRecordsScreen> createState() => _MedicalRecordsScreenState();
-}
-
-class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
-  final DoctorService _doctorService = DoctorService();
-  final PatientController _patientController = Get.find<PatientController>();
-  final RxList<MedicalRecordModel> _records = <MedicalRecordModel>[].obs;
-  final RxBool _isLoading = false.obs;
-  String? _selectedPatientId;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadRecords();
-  }
-
-  Future<void> _loadRecords({String? patientId}) async {
-    _isLoading.value = true;
-    try {
-      if (patientId != null) {
-        final records = await _doctorService.getPatientNotes(patientId: patientId);
-        _records.value = records;
-      } else {
-        // Load all records for all patients
-        // TODO: Implement getAllRecords when API is ready
-        _records.value = [];
-      }
-    } on ApiException catch (e) {
-      Get.snackbar('خطأ', e.message);
-    } catch (e) {
-      Get.snackbar('خطأ', 'حدث خطأ أثناء تحميل السجلات');
-    } finally {
-      _isLoading.value = false;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -102,9 +63,7 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 24.w),
               child: GestureDetector(
-                onTap: () {
-                  _showPatientSelector();
-                },
+                onTap: () => _showPatientSelector(context),
                 child: Container(
                   padding: EdgeInsets.all(16.w),
                   decoration: BoxDecoration(
@@ -124,13 +83,20 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
                       ),
                       SizedBox(width: 12.w),
                       Expanded(
-                        child: Text(
-                          _selectedPatientId != null
-                              ? _patientController.getPatientById(_selectedPatientId!)?.name ?? 'مريض'
-                              : 'جميع المرضى',
-                          style: TextStyle(
-                            fontSize: 16.sp,
-                            color: AppColors.textPrimary,
+                        child: Obx(
+                          () => Text(
+                            controller.selectedPatientId.value != null
+                                ? controller.patientController
+                                        .getPatientById(
+                                          controller.selectedPatientId.value!,
+                                        )
+                                        ?.name ??
+                                    'مريض'
+                                : 'جميع المرضى',
+                            style: TextStyle(
+                              fontSize: 16.sp,
+                              color: AppColors.textPrimary,
+                            ),
                           ),
                         ),
                       ),
@@ -147,11 +113,11 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
             SizedBox(height: 16.h),
             Expanded(
               child: Obx(() {
-                if (_isLoading.value) {
+                if (controller.isLoading.value) {
                   return const LoadingWidget(message: 'جاري تحميل السجلات...');
                 }
 
-                if (_records.isEmpty) {
+                if (controller.records.isEmpty) {
                   return EmptyStateWidget(
                     icon: Icons.medical_services_outlined,
                     title: 'لا توجد سجلات',
@@ -161,9 +127,9 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
 
                 return ListView.builder(
                   padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 8.h),
-                  itemCount: _records.length,
+                  itemCount: controller.records.length,
                   itemBuilder: (context, index) {
-                    final record = _records[index];
+                    final record = controller.records[index];
                     return _buildRecordCard(record);
                   },
                 );
@@ -176,10 +142,12 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
   }
 
   Widget _buildRecordCard(MedicalRecordModel record) {
-    final patient = _patientController.getPatientById(record.patientId);
+    final patient = controller.patientController.getPatientById(
+      record.patientId,
+    );
     final dateFormat = DateFormat('yyyy/MM/dd', 'ar');
     final timeFormat = DateFormat('hh:mm a', 'ar');
-    
+
     return GestureDetector(
       onTap: () {
         // Navigate to record details
@@ -335,7 +303,7 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
     );
   }
 
-  void _showPatientSelector() {
+  void _showPatientSelector(BuildContext context) {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.white,
@@ -367,15 +335,12 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
                   ),
                 ),
                 onTap: () {
-                  setState(() {
-                    _selectedPatientId = null;
-                  });
-                  _loadRecords();
+                  controller.selectPatient(null);
                   Navigator.pop(context);
                 },
               ),
               Divider(),
-              ..._patientController.patients.map((patient) {
+              ...controller.patientController.patients.map((patient) {
                 return ListTile(
                   title: Text(
                     patient.name,
@@ -394,10 +359,7 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
                     ),
                   ),
                   onTap: () {
-                    setState(() {
-                      _selectedPatientId = patient.id;
-                    });
-                    _loadRecords(patientId: patient.id);
+                    controller.selectPatient(patient.id);
                     Navigator.pop(context);
                   },
                 );
@@ -409,4 +371,3 @@ class _MedicalRecordsScreenState extends State<MedicalRecordsScreen> {
     );
   }
 }
-

@@ -2,6 +2,8 @@ from beanie import Document, Indexed
 from beanie import PydanticObjectId as OID
 from pydantic import Field
 from datetime import datetime, timezone
+from typing import Any
+
 
 class DeviceToken(Document):
     """رمز جهاز FCM لكل مستخدم وجهاز."""
@@ -13,11 +15,15 @@ class DeviceToken(Document):
     class Settings:
         name = "device_tokens"
 
+
 class Notification(Document):
-    """إشعار مُرسَل (اختياري للاحتفاظ)."""
+    """إشعار محفوظ للمستخدم (يُعرض في التطبيق ويُرسل عبر Push)."""
     user_id: Indexed(OID)
     title: str
     body: str
+    type: Indexed(str) = "general"
+    data: dict[str, Any] = Field(default_factory=dict)
+    is_read: bool = False
     sent_at: Indexed(datetime) = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     class Settings:

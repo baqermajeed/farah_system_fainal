@@ -1,61 +1,17 @@
-﻿import 'dart:async';
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
-import 'package:farah_sys_final/core/routes/app_routes.dart';
-import 'package:farah_sys_final/controllers/auth_controller.dart';
-import 'package:farah_sys_final/controllers/patient_controller.dart';
+import 'package:farah_sys_final/controllers/patient_welcome_controller.dart';
 import 'package:farah_sys_final/views/patient_browse_screen.dart';
 
-class PatientWelcomeScreen extends StatefulWidget {
+/// شاشة ترحيب المريض — GetView؛ المنطق في PatientWelcomeController.
+class PatientWelcomeScreen extends GetView<PatientWelcomeController> {
   const PatientWelcomeScreen({super.key});
 
   @override
-  State<PatientWelcomeScreen> createState() => _PatientWelcomeScreenState();
-}
-
-class _PatientWelcomeScreenState extends State<PatientWelcomeScreen> {
-  final AuthController _authController = Get.find<AuthController>();
-  final PatientController _patientController = Get.find<PatientController>();
-  Timer? _checkTimer;
-
-  @override
-  void initState() {
-    super.initState();
-    // التحقق من حالة المريض كل 5 ثوانٍ
-    _checkTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
-      _checkDoctorAssignment();
-    });
-    // التحقق فوراً عند فتح الشاشة
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkDoctorAssignment();
-    });
-  }
-
-  @override
-  void dispose() {
-    _checkTimer?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _checkDoctorAssignment() async {
-    try {
-      final hasDoctor = await _patientController.checkDoctorAssignment();
-      if (hasDoctor && mounted) {
-        // إذا تم ربط المريض بطبيب، الانتقال إلى الصفحة الرئيسية
-        _checkTimer?.cancel();
-        Get.offAllNamed(AppRoutes.patientHome);
-      }
-    } catch (e) {
-      print('❌ [PatientWelcomeScreen] Error checking doctor assignment: $e');
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final userName = _authController.currentUser.value?.name ?? 'المريض';
     final messageStyle = AppFonts.lamaSans(
       fontSize: 16.sp,
       fontWeight: FontWeight.bold,
@@ -89,46 +45,14 @@ class _PatientWelcomeScreenState extends State<PatientWelcomeScreen> {
                   Obx(
                     () => InkWell(
                       borderRadius: BorderRadius.circular(12.r),
-                      onTap: _authController.isLoading.value
+                      onTap: controller.authController.isLoading.value
                           ? null
-                          : () async {
-                              final shouldLogout = await Get.dialog<bool>(
-                                AlertDialog(
-                                  title: Text(
-                                    'تسجيل الخروج',
-                                    textAlign: TextAlign.right,
-                                  ),
-                                  content: Text(
-                                    'هل أنت متأكد من تسجيل الخروج؟',
-                                    textAlign: TextAlign.right,
-                                  ),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Get.back(result: false),
-                                      child: Text('إلغاء'),
-                                    ),
-                                    TextButton(
-                                      onPressed: () => Get.back(result: true),
-                                      child: Text(
-                                        'تسجيل الخروج',
-                                        style: TextStyle(
-                                          color: AppColors.error,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-
-                              if (shouldLogout == true) {
-                                await _authController.logout();
-                              }
-                            },
+                          : controller.confirmLogout,
                       child: SizedBox(
                         width: 20.w,
                         height: 30.h,
                         child: Center(
-                          child: _authController.isLoading.value
+                          child: controller.authController.isLoading.value
                               ? SizedBox(
                                   width: 12.w,
                                   height: 12.h,
@@ -159,20 +83,21 @@ class _PatientWelcomeScreenState extends State<PatientWelcomeScreen> {
                         width: 220.w,
                         fit: BoxFit.contain,
                       ),
-                      
                       Padding(
                         padding: EdgeInsets.only(
                           left: 12.w,
                           right: 12.w,
                           top: 40.h,
                         ),
-                        child: Text(
-                          'مرحبا عزيزي "$userName" انتظر\n'
-                          'حتى يتم تحويلك من قبل موظف\n'
-                          'الاستقبال الى طبيب معين لتبدأ رحلتك\n'
-                          'العلاجية معنا',
-                          textAlign: TextAlign.center,
-                          style: messageStyle,
+                        child: Obx(
+                          () => Text(
+                            'مرحبا عزيزي "${controller.authController.currentUser.value?.name ?? 'المريض'}" انتظر\n'
+                            'حتى يتم تحويلك من قبل موظف\n'
+                            'الاستقبال الى طبيب معين لتبدأ رحلتك\n'
+                            'العلاجية معنا',
+                            textAlign: TextAlign.center,
+                            style: messageStyle,
+                          ),
                         ),
                       ),
                     ],

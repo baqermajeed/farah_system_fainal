@@ -1,238 +1,130 @@
-import 'dart:convert';
 import 'dart:io';
 
-import 'package:http/http.dart' as http;
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:http_parser/http_parser.dart';
+import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
+import 'package:get/get.dart' hide FormData, MultipartFile;
 
 import '../core/network/api_constants.dart';
+import '../core/network/api_exception.dart';
+import 'token_storage.dart';
 
+/// خدمة المصادقة — Dio موحّد + ApiException واضح (نمط قريب).
 class AuthService {
-  final _storage = const FlutterSecureStorage();
-
-  // Helper to decode response body
-  Map<String, dynamic> _decodeBody(List<int> bodyBytes) {
-    try {
-      return jsonDecode(utf8.decode(bodyBytes)) as Map<String, dynamic>;
-    } catch (_) {
-      return {'raw': utf8.decode(bodyBytes)};
-    }
+  AuthService({TokenStorage? tokenStorage, Dio? dio})
+      : _tokenStorage = tokenStorage ??
+            (Get.isRegistered<TokenStorage>()
+                ? Get.find<TokenStorage>()
+                : TokenStorage()) {
+    _dio = dio ?? _createFallbackDio();
   }
 
-  // Helper to get full URL
-  String _getFullUrl(String endpoint) {
-    final url = '${ApiConstants.baseUrl}$endpoint';
-    print(
-      '🔗 [URL Builder] Base: ${ApiConstants.baseUrl}, Endpoint: $endpoint, Full: $url',
+  final TokenStorage _tokenStorage;
+  late final Dio _dio;
+
+  Dio _createFallbackDio() {
+    final client = Dio(
+      BaseOptions(
+        baseUrl: ApiConstants.baseUrl,
+        connectTimeout: const Duration(
+          milliseconds: ApiConstants.connectionTimeout,
+        ),
+        receiveTimeout: const Duration(
+          milliseconds: ApiConstants.receiveTimeout,
+        ),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      ),
     );
-    return url;
+    client.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) async {
+          final token = await _tokenStorage.getAccessToken();
+          if (token != null && token.isNotEmpty) {
+            options.headers['Authorization'] = 'Bearer $token';
+          }
+          handler.next(options);
+        },
+      ),
+    );
+    return client;
   }
 
-  // Helper to get stored token
-  Future<String?> _getToken() async {
-    try {
-      return await _storage.read(key: ApiConstants.tokenKey);
-    } catch (e) {
-      print('⚠️ Warning: Could not read token from storage: $e');
-      return null;
+  Future<String?> getToken() => _tokenStorage.getAccessToken();
+
+  Future<void> saveToken(String token) =>
+      _tokenStorage.saveAccessToken(token);
+
+  Future<void> saveActivePatientId(String patientId) =>
+      _tokenStorage.saveActivePatientId(patientId);
+
+  Future<String?> getActivePatientId() => _tokenStorage.getActivePatientId();
+
+  Map<String, dynamic> _fail(Object e, {String fallback = 'حدث خطأ، حاول مرة أخرى'}) {
+    final ex = e is DioException
+        ? ApiException.fromDio(e)
+        : (e is ApiException
+            ? e
+            : ApiException(fallback, data: {'error': e.toString()}));
+    if (kDebugMode) {
+      debugPrint('[AuthService] ${ex.toString()}');
     }
-  }
-
-  // Public method to get current token (for saving before patient registration)
-  Future<String?> getToken() async {
-    return await _getToken();
-  }
-
-  // Helper to save token
-  Future<void> _saveToken(String token) async {
-    try {
-      await _storage.write(key: ApiConstants.tokenKey, value: token);
-    } catch (e) {
-      print('⚠️ Warning: Could not save token to storage: $e');
-    }
-  }
-
-  // Helper to save refresh token
-  Future<void> _saveRefreshToken(String refreshToken) async {
-    try {
-      await _storage.write(key: ApiConstants.refreshTokenKey, value: refreshToken);
-    } catch (e) {
-      print('⚠️ Warning: Could not save refresh token to storage: $e');
-    }
-  }
-
-  // Helper to get refresh token
-  Future<String?> _getRefreshToken() async {
-    try {
-      return await _storage.read(key: ApiConstants.refreshTokenKey);
-    } catch (e) {
-      print('⚠️ Warning: Could not read refresh token from storage: $e');
-      return null;
-    }
-  }
-
-  // Public method to save token (for restoring doctor/receptionist token)
-  Future<void> saveToken(String token) async {
-    await _saveToken(token);
-  }
-
-  // Helper to save both tokens
-  Future<void> _saveTokens(String accessToken, String refreshToken) async {
-    await _saveToken(accessToken);
-    await _saveRefreshToken(refreshToken);
-  }
-
-  // Helper to clear token
-  Future<void> _clearToken() async {
-    try {
-      await _storage.delete(key: ApiConstants.tokenKey);
-      await _storage.delete(key: ApiConstants.refreshTokenKey);
-      await _storage.delete(key: ApiConstants.userKey);
-      await _storage.delete(key: ApiConstants.activePatientIdKey);
-    } catch (e) {
-      print('⚠️ Warning: Could not clear storage: $e');
-    }
-  }
-
-  Future<void> saveActivePatientId(String patientId) async {
-    try {
-      await _storage.write(
-        key: ApiConstants.activePatientIdKey,
-        value: patientId,
-      );
-    } catch (e) {
-      print('⚠️ Warning: Could not save active patient id: $e');
-    }
-  }
-
-  Future<String?> getActivePatientId() async {
-    try {
-      return await _storage.read(key: ApiConstants.activePatientIdKey);
-    } catch (e) {
-      print('⚠️ Warning: Could not read active patient id: $e');
-      return null;
-    }
-  }
-
-  // Helper to get headers with token
-  Future<Map<String, String>> _getHeaders({bool includeAuth = false}) async {
-    final headers = {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
+    return {
+      'ok': false,
+      'error': ex.message,
+      'code': ex.code,
+      'statusCode': ex.statusCode,
+      'data': ex.data ?? {'error': e.toString()},
     };
-
-    if (includeAuth) {
-      final token = await _getToken();
-      if (token != null && token.isNotEmpty) {
-        headers['Authorization'] = 'Bearer $token';
-      }
-    }
-
-    return headers;
   }
 
-  // طلب إرسال OTP
   Future<Map<String, dynamic>> requestOtp(String phone) async {
     try {
-      print('🔐 ========== API REQUEST OTP ==========');
-      final uri = Uri.parse(_getFullUrl(ApiConstants.authRequestOtp));
-      print('🔐 URL: $uri');
-      print('🔐 Phone: $phone');
-      print('🔐 =====================================');
-
-      final response = await http
-          .post(
-            uri,
-            headers: await _getHeaders(),
-            body: jsonEncode({'phone': phone}),
-          )
-          .timeout(
-            const Duration(seconds: 15),
-            onTimeout: () {
-              print('❌ REQUEST OTP TIMEOUT');
-              throw Exception('انتهت مهلة الاتصال. يرجى المحاولة مرة أخرى');
-            },
-          );
-
-      print('🔐 ========== API REQUEST OTP RESPONSE ==========');
-      print('🔐 Status Code: ${response.statusCode}');
-      print('🔐 Response Body: ${response.body}');
-      print('🔐 ==============================================');
-
-      if (response.statusCode == 204 ||
-          (response.statusCode >= 200 && response.statusCode < 300)) {
-        print('✅ REQUEST OTP SUCCESS');
+      final response = await _dio.post(
+        ApiConstants.authRequestOtp,
+        data: {'phone': phone},
+      );
+      final code = response.statusCode ?? 0;
+      if (code == 204 || (code >= 200 && code < 300)) {
         return {'ok': true, 'data': {}};
       }
-
-      final decoded = _decodeBody(response.bodyBytes);
-      print('❌ REQUEST OTP FAILED: ${decoded['detail'] ?? 'Unknown error'}');
+      final ex = ApiException.fromResponse(response.data, code);
       return {
         'ok': false,
-        'error': decoded['detail'] ?? 'فشل إرسال رمز التحقق',
-        'data': decoded,
+        'error': ex.message,
+        'code': ex.code,
+        'statusCode': ex.statusCode,
+        'data': response.data,
       };
     } catch (e) {
-      print('❌ REQUEST OTP ERROR: $e');
-      return {
-        'ok': false,
-        'error': e.toString().contains('timeout')
-            ? 'انتهت مهلة الاتصال. يرجى التحقق من الاتصال بالإنترنت'
-            : 'حدث خطأ في الاتصال. يرجى المحاولة مرة أخرى',
-        'data': {'error': e.toString()},
-      };
+      return _fail(e, fallback: 'فشل إرسال رمز التحقق');
     }
   }
 
-  // التحقق من OTP فقط (بدون إنشاء حساب)
   Future<Map<String, dynamic>> verifyOtp({
     required String phone,
     required String code,
   }) async {
     try {
-      print('🔐 ========== API VERIFY OTP ==========');
-      final uri = Uri.parse(_getFullUrl(ApiConstants.authVerifyOtp));
-      print('🔐 URL: $uri');
-      print('🔐 Phone: $phone');
-      print('🔐 Code: $code');
-      print('🔐 ===================================');
+      final response = await _dio.post(
+        ApiConstants.authVerifyOtp,
+        data: {'phone': phone, 'code': code},
+      );
+      final status = response.statusCode ?? 0;
+      final data = response.data;
 
-      final payload = {
-        'phone': phone,
-        'code': code,
-      };
-
-      final response = await http
-          .post(uri, headers: await _getHeaders(), body: jsonEncode(payload))
-          .timeout(
-            const Duration(seconds: 15),
-            onTimeout: () {
-              print('❌ VERIFY OTP TIMEOUT');
-              throw Exception('انتهت مهلة الاتصال. يرجى المحاولة مرة أخرى');
-            },
-          );
-
-      print('🔐 ========== API VERIFY OTP RESPONSE ==========');
-      print('🔐 Status Code: ${response.statusCode}');
-      print('🔐 Response Body: ${response.body}');
-      print('🔐 =============================================');
-
-      final decoded = _decodeBody(response.bodyBytes);
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        print('✅ VERIFY OTP SUCCESS');
+      if (status >= 200 && status < 300 && data is Map) {
+        final decoded = Map<String, dynamic>.from(data);
         final accountExists = decoded['account_exists'] as bool? ?? false;
         final tokenObj = decoded['token'] as Map<String, dynamic>?;
-        
         if (accountExists && tokenObj != null) {
           final accessToken = tokenObj['access_token'] as String?;
           final refreshToken = tokenObj['refresh_token'] as String?;
           if (accessToken != null && refreshToken != null) {
-            await _saveTokens(accessToken, refreshToken);
-            print('✅ Tokens saved successfully');
+            await _tokenStorage.saveTokens(accessToken, refreshToken);
           }
         }
-        
         return {
           'ok': true,
           'data': decoded,
@@ -241,25 +133,19 @@ class AuthService {
         };
       }
 
-      print('❌ VERIFY OTP FAILED: ${decoded['detail'] ?? 'Unknown error'}');
+      final ex = ApiException.fromResponse(data, status);
       return {
         'ok': false,
-        'error': decoded['detail'] ?? 'فشل التحقق من رمز OTP',
-        'data': decoded,
+        'error': ex.message,
+        'code': ex.code,
+        'statusCode': ex.statusCode,
+        'data': data,
       };
     } catch (e) {
-      print('❌ VERIFY OTP ERROR: $e');
-      return {
-        'ok': false,
-        'error': e.toString().contains('timeout')
-            ? 'انتهت مهلة الاتصال. يرجى التحقق من الاتصال بالإنترنت'
-            : 'حدث خطأ في الاتصال. يرجى المحاولة مرة أخرى',
-        'data': {'error': e.toString()},
-      };
+      return _fail(e, fallback: 'فشل التحقق من رمز OTP');
     }
   }
 
-  // إنشاء حساب مريض جديد
   Future<Map<String, dynamic>> createPatientAccount({
     required String phone,
     required String name,
@@ -268,383 +154,172 @@ class AuthService {
     String? city,
   }) async {
     try {
-      print('🔐 ========== API CREATE PATIENT ACCOUNT ==========');
-      final uri = Uri.parse(_getFullUrl(ApiConstants.authCreatePatientAccount));
-      print('🔐 URL: $uri');
-      print('🔐 Phone: $phone');
-      print('🔐 Name: $name');
-      print('🔐 Gender: $gender');
-      print('🔐 Age: $age');
-      print('🔐 City: $city');
-      print('🔐 ================================================');
+      final response = await _dio.post(
+        ApiConstants.authCreatePatientAccount,
+        data: {
+          'phone': phone,
+          'name': name,
+          if (gender != null) 'gender': gender,
+          if (age != null) 'age': age,
+          if (city != null) 'city': city,
+        },
+      );
+      final status = response.statusCode ?? 0;
+      final data = response.data;
 
-      final payload = {
-        'phone': phone,
-        'name': name,
-        if (gender != null) 'gender': gender,
-        if (age != null) 'age': age,
-        if (city != null) 'city': city,
-      };
-
-      final response = await http
-          .post(uri, headers: await _getHeaders(), body: jsonEncode(payload))
-          .timeout(
-            const Duration(seconds: 15),
-            onTimeout: () {
-              print('❌ CREATE PATIENT ACCOUNT TIMEOUT');
-              throw Exception('انتهت مهلة الاتصال. يرجى المحاولة مرة أخرى');
-            },
-          );
-
-      print('🔐 ========== API CREATE PATIENT ACCOUNT RESPONSE ==========');
-      print('🔐 Status Code: ${response.statusCode}');
-      print('🔐 Response Body: ${response.body}');
-      print('🔐 =========================================================');
-
-      final decoded = _decodeBody(response.bodyBytes);
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        print('✅ CREATE PATIENT ACCOUNT SUCCESS');
+      if (status >= 200 && status < 300 && data is Map) {
+        final decoded = Map<String, dynamic>.from(data);
         final accessToken = decoded['access_token'] as String?;
         final refreshToken = decoded['refresh_token'] as String?;
         if (accessToken != null && refreshToken != null) {
-          await _saveTokens(accessToken, refreshToken);
-          print('✅ Tokens saved successfully');
+          await _tokenStorage.saveTokens(accessToken, refreshToken);
         }
         return {'ok': true, 'data': decoded};
       }
 
-      print('❌ CREATE PATIENT ACCOUNT FAILED: ${decoded['detail'] ?? 'Unknown error'}');
+      final ex = ApiException.fromResponse(data, status);
       return {
         'ok': false,
-        'error': decoded['detail'] ?? 'فشل إنشاء الحساب',
-        'data': decoded,
+        'error': ex.message,
+        'code': ex.code,
+        'statusCode': ex.statusCode,
+        'data': data,
       };
     } catch (e) {
-      print('❌ CREATE PATIENT ACCOUNT ERROR: $e');
-      return {
-        'ok': false,
-        'error': e.toString().contains('timeout')
-            ? 'انتهت مهلة الاتصال. يرجى التحقق من الاتصال بالإنترنت'
-            : 'حدث خطأ في الاتصال. يرجى المحاولة مرة أخرى',
-        'data': {'error': e.toString()},
-      };
+      return _fail(e, fallback: 'فشل إنشاء الحساب');
     }
   }
 
-  // تسجيل دخول الطاقم (طبيب/موظف/مصور/مدير)
   Future<Map<String, dynamic>> staffLogin({
     required String username,
     required String password,
   }) async {
     try {
-      print('🔐 ========== API STAFF LOGIN ==========');
-      final uri = Uri.parse(_getFullUrl(ApiConstants.authStaffLogin));
-      print('🔐 URL: $uri');
-      print('🔐 Username: $username');
-      print('🔐 Password: ${'*' * password.length}');
-      print('🔐 ====================================');
-
-      // استخدام application/x-www-form-urlencoded للـ staff login
-      // نفس التنسيق المستخدم في Swagger
-      final headers = {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept': 'application/json',
-      };
-
-      // URL encode البيانات لتجنب مشاكل الأحرف الخاصة
-      // ترتيب الـ parameters: grant_type أولاً ثم username ثم password (مثل Swagger)
-      final encodedUsername = Uri.encodeComponent(username);
-      final encodedPassword = Uri.encodeComponent(password);
-      final body =
-          'grant_type=password&username=$encodedUsername&password=$encodedPassword';
-
-      print('🔐 Body format: grant_type=password&username=***&password=***');
-      print('🔐 Full URL: $uri');
-      print('🔐 Headers: $headers');
-      print(
-        '🔐 Body preview: grant_type=password&username=$encodedUsername&password=***',
+      final response = await _dio.post(
+        ApiConstants.authStaffLogin,
+        data: {
+          'grant_type': 'password',
+          'username': username,
+          'password': password,
+        },
+        options: Options(contentType: Headers.formUrlEncodedContentType),
       );
+      final status = response.statusCode ?? 0;
+      final data = response.data;
 
-      print('🔐 Sending POST request...');
-      final response = await http
-          .post(uri, headers: headers, body: body)
-          .timeout(
-            const Duration(seconds: 30), // زيادة الـ timeout إلى 30 ثانية
-            onTimeout: () {
-              print('❌ STAFF LOGIN TIMEOUT after 30 seconds');
-              print('❌ Check if backend is running on 0.0.0.0:8000');
-              throw Exception('انتهت مهلة الاتصال. تأكد من أن الباكند يعمل');
-            },
-          );
-      print('🔐 Response received!');
-
-      print('🔐 ========== API STAFF LOGIN RESPONSE ==========');
-      print('🔐 Status Code: ${response.statusCode}');
-      print('🔐 Response Body: ${response.body}');
-      print('🔐 ==============================================');
-
-      final decoded = _decodeBody(response.bodyBytes);
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        print('✅ STAFF LOGIN SUCCESS');
+      if (status >= 200 && status < 300 && data is Map) {
+        final decoded = Map<String, dynamic>.from(data);
         final accessToken = decoded['access_token'] as String?;
         final refreshToken = decoded['refresh_token'] as String?;
         if (accessToken != null && refreshToken != null) {
-          await _saveTokens(accessToken, refreshToken);
-          print('✅ Tokens saved successfully');
+          await _tokenStorage.saveTokens(accessToken, refreshToken);
         }
         return {'ok': true, 'data': decoded};
       }
 
-      print('❌ STAFF LOGIN FAILED: ${decoded['detail'] ?? 'Unknown error'}');
+      final ex = ApiException.fromResponse(data, status);
       return {
         'ok': false,
-        'error': decoded['detail'] ?? 'فشل تسجيل الدخول',
-        'data': decoded,
+        'error': ex.message,
+        'code': ex.code,
+        'statusCode': ex.statusCode,
+        'data': data,
       };
     } catch (e) {
-      print('❌ STAFF LOGIN ERROR: $e');
-      return {
-        'ok': false,
-        'error': e.toString().contains('timeout')
-            ? 'انتهت مهلة الاتصال. يرجى التحقق من الاتصال بالإنترنت'
-            : 'حدث خطأ في الاتصال. يرجى المحاولة مرة أخرى',
-        'data': {'error': e.toString()},
-      };
+      return _fail(e, fallback: 'فشل تسجيل الدخول');
     }
   }
 
-  // جلب معلومات المستخدم الحالي
   Future<Map<String, dynamic>> getCurrentUser() async {
     try {
-      print('👤 ========== API GET CURRENT USER ==========');
-      final uri = Uri.parse(_getFullUrl(ApiConstants.authMe));
-      print('👤 URL: $uri');
-      print('👤 ==========================================');
+      final response = await _dio.get(ApiConstants.authMe);
+      final status = response.statusCode ?? 0;
+      final data = response.data;
 
-      final response = await http
-          .get(uri, headers: await _getHeaders(includeAuth: true))
-          .timeout(
-            const Duration(seconds: 15),
-            onTimeout: () {
-              print('❌ GET CURRENT USER TIMEOUT');
-              throw Exception('انتهت مهلة الاتصال. يرجى المحاولة مرة أخرى');
-            },
-          );
-
-      print('👤 ========== API GET CURRENT USER RESPONSE ==========');
-      print('👤 Status Code: ${response.statusCode}');
-      print('👤 Response Body: ${response.body}');
-      print('👤 ===================================================');
-
-      final decoded = _decodeBody(response.bodyBytes);
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        print('✅ GET CURRENT USER SUCCESS');
-        return {'ok': true, 'data': decoded};
+      if (status >= 200 && status < 300) {
+        return {'ok': true, 'data': data};
       }
 
-      print(
-        '❌ GET CURRENT USER FAILED: ${decoded['detail'] ?? 'Unknown error'}',
-      );
+      final ex = ApiException.fromResponse(data, status);
       return {
         'ok': false,
-        'error': decoded['detail'] ?? 'فشل جلب معلومات المستخدم',
-        'data': decoded,
+        'error': ex.message,
+        'code': ex.code,
+        'statusCode': ex.statusCode,
+        'data': data,
       };
     } catch (e) {
-      print('❌ GET CURRENT USER ERROR: $e');
-      return {
-        'ok': false,
-        'error': e.toString().contains('timeout')
-            ? 'انتهت مهلة الاتصال. يرجى التحقق من الاتصال بالإنترنت'
-            : 'حدث خطأ في الاتصال. يرجى المحاولة مرة أخرى',
-        'data': {'error': e.toString()},
-      };
+      return _fail(e, fallback: 'فشل جلب معلومات المستخدم');
     }
   }
 
-  // التحقق من تسجيل الدخول
-  Future<bool> isLoggedIn() async {
-    final token = await _getToken();
-    return token != null && token.isNotEmpty;
-  }
+  Future<bool> isLoggedIn() => _tokenStorage.hasTokens();
 
-  // تحديث معلومات المستخدم
   Future<void> updateProfile({
     required String name,
     required String phone,
   }) async {
     try {
-      print('👤 ========== API UPDATE PROFILE ==========');
-      final uri = Uri.parse(_getFullUrl(ApiConstants.authUpdateProfile));
-      print('👤 URL: $uri');
-      print('👤 Name: $name');
-      print('👤 Phone: $phone');
-      print('👤 =======================================');
-
-      final payload = {
-        'name': name,
-        'phone': phone,
-      };
-
-      final response = await http
-          .put(
-            uri,
-            headers: await _getHeaders(includeAuth: true),
-            body: jsonEncode(payload),
-          )
-          .timeout(
-            const Duration(seconds: 15),
-            onTimeout: () {
-              print('❌ UPDATE PROFILE TIMEOUT');
-              throw Exception('انتهت مهلة الاتصال. يرجى المحاولة مرة أخرى');
-            },
-          );
-
-      print('👤 ========== API UPDATE PROFILE RESPONSE ==========');
-      print('👤 Status Code: ${response.statusCode}');
-      print('👤 Response Body: ${response.body}');
-      print('👤 ================================================');
-
-      final decoded = _decodeBody(response.bodyBytes);
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        print('✅ UPDATE PROFILE SUCCESS');
-        return;
-      }
-
-      print(
-        '❌ UPDATE PROFILE FAILED: ${decoded['detail'] ?? 'Unknown error'}',
+      final response = await _dio.put(
+        ApiConstants.authUpdateProfile,
+        data: {'name': name, 'phone': phone},
       );
-      throw Exception(decoded['detail'] ?? 'فشل تحديث المعلومات');
-    } catch (e) {
-      print('❌ UPDATE PROFILE ERROR: $e');
-      if (e.toString().contains('timeout')) {
-        throw Exception('انتهت مهلة الاتصال. يرجى التحقق من الاتصال بالإنترنت');
-      }
-      rethrow;
+      final status = response.statusCode ?? 0;
+      if (status >= 200 && status < 300) return;
+      throw ApiException.fromResponse(response.data, status);
+    } on DioException catch (e) {
+      throw ApiException.fromDio(e);
     }
   }
 
-  // رفع صورة الملف الشخصي
   Future<void> uploadProfileImage(File imageFile) async {
     try {
-      print('📷 ========== API UPLOAD PROFILE IMAGE ==========');
-      final uri = Uri.parse(_getFullUrl(ApiConstants.authUploadImage));
-      print('📷 URL: $uri');
-      print('📷 Image path: ${imageFile.path}');
-      print('📷 ==============================================');
-
-      final request = http.MultipartRequest('POST', uri);
-      request.headers.addAll(await _getHeaders(includeAuth: true));
-      
-      // إضافة الصورة
-      final fileStream = http.ByteStream(imageFile.openRead());
-      final fileLength = await imageFile.length();
-      final multipartFile = http.MultipartFile(
-        'image',
-        fileStream,
-        fileLength,
-        filename: imageFile.path.split('/').last,
-        contentType: MediaType('image', 'jpeg'),
+      final formData = FormData.fromMap({
+        'image': await MultipartFile.fromFile(
+          imageFile.path,
+          filename: imageFile.path.split(Platform.pathSeparator).last,
+        ),
+      });
+      final response = await _dio.post(
+        ApiConstants.authUploadImage,
+        data: formData,
       );
-      request.files.add(multipartFile);
-
-      final streamedResponse = await request.send().timeout(
-        const Duration(seconds: 30),
-        onTimeout: () {
-          print('❌ UPLOAD IMAGE TIMEOUT');
-          throw Exception('انتهت مهلة الاتصال. يرجى المحاولة مرة أخرى');
-        },
-      );
-
-      final response = await http.Response.fromStream(streamedResponse);
-
-      print('📷 ========== API UPLOAD IMAGE RESPONSE ==========');
-      print('📷 Status Code: ${response.statusCode}');
-      print('📷 Response Body: ${response.body}');
-      print('📷 ==============================================');
-
-      final decoded = _decodeBody(response.bodyBytes);
-
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        print('✅ UPLOAD IMAGE SUCCESS');
-        return;
-      }
-
-      print('❌ UPLOAD IMAGE FAILED: ${decoded['detail'] ?? 'Unknown error'}');
-      throw Exception(decoded['detail'] ?? 'فشل رفع الصورة');
-    } catch (e) {
-      print('❌ UPLOAD IMAGE ERROR: $e');
-      if (e.toString().contains('timeout')) {
-        throw Exception('انتهت مهلة الاتصال. يرجى التحقق من الاتصال بالإنترنت');
-      }
-      rethrow;
+      final status = response.statusCode ?? 0;
+      if (status >= 200 && status < 300) return;
+      throw ApiException.fromResponse(response.data, status);
+    } on DioException catch (e) {
+      throw ApiException.fromDio(e);
     }
   }
 
-  // تجديد Access Token باستخدام Refresh Token
   Future<bool> refreshAccessToken() async {
     try {
-      print('🔄 ========== API REFRESH TOKEN ==========');
-      final refreshToken = await _getRefreshToken();
-      
-      if (refreshToken == null || refreshToken.isEmpty) {
-        print('❌ No refresh token found');
+      final refreshToken = await _tokenStorage.getRefreshToken();
+      if (refreshToken == null || refreshToken.isEmpty) return false;
+
+      final response = await _dio.post(
+        ApiConstants.authRefresh,
+        data: {'refresh_token': refreshToken},
+      );
+      final status = response.statusCode ?? 0;
+      if (status < 200 || status >= 300 || response.data is! Map) {
         return false;
       }
-      
-      final uri = Uri.parse(_getFullUrl(ApiConstants.authRefresh));
-      print('🔄 URL: $uri');
-      print('🔄 Refresh token: ${refreshToken.substring(0, 30)}...');
-      print('🔄 =====================================');
-      
-      final response = await http
-          .post(
-            uri,
-            headers: await _getHeaders(),
-            body: jsonEncode({'refresh_token': refreshToken}),
-          )
-          .timeout(
-            const Duration(seconds: 15),
-            onTimeout: () {
-              print('❌ REFRESH TOKEN TIMEOUT');
-              throw Exception('انتهت مهلة الاتصال. يرجى المحاولة مرة أخرى');
-            },
-          );
-      
-      print('🔄 ========== API REFRESH TOKEN RESPONSE ==========');
-      print('🔄 Status Code: ${response.statusCode}');
-      print('🔄 Response Body: ${response.body}');
-      print('🔄 ================================================');
-      
-      final decoded = _decodeBody(response.bodyBytes);
-      
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        print('✅ REFRESH TOKEN SUCCESS');
-        final accessToken = decoded['access_token'] as String?;
-        final newRefreshToken = decoded['refresh_token'] as String?;
-        if (accessToken != null && newRefreshToken != null) {
-          await _saveTokens(accessToken, newRefreshToken);
-          print('✅ New tokens saved successfully');
-          return true;
-        }
-        return false;
-      }
-      
-      print('❌ REFRESH TOKEN FAILED: ${decoded['detail'] ?? 'Unknown error'}');
-      return false;
+
+      final decoded = Map<String, dynamic>.from(response.data as Map);
+      final accessToken = decoded['access_token'] as String?;
+      final newRefreshToken = decoded['refresh_token'] as String?;
+      if (accessToken == null || newRefreshToken == null) return false;
+
+      await _tokenStorage.saveTokens(accessToken, newRefreshToken);
+      return true;
     } catch (e) {
-      print('❌ REFRESH TOKEN ERROR: $e');
+      if (kDebugMode) debugPrint('[AuthService] refresh failed: $e');
       return false;
     }
   }
 
-  // تسجيل الخروج
   Future<void> logout() async {
-    await _clearToken();
-    print('✅ Logged out successfully');
+    await _tokenStorage.clearSession();
   }
 }

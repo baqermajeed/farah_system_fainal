@@ -145,9 +145,8 @@ class ApiConstants {
   static const int connectionTimeout = 30000; // 30 seconds
   static const int receiveTimeout = 30000;
 
-  // Storage Keys
+  // Storage Keys — التوكنات فقط في Secure Storage؛ بيانات المستخدم في الذاكرة (AuthController)
   static const String tokenKey = 'auth_token';
   static const String refreshTokenKey = 'refresh_token';
-  static const String userKey = 'current_user';
   static const String activePatientIdKey = 'active_patient_id';
 }

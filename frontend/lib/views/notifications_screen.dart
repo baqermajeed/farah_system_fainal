@@ -6,41 +6,23 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:farah_sys_final/core/widgets/empty_state_widget.dart';
-import 'package:farah_sys_final/core/routes/app_routes.dart';
-import 'package:farah_sys_final/controllers/appointment_controller.dart';
-import 'package:farah_sys_final/controllers/patient_controller.dart';
-import 'package:farah_sys_final/services/chat_service.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
+import 'package:farah_sys_final/controllers/notifications_screen_controller.dart';
+import 'package:farah_sys_final/services/notification_service.dart';
 
 class _NotifAssets {
   static const back = 'assets/icon/backblack.png';
   static const dateIcon = 'assets/icon/date23.png';
 }
 
-class NotificationsScreen extends StatefulWidget {
+class NotificationsScreen extends GetView<NotificationsScreenController> {
   const NotificationsScreen({super.key});
 
-  @override
-  State<NotificationsScreen> createState() => _NotificationsScreenState();
-}
-
-class _NotificationsScreenState extends State<NotificationsScreen> {
   static const Color _bg = Color(0xFFF8FAFF);
   static const Color _navy = Color(0xFF1A3263);
   static const Color _grayText = Color(0xFF8A97A8);
   static const Color _border = Color(0xFFE8ECF0);
   static const double _headerBoxSize = 50;
-  static const double _headerBoxRadius = 16;
-
-  final AppointmentController _appointmentController =
-      Get.find<AppointmentController>();
-  final PatientController _patientController = Get.find<PatientController>();
-  final ChatService _chatService = ChatService();
-
-  final RxList<NotificationItem> _notifications = <NotificationItem>[].obs;
-  final RxBool _isLoading = true.obs;
-  Box? _readNotificationsBox;
 
   static List<BoxShadow> get _softShadow => [
         BoxShadow(
@@ -49,156 +31,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           offset: const Offset(0, 4),
         ),
       ];
-
-  static List<BoxShadow> get _headerShadow => [
-        BoxShadow(
-          color: Colors.black.withValues(alpha: 0.12),
-          blurRadius: 8,
-          offset: Offset.zero,
-        ),
-      ];
-
-  @override
-  void initState() {
-    super.initState();
-    _initStorageAndLoad();
-  }
-
-  Future<void> _initStorageAndLoad() async {
-    try {
-      _readNotificationsBox = await Hive.openBox('read_notifications');
-      await _loadNotifications();
-    } catch (e) {
-      debugPrint('❌ Error initializing storage: $e');
-      await _loadNotifications();
-    }
-  }
-
-  bool _isNotificationRead(String notificationId) {
-    try {
-      if (_readNotificationsBox == null) return false;
-      return _readNotificationsBox!.get(notificationId, defaultValue: false)
-          as bool;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  void _markAsRead(String notificationId) {
-    try {
-      if (_readNotificationsBox == null) return;
-      _readNotificationsBox!.put(notificationId, true);
-      final index = _notifications.indexWhere((n) => n.id == notificationId);
-      if (index != -1) {
-        final n = _notifications[index];
-        _notifications[index] = NotificationItem(
-          id: n.id,
-          title: n.title,
-          body: n.body,
-          time: n.time,
-          isRead: true,
-          type: n.type,
-          data: n.data,
-        );
-      }
-    } catch (e) {
-      debugPrint('❌ Error marking notification as read: $e');
-    }
-  }
-
-  void _markAllAsRead() {
-    try {
-      if (_readNotificationsBox == null) return;
-      for (final notification in _notifications) {
-        _readNotificationsBox!.put(notification.id, true);
-      }
-      _loadNotifications();
-      Get.snackbar('نجح', 'تم تحديد جميع الإشعارات كمقروءة');
-    } catch (e) {
-      debugPrint('❌ Error marking all as read: $e');
-    }
-  }
-
-  Future<void> _loadNotifications() async {
-    try {
-      _isLoading.value = true;
-      final notifications = <NotificationItem>[];
-
-      final upcomingAppointments =
-          _appointmentController.getUpcomingAppointments();
-      final defaultDoctorName =
-          _patientController.myDoctor.value?['name'] ?? 'طبيبك';
-
-      for (final appointment in upcomingAppointments) {
-        final appointmentDoctorName = appointment.doctorName.isNotEmpty
-            ? appointment.doctorName
-            : defaultDoctorName;
-        final appointmentDate = appointment.date;
-        final appointmentTime = appointment.time;
-
-        final dateFormat = DateFormat('dd-MM-yyyy', 'ar');
-        final formattedDate = dateFormat.format(appointmentDate);
-
-        final timeParts = appointmentTime.split(':');
-        final hour = int.tryParse(timeParts[0]) ?? 0;
-        final minute = timeParts.length > 1 ? timeParts[1] : '00';
-        final isPM = hour >= 12;
-        final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
-        final timeText = '$displayHour:$minute';
-        final periodText = isPM ? 'مساءً' : 'صباحاً';
-
-        final notificationId = 'appointment_${appointment.id}';
-        final isRead = _isNotificationRead(notificationId);
-
-        notifications.add(NotificationItem(
-          id: notificationId,
-          title: 'موعد جديد',
-          body:
-              'لديك موعد مع الطبيب $appointmentDoctorName في $formattedDate الساعة $timeText $periodText',
-          time: appointmentDate,
-          isRead: isRead,
-          type: NotificationType.appointment,
-          data: {'appointmentId': appointment.id},
-        ));
-      }
-
-      try {
-        final chatList = await _chatService.getChatList();
-        if (chatList.isNotEmpty) {
-          final chat = chatList[0];
-          final unreadCount = chat['unread_count'] as int? ?? 0;
-
-          if (unreadCount > 0) {
-            final doctorName =
-                _patientController.myDoctor.value?['name'] ?? 'طبيبك';
-            final patientId = chat['patient_id'] as String?;
-            final notificationId = 'message_${patientId ?? 'unknown'}';
-            final isRead = _isNotificationRead(notificationId);
-
-            notifications.add(NotificationItem(
-              id: notificationId,
-              title: 'رسالة جديدة',
-              body: 'رسالة جديدة من الدكتور $doctorName',
-              time: DateTime.now(),
-              isRead: isRead,
-              type: NotificationType.message,
-              data: {'patientId': patientId},
-            ));
-          }
-        }
-      } catch (e) {
-        debugPrint('❌ Error loading chat notifications: $e');
-      }
-
-      notifications.sort((a, b) => b.time.compareTo(a.time));
-      _notifications.value = notifications;
-    } catch (e) {
-      debugPrint('❌ Error loading notifications: $e');
-      Get.snackbar('خطأ', 'حدث خطأ أثناء تحميل الإشعارات');
-    } finally {
-      _isLoading.value = false;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -218,7 +50,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               _buildHeader(),
               Expanded(
                 child: Obx(() {
-                  if (_isLoading.value) {
+                  if (controller.isLoading.value) {
                     return Center(
                       child: CircularProgressIndicator(
                         color: _navy,
@@ -227,7 +59,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     );
                   }
 
-                  if (_notifications.isEmpty) {
+                  if (controller.notifications.isEmpty) {
                     return const EmptyStateWidget(
                       icon: Icons.notifications_none_outlined,
                       title: 'لا توجد إشعارات',
@@ -236,31 +68,55 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   }
 
                   final unreadCount =
-                      _notifications.where((n) => !n.isRead).length;
+                      controller.notifications.where((n) => !n.isRead).length;
 
-                  return ListView.builder(
-                    padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 24.h),
-                    itemCount: _notifications.length + (unreadCount > 0 ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (unreadCount > 0 && index == 0) {
-                        return Padding(
-                          padding: EdgeInsets.only(bottom: 12.h),
-                          child: Text(
-                            '$unreadCount إشعار${unreadCount > 1 ? 'ات' : ''} غير مقروءة',
-                            style: AppFonts.lamaSans(
-                              fontSize: 12.sp,
-                              fontWeight: FontWeight.w600,
-                              color: _grayText,
+                  return RefreshIndicator(
+                    color: _navy,
+                    onRefresh: controller.loadNotifications,
+                    child: ListView.builder(
+                      padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 24.h),
+                      itemCount:
+                          controller.notifications.length +
+                          (unreadCount > 0 ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        if (unreadCount > 0 && index == 0) {
+                          return Padding(
+                            padding: EdgeInsets.only(bottom: 12.h),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    '$unreadCount إشعار${unreadCount > 1 ? 'ات' : ''} غير مقروءة',
+                                    style: AppFonts.lamaSans(
+                                      fontSize: 12.sp,
+                                      fontWeight: FontWeight.w600,
+                                      color: _grayText,
+                                    ),
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: controller.markAllAsRead,
+                                  child: Text(
+                                    'قراءة الكل',
+                                    style: AppFonts.lamaSans(
+                                      fontSize: 12.sp,
+                                      fontWeight: FontWeight.w700,
+                                      color: _navy,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                        );
-                      }
+                          );
+                        }
 
-                      final notifIndex = unreadCount > 0 ? index - 1 : index;
-                      return _buildNotificationItem(
-                        _notifications[notifIndex],
-                      );
-                    },
+                        final notifIndex =
+                            unreadCount > 0 ? index - 1 : index;
+                        return _buildNotificationItem(
+                          controller.notifications[notifIndex],
+                        );
+                      },
+                    ),
                   );
                 }),
               ),
@@ -291,7 +147,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 ),
                 SizedBox(height: 4.h),
                 Text(
-                  'تابع مواعيدك ورسائلك',
+                  'مواعيد، رسائل، وتحديثات العيادة',
                   style: AppFonts.lamaSans(
                     fontSize: 12.sp,
                     fontWeight: FontWeight.w500,
@@ -301,37 +157,22 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               ],
             ),
           ),
-          GestureDetector(
-            onTap: _markAllAsRead,
-            child: Container(
-              width: _headerBoxSize.w,
-              height: _headerBoxSize.w,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(_headerBoxRadius.r),
-                boxShadow: _headerShadow,
-              ),
-              child: Icon(
-                Icons.done_all_rounded,
-                color: _navy,
-                size: 24.sp,
-              ),
-            ),
-          ),
+          SizedBox(width: _headerBoxSize.w, height: _headerBoxSize.w),
         ],
       ),
     );
   }
 
-  Widget _buildNotificationItem(NotificationItem notification) {
-    final timeAgo = _getTimeAgo(notification.time);
+  Widget _buildNotificationItem(NotificationModel notification) {
+    final timeAgo = _getTimeAgo(notification.sentAt);
+    final type = notification.type;
 
     return Padding(
       padding: EdgeInsets.only(bottom: 10.h),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () => _handleNotificationTap(notification),
+          onTap: () => controller.handleNotificationTap(notification),
           borderRadius: BorderRadius.circular(20.r),
           child: Ink(
             decoration: BoxDecoration(
@@ -364,7 +205,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _buildNotificationIcon(notification.type),
+                              _buildNotificationIcon(type),
                               SizedBox(width: 12.w),
                               Expanded(
                                 child: Column(
@@ -447,8 +288,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  Widget _buildNotificationIcon(NotificationType type) {
-    if (type == NotificationType.appointment) {
+  Widget _buildNotificationIcon(String type) {
+    if (type == 'appointment_created' ||
+        type == 'appointment_updated' ||
+        type == 'appointment_reminder') {
       return Container(
         width: 46.w,
         height: 46.w,
@@ -481,31 +324,35 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     );
   }
 
-  IconData _getNotificationIcon(NotificationType type) {
+  IconData _getNotificationIcon(String type) {
     switch (type) {
-      case NotificationType.appointment:
+      case 'appointment_created':
+      case 'appointment_updated':
         return Icons.calendar_today_outlined;
-      case NotificationType.message:
-        return Icons.chat_bubble_outline_rounded;
-      case NotificationType.reminder:
+      case 'appointment_reminder':
         return Icons.alarm_outlined;
-      case NotificationType.patient:
-        return Icons.person_add_outlined;
+      case 'message':
+        return Icons.chat_bubble_outline_rounded;
+      case 'implant_stage':
+        return Icons.medical_services_outlined;
+      case 'general':
       default:
         return Icons.notifications_outlined;
     }
   }
 
-  Color _getNotificationColor(NotificationType type) {
+  Color _getNotificationColor(String type) {
     switch (type) {
-      case NotificationType.appointment:
+      case 'appointment_created':
+      case 'appointment_updated':
         return _navy;
-      case NotificationType.message:
-        return const Color(0xFF3B82F6);
-      case NotificationType.reminder:
+      case 'appointment_reminder':
         return const Color(0xFFF59E0B);
-      case NotificationType.patient:
+      case 'message':
+        return const Color(0xFF3B82F6);
+      case 'implant_stage':
         return const Color(0xFF2EAF68);
+      case 'general':
       default:
         return _navy;
     }
@@ -527,56 +374,4 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       return DateFormat('yyyy/MM/dd', 'ar').format(time);
     }
   }
-
-  void _handleNotificationTap(NotificationItem notification) {
-    _markAsRead(notification.id);
-
-    switch (notification.type) {
-      case NotificationType.appointment:
-        Get.toNamed(AppRoutes.patientAppointments);
-        break;
-      case NotificationType.message:
-        final patientId = notification.data?['patientId'];
-        if (patientId != null) {
-          Get.toNamed(
-            AppRoutes.chat,
-            arguments: {'patientId': patientId},
-          );
-        }
-        break;
-      case NotificationType.reminder:
-        Get.toNamed(AppRoutes.patientAppointments);
-        break;
-      default:
-        break;
-    }
-  }
-}
-
-enum NotificationType {
-  appointment,
-  message,
-  reminder,
-  patient,
-  other,
-}
-
-class NotificationItem {
-  final String id;
-  final String title;
-  final String body;
-  final DateTime time;
-  final bool isRead;
-  final NotificationType type;
-  final Map<String, dynamic>? data;
-
-  NotificationItem({
-    required this.id,
-    required this.title,
-    required this.body,
-    required this.time,
-    required this.isRead,
-    required this.type,
-    this.data,
-  });
 }

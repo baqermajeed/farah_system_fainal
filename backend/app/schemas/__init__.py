@@ -340,6 +340,32 @@ class DeviceTokenIn(BaseModel):
     token: str
     platform: Optional[str] = None
 
+
+class NotificationOut(BaseModel):
+    id: str
+    title: str
+    body: str
+    type: str
+    data: dict = {}
+    is_read: bool = False
+    sent_at: str
+
+    class Config:
+        from_attributes = True
+
+
+class UnreadCountOut(BaseModel):
+    count: int
+
+
+class GeneralNotificationIn(BaseModel):
+    title: str
+    body: str
+
+
+class BroadcastResultOut(BaseModel):
+    sent_count: int
+
 # -------------------- Chat --------------------
 
 class ChatMessageIn(BaseModel):
@@ -373,6 +399,8 @@ class ChatListItemOut(BaseModel):
     last_message_time: Optional[str] = None
     unread_count: int = 0
     room_id: str
+    doctor_id: Optional[str] = None
+    doctor_user_id: Optional[str] = None
 
     class Config:
         from_attributes = True

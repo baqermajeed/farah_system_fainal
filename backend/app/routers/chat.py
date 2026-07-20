@@ -170,7 +170,9 @@ async def get_chat_list(current: User = Depends(get_current_user)):
                 last_message=last_message_text,
                 last_message_time=last_message_time,
                 unread_count=unread_count,
-                room_id=str(room.id)
+                room_id=str(room.id),
+                doctor_id=str(doctor.id),
+                doctor_user_id=str(doctor.user_id) if doctor.user_id else None,
             ))
 
         result.sort(key=lambda x: x.last_message_time or "", reverse=True)
@@ -236,6 +238,14 @@ async def get_chat_list(current: User = Depends(get_current_user)):
                     last_message_text = last_message.content
                 last_message_time = last_message.created_at.isoformat()
 
+            doctor_profile_id = room.doctor_id
+            if doctor_profile_id is None and room.doctor_user_id is not None:
+                doctor_profile = await Doctor.find_one(Doctor.user_id == room.doctor_user_id)
+                if doctor_profile:
+                    doctor_profile_id = doctor_profile.id
+                    room.doctor_id = doctor_profile.id
+                    await room.save()
+
             result.append(ChatListItemOut(
                 patient_id=str(profile_patient.id) if profile_patient else str(family_patients[0].id),
                 patient_name=doctor_user.name or doctor_user.phone,
@@ -243,7 +253,9 @@ async def get_chat_list(current: User = Depends(get_current_user)):
                 last_message=last_message_text,
                 last_message_time=last_message_time,
                 unread_count=unread_count,
-                room_id=str(room.id)
+                room_id=str(room.id),
+                doctor_id=str(doctor_profile_id) if doctor_profile_id else None,
+                doctor_user_id=str(room.doctor_user_id) if room.doctor_user_id else None,
             ))
 
         result.sort(key=lambda x: x.last_message_time or "", reverse=True)
@@ -350,18 +362,25 @@ async def send_message(
             receiver_id = None
             receiver_role = None
         
-        await emit_message_to_room(str(room.id), {
-            "id": str(message.id),
-            "room_id": str(message.room_id),
-            "sender_user_id": str(message.sender_user_id) if message.sender_user_id else None,
-            "sender_role": message.sender_role,
-            "receiver_id": receiver_id,
-            "receiver_role": receiver_role,
-            "content": message.content,
-            "imageUrl": message.imageUrl,
-            "is_read": message.is_read,
-            "created_at": message.created_at.isoformat()
-        })
+        await emit_message_to_room(
+            str(room.id),
+            {
+                "id": str(message.id),
+                "room_id": str(message.room_id),
+                "sender_user_id": str(message.sender_user_id) if message.sender_user_id else None,
+                "sender_role": message.sender_role,
+                "receiver_id": receiver_id,
+                "receiver_role": receiver_role,
+                "content": message.content,
+                "imageUrl": message.imageUrl,
+                "is_read": message.is_read,
+                "created_at": message.created_at.isoformat(),
+                "doctor_id": str(room.doctor_id) if room.doctor_id else None,
+                "doctor_user_id": str(room.doctor_user_id) if room.doctor_user_id else None,
+                "patient_id": str(room.patient_id) if room.patient_id else None,
+            },
+            receiver_user_id=receiver_id,
+        )
     except Exception as e:
         # لا نفشل الطلب إذا فشل Socket.IO
         print(f"⚠️ Failed to emit message via Socket.IO: {e}")
@@ -383,6 +402,20 @@ async def send_message(
         f"Receiver: {receiver_id} (role={receiver_role}), "
         f"sender_user_id={message.sender_user_id}, sender_role={message.sender_role}"
     )
+
+    # إشعار المريض عند رسالة من الطبيب
+    if current.role == Role.DOCTOR and room.patient_user_id:
+        try:
+            from app.services.notification_service import notify_patient_new_message
+
+            await notify_patient_new_message(
+                patient_user_id=room.patient_user_id,
+                doctor_user_id=current.id,
+                patient_id=str(room.patient_id) if room.patient_id else patient_id,
+                room_id=str(room.id),
+            )
+        except Exception as e:
+            print(f"⚠️ Failed to notify patient about chat message: {e}")
 
     return ChatMessageOut(
         id=str(message.id),

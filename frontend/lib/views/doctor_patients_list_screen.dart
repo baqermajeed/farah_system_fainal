@@ -6,58 +6,16 @@ import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/widgets/empty_state_widget.dart';
 import 'package:farah_sys_final/core/widgets/loading_widget.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
-import 'package:farah_sys_final/controllers/patient_controller.dart';
+import 'package:farah_sys_final/controllers/doctor_patients_list_controller.dart';
 import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/models/patient_model.dart';
 import 'package:farah_sys_final/widgets/app_avatar.dart';
 
-class DoctorPatientsListScreen extends StatefulWidget {
+class DoctorPatientsListScreen extends GetView<DoctorPatientsListController> {
   const DoctorPatientsListScreen({super.key});
 
   @override
-  State<DoctorPatientsListScreen> createState() =>
-      _DoctorPatientsListScreenState();
-}
-
-class _DoctorPatientsListScreenState extends State<DoctorPatientsListScreen> {
-  final TextEditingController _searchController = TextEditingController();
-  final RxString _searchQuery = ''.obs;
-
-  // Extract MongoDB ObjectId timestamp (first 8 hex chars = seconds since epoch).
-  int _objectIdSeconds(String id) {
-    if (id.length < 8) return 0;
-    return int.tryParse(id.substring(0, 8), radix: 16) ?? 0;
-  }
-
-  List<PatientModel> _sortNewestFirst(Iterable<PatientModel> patients) {
-    final sorted = List<PatientModel>.from(patients);
-    sorted.sort((a, b) => _objectIdSeconds(b.id).compareTo(_objectIdSeconds(a.id)));
-    return sorted;
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _searchController.addListener(() {
-      _searchQuery.value = _searchController.text;
-    });
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final patientController = Get.find<PatientController>();
-
-    // Load patients on first build
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      patientController.loadPatients();
-    });
-
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -99,12 +57,10 @@ class _DoctorPatientsListScreenState extends State<DoctorPatientsListScreen> {
                   // Add patient button on the RIGHT
                   GestureDetector(
                     onTap: () async {
-                      final result = await Get.toNamed(AppRoutes.addPatient);
-                      // Reload patients when returning from add patient screen
-                      patientController.loadPatients();
+                      final result = await controller.addPatientAndReload();
                       // عرض dialog النجاح أو الفشل
-                      if (result != null) {
-                        _showResultDialog(result as bool);
+                      if (result != null && context.mounted) {
+                        _showResultDialog(context, result);
                       }
                     },
                     child: Container(
@@ -132,7 +88,7 @@ class _DoctorPatientsListScreenState extends State<DoctorPatientsListScreen> {
                   borderRadius: BorderRadius.circular(12.r),
                 ),
                 child: TextField(
-                  controller: _searchController,
+                  controller: controller.searchController,
                   textDirection: TextDirection.rtl,
                   decoration: InputDecoration(
                     hintText: 'ابحث عن مريض...',
@@ -158,20 +114,17 @@ class _DoctorPatientsListScreenState extends State<DoctorPatientsListScreen> {
             // Patients List
             Expanded(
               child: Obx(() {
-                if (patientController.isLoading.value) {
+                if (controller.patientController.isLoading.value) {
                   return const LoadingWidget(message: 'جاري تحميل المرضى...');
                 }
 
-                final filteredPatientsRaw = _searchQuery.value.isEmpty
-                    ? patientController.patients
-                    : patientController.searchPatients(_searchQuery.value);
-                final filteredPatients = _sortNewestFirst(filteredPatientsRaw);
+                final filteredPatients = controller.filteredPatients;
 
                 if (filteredPatients.isEmpty) {
                   return EmptyStateWidget(
                     icon: Icons.people_outline,
                     title: 'لا يوجد مرضى',
-                    subtitle: _searchQuery.value.isEmpty
+                    subtitle: controller.searchQuery.value.isEmpty
                         ? 'لم يتم إضافة أي مريض بعد'
                         : 'لم يتم العثور على نتائج',
                   );
@@ -195,14 +148,7 @@ class _DoctorPatientsListScreenState extends State<DoctorPatientsListScreen> {
 
   Widget _buildPatientCard(PatientModel patient) {
     return GestureDetector(
-      onTap: () {
-        final patientController = Get.find<PatientController>();
-        patientController.selectPatient(patient);
-        Get.toNamed(
-          AppRoutes.patientDetails,
-          arguments: {'patientId': patient.id},
-        );
-      },
+      onTap: () => controller.openPatientDetails(patient),
       child: Container(
         margin: EdgeInsets.only(bottom: 12.h),
         padding: EdgeInsets.only(left: 20.w, right: 0.w, top: 2.h, bottom: 2.h),
@@ -298,12 +244,7 @@ class _DoctorPatientsListScreenState extends State<DoctorPatientsListScreen> {
                     ),
                     SizedBox(width: 16.w),
                     GestureDetector(
-                      onTap: () async {
-                        await Get.toNamed(
-                          AppRoutes.chat,
-                          arguments: {'patientId': patient.id},
-                        );
-                      },
+                      onTap: () => controller.openChat(patient.id),
                       child: Image.asset(
                         'assets/images/message.png',
                         width: 25.sp,
@@ -321,7 +262,7 @@ class _DoctorPatientsListScreenState extends State<DoctorPatientsListScreen> {
     );
   }
 
-  void _showResultDialog(bool success) {
+  void _showResultDialog(BuildContext context, bool success) {
     showDialog(
       context: context,
       builder: (BuildContext context) {

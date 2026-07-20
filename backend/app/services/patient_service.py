@@ -835,7 +835,7 @@ async def create_appointment(
 
     await patient.save()
 
-    # Notify patient about new appointment (push notification)
+    # Notify patient about new appointment (push + in-app)
     try:
         from app.services.notification_service import notify_user
 
@@ -849,12 +849,22 @@ async def create_appointment(
         except Exception:
             pass
 
-        body = (
-            f"تم تحديد موعدك القادم مع الدكتور {doctor_name}"
-            if doctor_name
-            else "تم تحديد موعدك القادم"
+        when = scheduled_at.strftime("%d-%m-%Y الساعة %I:%M %p")
+        if doctor_name:
+            body = f"موعد جديد مع د. {doctor_name} يوم {when}"
+        else:
+            body = f"تم تحديد موعد جديد يوم {when}"
+
+        await notify_user(
+            user_id=patient.user_id,
+            title="موعد جديد",
+            body=body,
+            type="appointment_created",
+            data={
+                "appointmentId": str(ap.id),
+                "doctorId": str(doctor_id),
+            },
         )
-        await notify_user(user_id=patient.user_id, title="موعد جديد", body=body)
     except Exception:
         pass
 
@@ -1131,6 +1141,39 @@ async def update_appointment_datetime(
         # لا نربط تعديل الموعد بآلية تفعيل المرضى.
         if patient:
             await patient.save()
+
+            # إشعار المريض بتعديل الموعد
+            try:
+                from app.services.notification_service import notify_user
+
+                doctor_name = None
+                try:
+                    doctor = await Doctor.get(OID(doctor_id))
+                    if doctor and doctor.user_id:
+                        doctor_user = await User.get(doctor.user_id)
+                        if doctor_user:
+                            doctor_name = doctor_user.name
+                except Exception:
+                    pass
+
+                when = scheduled_at.strftime("%d-%m-%Y الساعة %I:%M %p")
+                if doctor_name:
+                    body = f"تم تعديل موعدك مع د. {doctor_name} إلى {when}"
+                else:
+                    body = f"تم تعديل موعدك إلى {when}"
+
+                await notify_user(
+                    user_id=patient.user_id,
+                    title="تعديل موعد",
+                    body=body,
+                    type="appointment_updated",
+                    data={
+                        "appointmentId": str(appointment.id),
+                        "doctorId": str(doctor_id),
+                    },
+                )
+            except Exception:
+                pass
 
         return appointment
     except Exception as e:

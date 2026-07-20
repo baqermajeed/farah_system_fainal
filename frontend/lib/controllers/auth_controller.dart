@@ -1,66 +1,125 @@
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/models/user_model.dart';
 import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/services/auth_service.dart';
+import 'package:farah_sys_final/services/api_service.dart';
 import 'package:farah_sys_final/services/doctor_service.dart';
 import 'package:farah_sys_final/services/patient_service.dart';
 import 'package:farah_sys_final/services/fcm_service.dart';
+import 'package:farah_sys_final/services/token_storage.dart';
 import 'package:farah_sys_final/controllers/chat_controller.dart';
 import 'package:farah_sys_final/core/utils/network_utils.dart';
 
 class AuthController extends GetxController {
-  final _authService = AuthService();
-  final Rx<UserModel?> currentUser = Rx<UserModel?>(null);
+  final AuthService _authService;
+  final TokenStorage _tokenStorage;
+
+  /// بيانات المستخدم في الذاكرة فقط (مثل قريب) — لا تُحفظ في Secure Storage.
+  final Rxn<UserModel> currentUser = Rxn<UserModel>();
   final RxnString patientProfileId = RxnString(null);
   final RxBool isLoading = false.obs;
+  /// true أثناء استعادة الجلسة عند فتح التطبيق (مثل قريب).
+  final RxBool isRestoringSession = true.obs;
   final RxString otpCode = ''.obs;
 
-  @override
-  void onInit() {
-    super.onInit();
-    // تحميل التوكن والمستخدم المحفوظين عند بدء التطبيق
-    _loadPersistedSession();
+  void _logError(Object e, [String? context]) {
+    if (kDebugMode) {
+      final prefix = context != null ? ' $context' : '';
+      debugPrint('[AuthController]$prefix: $e');
+    }
   }
 
-  // تحميل التوكن والمستخدم من الـ storage
-  Future<void> _loadPersistedSession() async {
-    try {
-      print('🔍 [AuthController] Loading persisted session...');
-      final isLoggedIn = await _authService.isLoggedIn();
-      if (isLoggedIn) {
-        print('✅ [AuthController] Token found, loading user info...');
-        final res = await _authService.getCurrentUser();
-        if (res['ok'] == true) {
-          final userData = res['data'] as Map<String, dynamic>;
-          final user = UserModel.fromJson(userData);
-          currentUser.value = user;
-        await _syncPatientProfileId();
-          print(
-            '✅ [AuthController] User loaded from session: ${user.name} (${user.userType})',
-          );
+  Future<void>? _loadStoredAuthInFlight;
 
-          // Connect to Socket.IO after loading user from session
-          try {
-            final chatController = Get.find<ChatController>();
-            chatController.connectOnLogin();
-          } catch (e) {
-            print(
-              '⚠️ [AuthController] Error connecting Socket.IO on session load: $e',
+  AuthController({AuthService? authService, TokenStorage? tokenStorage})
+      : _tokenStorage = tokenStorage ??
+            (Get.isRegistered<TokenStorage>()
+                ? Get.find<TokenStorage>()
+                : TokenStorage()),
+        _authService = authService ??
+            AuthService(
+              tokenStorage: tokenStorage ??
+                  (Get.isRegistered<TokenStorage>()
+                      ? Get.find<TokenStorage>()
+                      : null),
+              dio: Get.isRegistered<ApiService>()
+                  ? Get.find<ApiService>().client
+                  : null,
             );
-          }
-        } else {
-          print(
-            '⚠️ [AuthController] Failed to load user info, clearing session',
-          );
-          await _authService.logout();
-          currentUser.value = null;
-        }
+
+  /// يُنشأ مع حقن TokenStorage + Dio الموحّد (نمط قريب).
+  factory AuthController.withStorage(TokenStorage tokenStorage) {
+    return AuthController(
+      tokenStorage: tokenStorage,
+      authService: AuthService(
+        tokenStorage: tokenStorage,
+        dio: Get.isRegistered<ApiService>()
+            ? Get.find<ApiService>().client
+            : null,
+      ),
+    );
+  }
+
+  bool get isAuthenticated => currentUser.value != null;
+
+  /// استعادة الجلسة: توكن → getCurrentUser (getMe) → currentUser.obs
+  Future<void> loadStoredAuth() {
+    return _loadStoredAuthInFlight ??= _doLoadStoredAuth().whenComplete(() {
+      _loadStoredAuthInFlight = null;
+    });
+  }
+
+  Future<void> _doLoadStoredAuth() async {
+    isRestoringSession.value = true;
+    try {
+      final hasTokens = await _tokenStorage.hasTokens();
+      if (!hasTokens) {
+        currentUser.value = null;
+        patientProfileId.value = null;
+        isRestoringSession.value = false;
+        return;
+      }
+
+      final res = await _authService.getCurrentUser();
+      if (res['ok'] == true) {
+        final userData = res['data'] as Map<String, dynamic>;
+        final user = UserModel.fromJson(userData);
+        currentUser.value = user;
+        await _syncPatientProfileId();
+        _connectSocketAfterSession();
+        _syncFcmAfterSession();
       } else {
-        print('ℹ️ [AuthController] No saved session found');
+        await _tokenStorage.clearSession();
+        currentUser.value = null;
+        patientProfileId.value = null;
+      }
+      isRestoringSession.value = false;
+    } catch (e) {
+      _logError(e, 'loadStoredAuth');
+      await _tokenStorage.clearSession();
+      currentUser.value = null;
+      patientProfileId.value = null;
+      isRestoringSession.value = false;
+    }
+  }
+
+  void _connectSocketAfterSession() {
+    try {
+      final chatController = Get.find<ChatController>();
+      chatController.connectOnLogin();
+    } catch (e) {
+      _logError(e);
+    }
+  }
+
+  void _syncFcmAfterSession() {
+    try {
+      if (Get.isRegistered<FcmService>()) {
+        Get.find<FcmService>().reRegisterToken();
       }
     } catch (e) {
-      print('❌ [AuthController] Error loading persisted session: $e');
-      currentUser.value = null;
+      _logError(e);
     }
   }
 
@@ -75,7 +134,6 @@ class AuthController extends GetxController {
       final stored = await _authService.getActivePatientId();
       if (stored != null && stored.isNotEmpty) {
         patientProfileId.value = stored;
-        print('📋 [AuthController] Restored patientProfileId: $stored');
         return;
       }
 
@@ -86,7 +144,7 @@ class AuthController extends GetxController {
         await _authService.saveActivePatientId(members.first.id);
       }
     } catch (e) {
-      print('⚠️ [AuthController] Could not sync patientProfileId: $e');
+      _logError(e);
     }
   }
 
@@ -95,14 +153,14 @@ class AuthController extends GetxController {
       final fcmService = Get.find<FcmService>();
       await fcmService.reRegisterToken();
     } catch (e) {
-      print('⚠️ [AuthController] Error re-registering FCM token: $e');
+      _logError(e);
     }
 
     try {
       final chatController = Get.find<ChatController>();
       chatController.connectOnLogin();
     } catch (e) {
-      print('⚠️ [AuthController] Error connecting Socket.IO: $e');
+      _logError(e);
     }
 
     if (showSuccessSnackbar) {
@@ -175,65 +233,36 @@ class AuthController extends GetxController {
         arguments: {'members': members},
       );
     } catch (e) {
-      Get.snackbar('خطأ', 'تعذر تحميل أفراد العائلة');
+      await NetworkUtils.showError(
+        e,
+        fallbackMessage: 'فشل تحميل أفراد العائلة',
+      );
     } finally {
       isLoading.value = false;
     }
   }
 
   Future<void> checkLoggedInUser({bool navigate = true}) async {
-    try {
-      print('🔍 [AuthController] Checking logged in user...');
-      final isLoggedIn = await _authService.isLoggedIn();
-      if (isLoggedIn) {
-        print('✅ [AuthController] User is logged in, fetching user info...');
-        final res = await _authService.getCurrentUser();
-        if (res['ok'] == true) {
-          final userData = res['data'] as Map<String, dynamic>;
-          final user = UserModel.fromJson(userData);
-          currentUser.value = user;
-          await _syncPatientProfileId();
-          print(
-            '✅ [AuthController] User loaded: ${user.name} (${user.userType})',
-          );
+    await loadStoredAuth();
 
-          // Connect to Socket.IO after loading user
-          try {
-            final chatController = Get.find<ChatController>();
-            chatController.connectOnLogin();
-          } catch (e) {
-            print(
-              '⚠️ [AuthController] Error connecting Socket.IO on checkLoggedInUser: $e',
-            );
-          }
+    if (!navigate || !isAuthenticated) {
+      return;
+    }
 
-          if (!navigate) {
-            return;
-          }
-
-          if (user.userType == 'patient') {
-            await resolveFamilyAndNavigate();
-          } else if (user.userType == 'doctor') {
-            Get.offAllNamed(AppRoutes.doctorHome);
-          } else if (user.userType == 'receptionist') {
-            Get.offAllNamed(AppRoutes.receptionHome);
-          } else {
-            Get.offAllNamed(AppRoutes.userSelection);
-          }
-        }
-      } else {
-        print('ℹ️ [AuthController] User is not logged in');
-      }
-    } catch (e) {
-      print('❌ [AuthController] Error checking logged in user: $e');
-      currentUser.value = null;
+    final user = currentUser.value!;
+    if (user.userType == 'patient') {
+      await resolveFamilyAndNavigate();
+    } else if (user.userType == 'doctor') {
+      Get.offAllNamed(AppRoutes.doctorHome);
+    } else if (user.userType == 'receptionist') {
+      Get.offAllNamed(AppRoutes.receptionHome);
+    } else {
+      Get.offAllNamed(AppRoutes.userSelection);
     }
   }
 
   // طلب إرسال OTP
   Future<void> requestOtp(String phoneNumber) async {
-    print('🎯 [AuthController] requestOtp called');
-    print('   📱 Phone: $phoneNumber');
 
     if (phoneNumber.trim().isEmpty) {
       Get.snackbar('خطأ', 'يرجى إدخال رقم الهاتف');
@@ -241,24 +270,24 @@ class AuthController extends GetxController {
     }
 
     try {
-      print('⏳ [AuthController] Setting loading to true');
       isLoading.value = true;
-      print('📞 [AuthController] Calling authService.requestOtp...');
 
       final res = await _authService.requestOtp(phoneNumber.trim());
 
       if (res['ok'] == true) {
-        print('✅ [AuthController] OTP request completed successfully');
         Get.snackbar('نجح', 'تم إرسال رمز التحقق');
       } else {
-        print('❌ [AuthController] OTP request failed: ${res['error']}');
-        Get.snackbar('خطأ', res['error']?.toString() ?? 'فشل إرسال رمز التحقق');
+        await NetworkUtils.showError(
+          res['error']?.toString() ?? 'فشل إرسال رمز التحقق',
+        );
       }
     } catch (e) {
-      print('❌ [AuthController] General error: $e');
-      Get.snackbar('خطأ', 'حدث خطأ أثناء إرسال رمز التحقق');
+      _logError(e, 'requestOtp');
+      await NetworkUtils.showError(
+        e,
+        fallbackMessage: 'حدث خطأ أثناء إرسال رمز التحقق',
+      );
     } finally {
-      print('🏁 [AuthController] Setting loading to false');
       isLoading.value = false;
     }
   }
@@ -268,9 +297,6 @@ class AuthController extends GetxController {
     required String phoneNumber,
     required String code,
   }) async {
-    print('🎯 [AuthController] verifyOtpAndLogin called');
-    print('   📱 Phone: $phoneNumber');
-    print('   🔑 Code: $code');
 
     if (phoneNumber.trim().isEmpty || code.trim().isEmpty) {
       Get.snackbar('خطأ', 'يرجى إدخال رقم الهاتف والرمز');
@@ -278,10 +304,8 @@ class AuthController extends GetxController {
     }
 
     try {
-      print('⏳ [AuthController] Setting loading to true');
       isLoading.value = true;
 
-      print('🔐 [AuthController] Calling authService.verifyOtp...');
 
       final res = await _authService.verifyOtp(
         phone: phoneNumber.trim(),
@@ -293,9 +317,6 @@ class AuthController extends GetxController {
 
         if (!accountExists) {
           // الحساب غير موجود - الانتقال إلى صفحة إنشاء الحساب
-          print(
-            '⚠️ [AuthController] Account does not exist, navigating to registration',
-          );
           Get.offNamed(
             AppRoutes.patientRegistration,
             arguments: {'phoneNumber': phoneNumber},
@@ -303,7 +324,6 @@ class AuthController extends GetxController {
           return;
         }
 
-        print('✅ [AuthController] OTP verified successfully, account exists');
 
         // جلب معلومات المستخدم بعد التحقق من OTP
         final userRes = await _authService.getCurrentUser();
@@ -311,39 +331,28 @@ class AuthController extends GetxController {
           final userData = userRes['data'] as Map<String, dynamic>;
           final user = UserModel.fromJson(userData);
 
-          print(
-            '✅ [AuthController] User loaded: ${user.name} (${user.userType})',
-          );
           currentUser.value = user;
-          print('💾 [AuthController] Current user updated in controller');
 
           try {
             await resolveFamilyAndNavigate(showSuccessSnackbar: true);
           } catch (e) {
-            print('❌ [AuthController] Error resolving family profile: $e');
             Get.offAllNamed(AppRoutes.patientWelcome);
           }
         } else {
-          print(
-            '❌ [AuthController] Failed to get user info: ${userRes['error']}',
-          );
           Get.snackbar(
             'خطأ',
             userRes['error']?.toString() ?? 'فشل جلب معلومات المستخدم',
           );
         }
       } else {
-        print('❌ [AuthController] OTP verification failed: ${res['error']}');
         Get.snackbar(
           'خطأ',
           res['error']?.toString() ?? 'فشل التحقق من رمز OTP',
         );
       }
     } catch (e) {
-      print('❌ [AuthController] General error: $e');
       Get.snackbar('خطأ', 'فشل التحقق من رمز OTP');
     } finally {
-      print('🏁 [AuthController] Setting loading to false');
       isLoading.value = false;
     }
   }
@@ -356,9 +365,6 @@ class AuthController extends GetxController {
     int? age,
     String? city,
   }) async {
-    print('🎯 [AuthController] createPatientAccount called');
-    print('   📱 Phone: $phoneNumber');
-    print('   👤 Name: $name');
 
     try {
       isLoading.value = true;
@@ -372,7 +378,6 @@ class AuthController extends GetxController {
       );
 
       if (res['ok'] == true) {
-        print('✅ [AuthController] Account created successfully');
 
         // جلب معلومات المستخدم بعد إنشاء الحساب
         final userRes = await _authService.getCurrentUser();
@@ -380,9 +385,6 @@ class AuthController extends GetxController {
           final userData = userRes['data'] as Map<String, dynamic>;
           final user = UserModel.fromJson(userData);
 
-          print(
-            '✅ [AuthController] User loaded: ${user.name} (${user.userType})',
-          );
           currentUser.value = user;
           await _syncPatientProfileId();
 
@@ -391,26 +393,24 @@ class AuthController extends GetxController {
             final fcmService = Get.find<FcmService>();
             await fcmService.reRegisterToken();
           } catch (e) {
-            print('⚠️ [AuthController] Error re-registering FCM token: $e');
+            _logError(e);
           }
 
           // بعد إنشاء الحساب، الانتقال إلى صفحة الترحيب (لأنه ليس له طبيب بعد)
-          print('🔀 [AuthController] Navigating to welcome screen');
           Get.offAllNamed(AppRoutes.patientWelcome);
           Get.snackbar('نجح', 'تم إنشاء الحساب بنجاح');
         } else {
-          Get.snackbar(
-            'خطأ',
+          await NetworkUtils.showError(
             userRes['error']?.toString() ?? 'فشل جلب معلومات المستخدم',
           );
         }
       } else {
-        print('❌ [AuthController] Account creation failed: ${res['error']}');
-        Get.snackbar('خطأ', res['error']?.toString() ?? 'فشل إنشاء الحساب');
+        await NetworkUtils.showError(
+          res['error']?.toString() ?? 'فشل إنشاء الحساب',
+        );
       }
     } catch (e) {
-      print('❌ [AuthController] Error in createPatientAccount: $e');
-      Get.snackbar('خطأ', 'فشل إنشاء الحساب');
+      await NetworkUtils.showError(e, fallbackMessage: 'فشل إنشاء الحساب');
     } finally {
       isLoading.value = false;
     }
@@ -426,9 +426,6 @@ class AuthController extends GetxController {
     required String username,
     required String password,
   }) async {
-    print('🎯 [AuthController] loginDoctor called');
-    print('   👤 Username: $username');
-    print('   🔑 Password: ${'*' * password.length}');
 
     if (username.trim().isEmpty || password.trim().isEmpty) {
       Get.snackbar('خطأ', 'يرجى إدخال اسم المستخدم وكلمة المرور');
@@ -436,9 +433,7 @@ class AuthController extends GetxController {
     }
 
     try {
-      print('⏳ [AuthController] Setting loading to true');
       isLoading.value = true;
-      print('🔐 [AuthController] Calling authService.staffLogin...');
 
       final res = await _authService.staffLogin(
         username: username.trim(),
@@ -446,28 +441,15 @@ class AuthController extends GetxController {
       );
 
       if (res['ok'] == true) {
-        print('✅ [AuthController] Login successful');
 
         // جلب معلومات المستخدم بعد تسجيل الدخول
         final userRes = await _authService.getCurrentUser();
         if (userRes['ok'] == true) {
           final userData = userRes['data'] as Map<String, dynamic>;
-
-          // Log raw data from backend
-          print('📋 [AuthController] Raw user data from backend:');
-          print('   Role: ${userData['role']}');
-          print('   UserType: ${userData['userType']}');
-          print('   Full data: $userData');
-
           final user = UserModel.fromJson(userData);
 
-          print(
-            '✅ [AuthController] User loaded: ${user.name} (${user.userType})',
-          );
-          print('   🔍 Mapped userType: ${user.userType}');
           currentUser.value = user;
           await _syncPatientProfileId();
-          print('💾 [AuthController] Current user updated in controller');
 
           // توجيه حسب نوع المستخدم القادم من الـ Backend
           String targetRoute;
@@ -486,9 +468,6 @@ class AuthController extends GetxController {
               targetRoute = AppRoutes.userSelection;
               break;
             default:
-              print(
-                '⚠️ [AuthController] Unknown userType: ${user.userType}, defaulting to userSelection',
-              );
               targetRoute = AppRoutes.userSelection;
           }
 
@@ -497,7 +476,7 @@ class AuthController extends GetxController {
             final fcmService = Get.find<FcmService>();
             await fcmService.reRegisterToken();
           } catch (e) {
-            print('⚠️ [AuthController] Error re-registering FCM token: $e');
+            _logError(e);
           }
 
           // Connect to Socket.IO after successful login
@@ -505,14 +484,9 @@ class AuthController extends GetxController {
             final chatController = Get.find<ChatController>();
             chatController.connectOnLogin();
           } catch (e) {
-            print(
-              '⚠️ [AuthController] Error connecting Socket.IO on login: $e',
-            );
+            _logError(e);
           }
 
-          print(
-            '🔀 [AuthController] Navigating to: $targetRoute (userType: ${user.userType})',
-          );
           Get.offAllNamed(targetRoute);
           // انتظار قليلاً حتى تكتمل عملية التنقل قبل عرض Snackbar
           await Future.delayed(const Duration(milliseconds: 300));
@@ -520,39 +494,21 @@ class AuthController extends GetxController {
             try {
               Get.snackbar('نجح', 'تم تسجيل الدخول بنجاح');
             } catch (e) {
-              print('⚠️ [AuthController] Error showing snackbar: $e');
+              _logError(e);
             }
           }
         } else {
-          print(
-            '❌ [AuthController] Failed to get user info: ${userRes['error']}',
-          );
           final errorMsg = userRes['error']?.toString() ?? 'فشل جلب معلومات المستخدم';
-          if (NetworkUtils.isNetworkError(errorMsg)) {
-            NetworkUtils.showNetworkErrorDialog();
-          } else {
-            Get.snackbar('خطأ', errorMsg);
-          }
+          await NetworkUtils.showError(errorMsg);
         }
       } else {
-        print('❌ [AuthController] Login failed: ${res['error']}');
         final errorMsg = res['error']?.toString() ?? 'فشل تسجيل الدخول';
-        if (NetworkUtils.isNetworkError(errorMsg)) {
-          NetworkUtils.showNetworkErrorDialog();
-        } else {
-          Get.snackbar('خطأ', errorMsg);
-        }
+        await NetworkUtils.showError(errorMsg, fallbackMessage: 'فشل تسجيل الدخول');
       }
     } catch (e) {
-      print('❌ [AuthController] General error: $e');
       final errorMsg = e.toString();
-      if (NetworkUtils.isNetworkError(errorMsg)) {
-        NetworkUtils.showNetworkErrorDialog();
-      } else {
-        Get.snackbar('خطأ', 'فشل تسجيل الدخول');
-      }
+      await NetworkUtils.showError(errorMsg, fallbackMessage: 'فشل تسجيل الدخول');
     } finally {
-      print('🏁 [AuthController] Setting loading to false');
       isLoading.value = false;
     }
   }
@@ -565,9 +521,6 @@ class AuthController extends GetxController {
     required int age,
     required String city,
   }) async {
-    print('🎯 [AuthController] registerPatient called');
-    print('   📱 Phone: $phoneNumber');
-    print('   👤 Name: $name');
 
     try {
       isLoading.value = true;
@@ -583,7 +536,6 @@ class AuthController extends GetxController {
 
       return true;
     } catch (e) {
-      print('❌ [AuthController] Error in registerPatient: $e');
       return false;
     } finally {
       isLoading.value = false;
@@ -592,21 +544,14 @@ class AuthController extends GetxController {
 
   // تسجيل الخروج
   Future<void> logout() async {
-    print('🎯 [AuthController] logout called');
     try {
       await _authService.logout();
       currentUser.value = null;
       patientProfileId.value = null;
-      print('✅ [AuthController] Logged out successfully');
       Get.offAllNamed(AppRoutes.userSelection);
     } catch (e) {
-      print('❌ [AuthController] Error during logout: $e');
       final errorMsg = e.toString();
-      if (NetworkUtils.isNetworkError(errorMsg)) {
-        NetworkUtils.showNetworkErrorDialog();
-      } else {
-        Get.snackbar('خطأ', 'حدث خطأ أثناء تسجيل الخروج');
-      }
+      await NetworkUtils.showError(errorMsg, fallbackMessage: 'حدث خطأ أثناء تسجيل الخروج');
     }
   }
 }

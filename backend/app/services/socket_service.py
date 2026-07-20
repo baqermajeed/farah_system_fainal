@@ -445,11 +445,35 @@ async def send_message(sid: str, data: dict):
             "content": message.content,
             "imageUrl": message.imageUrl,
             "is_read": message.is_read,
-            "created_at": message.created_at.isoformat()
+            "created_at": message.created_at.isoformat(),
+            "doctor_id": str(room.doctor_id) if room.doctor_id else None,
+            "doctor_user_id": str(room.doctor_user_id) if room.doctor_user_id else None,
+            "patient_id": str(room.patient_id) if room.patient_id else None,
         }
         
         await sio.emit('message_received', {'message': message_data}, room=room_key)
+        # Also notify receiver's personal room so home badges update live.
+        if receiver_id:
+            await sio.emit(
+                'message_received',
+                {'message': message_data},
+                room=f"user_{receiver_id}",
+            )
         await sio.emit('message_sent', {'message': message_data}, room=sid)
+
+        # إشعار المريض عند رسالة من الطبيب
+        if user.role == Role.DOCTOR and room.patient_user_id:
+            try:
+                from app.services.notification_service import notify_patient_new_message
+
+                await notify_patient_new_message(
+                    patient_user_id=room.patient_user_id,
+                    doctor_user_id=user.id,
+                    patient_id=str(room.patient_id) if room.patient_id else None,
+                    room_id=str(room.id),
+                )
+            except Exception as e:
+                print(f"⚠️ Failed to notify patient about chat message: {e}")
         
         print(f"📨 [Socket] Message sent - Room: {room.id}, Sender: {user_id} (role={user.role}), Receiver: {receiver_id} (role={receiver_role})")
         print(f"    Message data: sender_user_id={message_data['sender_user_id']}, sender_role={message_data['sender_role']}, receiver_id={receiver_id}")
@@ -508,11 +532,17 @@ async def mark_read(sid: str, data: dict):
         await sio.emit('error', {'message': f'خطأ في تعليم الرسائل كمقروءة: {str(e)}', 'code': 'E500'}, room=sid)
 
 
-async def emit_message_to_room(room_id: str, message_data: dict):
+async def emit_message_to_room(room_id: str, message_data: dict, receiver_user_id: str | None = None):
     """Emit message to a room (called from HTTP endpoints)."""
     try:
         room_key = f"room_{room_id}"
         await sio.emit('message_received', {'message': message_data}, room=room_key)
+        if receiver_user_id:
+            await sio.emit(
+                'message_received',
+                {'message': message_data},
+                room=f"user_{receiver_user_id}",
+            )
     except Exception as e:
         print(f"⚠️ Failed to emit message to room {room_id}: {e}")
 

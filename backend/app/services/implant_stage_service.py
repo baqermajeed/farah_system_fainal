@@ -300,6 +300,20 @@ async def update_stage_date(
         scheduled_at=base_new_date,
     )
 
+    # إشعار المريض بتحديث موعد مرحلة الزراعة
+    try:
+        from app.services.notification_service import notify_patient_implant_stage
+
+        await notify_patient_implant_stage(
+            patient_user_id=patient.user_id,
+            stage_name=stage_name,
+            scheduled_at=base_new_date,
+            patient_id=str(patient.id),
+            stage_id=str(stage.id),
+        )
+    except Exception as e:
+        print(f"⚠️ Failed to notify patient about implant stage: {e}")
+
     # بعد تعديل موعد هذه المرحلة، نعيد حساب مواعيد جميع المراحل التالية
     try:
         current_index = IMPLANT_STAGES.index(stage_name)
@@ -517,6 +531,18 @@ async def complete_stage(
                     stage_name=next_stage_name,
                     scheduled_at=next_date,
                 )
+                try:
+                    from app.services.notification_service import notify_patient_implant_stage
+
+                    await notify_patient_implant_stage(
+                        patient_user_id=patient.user_id,
+                        stage_name=next_stage_name,
+                        scheduled_at=next_date,
+                        patient_id=str(patient.id),
+                        stage_id=str(next_stage.id),
+                    )
+                except Exception as e:
+                    print(f"⚠️ Failed to notify patient about next implant stage: {e}")
             else:
                 if existing_next_stage.doctor_id is None:
                     existing_next_stage.doctor_id = did
@@ -532,6 +558,18 @@ async def complete_stage(
                     stage_name=next_stage_name,
                     scheduled_at=next_date,
                 )
+                try:
+                    from app.services.notification_service import notify_patient_implant_stage
+
+                    await notify_patient_implant_stage(
+                        patient_user_id=patient.user_id,
+                        stage_name=next_stage_name,
+                        scheduled_at=next_date,
+                        patient_id=str(patient.id),
+                        stage_id=str(existing_next_stage.id),
+                    )
+                except Exception as e:
+                    print(f"⚠️ Failed to notify patient about next implant stage: {e}")
     except ValueError:
         # إذا لم تكن المرحلة في القائمة، لا ننشئ مرحلة تالية
         pass

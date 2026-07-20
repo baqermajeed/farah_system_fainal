@@ -6,114 +6,11 @@ import 'package:farah_sys_final/core/constants/app_strings.dart';
 import 'package:farah_sys_final/core/widgets/custom_button.dart';
 import 'package:farah_sys_final/core/widgets/custom_text_field.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
-import 'package:farah_sys_final/controllers/auth_controller.dart';
-import 'package:farah_sys_final/services/auth_service.dart';
+import 'package:farah_sys_final/controllers/edit_reception_profile_controller.dart';
 
-class EditReceptionProfileScreen extends StatefulWidget {
+/// شاشة تعديل الملف الشخصي لموظف الاستقبال — GetView؛ المنطق في EditReceptionProfileController.
+class EditReceptionProfileScreen extends GetView<EditReceptionProfileController> {
   const EditReceptionProfileScreen({super.key});
-
-  @override
-  State<EditReceptionProfileScreen> createState() =>
-      _EditReceptionProfileScreenState();
-}
-
-class _EditReceptionProfileScreenState
-    extends State<EditReceptionProfileScreen> {
-  final AuthController _authController = Get.find<AuthController>();
-  final AuthService _authService = AuthService();
-
-  final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _phoneController = TextEditingController();
-  bool _isLoading = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadCurrentData();
-  }
-
-  void _loadCurrentData() {
-    final user = _authController.currentUser.value;
-    _nameController.text = user?.name ?? '';
-    _phoneController.text = user?.phoneNumber ?? '';
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _phoneController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _saveChanges() async {
-    if (_nameController.text.isEmpty) {
-      _showResultDialog(
-        context,
-        isSuccess: false,
-        message: 'يرجى إدخال الاسم',
-      );
-      return;
-    }
-
-    if (_phoneController.text.isEmpty) {
-      _showResultDialog(
-        context,
-        isSuccess: false,
-        message: 'يرجى إدخال رقم الهاتف',
-      );
-      return;
-    }
-
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      await _authService.updateProfile(
-        name: _nameController.text,
-        phone: _phoneController.text,
-      );
-
-      // تحديث معلومات المستخدم في AuthController
-      await _authController.checkLoggedInUser(navigate: false);
-
-      // العودة إلى الصفحة السابقة أولاً
-      Get.back();
-
-      // إظهار dialog النجاح بعد العودة
-      Future.delayed(
-        const Duration(milliseconds: 300),
-        () {
-          _showResultDialog(
-            Get.context!,
-            isSuccess: true,
-            message: 'تم حفظ التغييرات بنجاح',
-          );
-        },
-      );
-    } catch (e) {
-      // العودة إلى الصفحة السابقة أولاً
-      Get.back();
-
-      // إظهار dialog الفشل بعد العودة
-      Future.delayed(
-        const Duration(milliseconds: 300),
-        () {
-          _showResultDialog(
-            Get.context!,
-            isSuccess: false,
-            message: 'فشل حفظ التغييرات: ${e.toString()}',
-          );
-        },
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -159,7 +56,7 @@ class _EditReceptionProfileScreenState
                   ),
                   SizedBox(height: 8.h),
                   CustomTextField(
-                    controller: _nameController,
+                    controller: controller.nameController,
                     hintText: 'أدخل الاسم',
                     textAlign: TextAlign.right,
                   ),
@@ -175,7 +72,7 @@ class _EditReceptionProfileScreenState
                   ),
                   SizedBox(height: 8.h),
                   CustomTextField(
-                    controller: _phoneController,
+                    controller: controller.phoneController,
                     hintText: 'أدخل رقم الهاتف',
                     textAlign: TextAlign.right,
                     keyboardType: TextInputType.phone,
@@ -183,12 +80,16 @@ class _EditReceptionProfileScreenState
                 ],
               ),
               SizedBox(height: 48.h),
-              CustomButton(
-                text: 'حفظ التغييرات',
-                onPressed: _isLoading ? null : _saveChanges,
-                width: double.infinity,
-                isLoading: _isLoading,
-                backgroundColor: AppColors.primary,
+              Obx(
+                () => CustomButton(
+                  text: 'حفظ التغييرات',
+                  onPressed: controller.isLoading.value
+                      ? null
+                      : controller.saveChanges,
+                  width: double.infinity,
+                  isLoading: controller.isLoading.value,
+                  backgroundColor: AppColors.primary,
+                ),
               ),
             ],
           ),
@@ -196,60 +97,4 @@ class _EditReceptionProfileScreenState
       ),
     );
   }
-
-  void _showResultDialog(
-    BuildContext context, {
-    required bool isSuccess,
-    required String message,
-  }) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16.r),
-          ),
-          title: Row(
-            children: [
-              Icon(
-                isSuccess ? Icons.check_circle : Icons.error,
-                color: isSuccess ? Colors.green : Colors.red,
-                size: 28.sp,
-              ),
-              SizedBox(width: 12.w),
-              Text(
-                isSuccess ? 'نجح' : 'فشل',
-                style: TextStyle(
-                  fontSize: 20.sp,
-                  fontWeight: FontWeight.bold,
-                  color: isSuccess ? Colors.green : Colors.red,
-                ),
-              ),
-            ],
-          ),
-          content: Text(
-            message,
-            style: TextStyle(fontSize: 16.sp, color: AppColors.textPrimary),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: Text(
-                'حسناً',
-                style: TextStyle(
-                  fontSize: 16.sp,
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
 }
-

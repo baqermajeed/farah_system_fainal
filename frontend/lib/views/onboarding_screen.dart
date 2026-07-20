@@ -5,20 +5,13 @@ import 'package:get/get.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
-import 'package:farah_sys_final/core/routes/app_routes.dart';
+import 'package:farah_sys_final/controllers/onboarding_controller.dart';
 
-class OnboardingScreen extends StatefulWidget {
+/// شاشة الـ Onboarding — GetView؛ المنطق في OnboardingController.
+class OnboardingScreen extends GetView<OnboardingController> {
   const OnboardingScreen({super.key});
 
-  @override
-  State<OnboardingScreen> createState() => _OnboardingScreenState();
-}
-
-class _OnboardingScreenState extends State<OnboardingScreen> {
   static const Color _nextActionColor = Color(0xFF032252);
-
-  final PageController _pageController = PageController();
-  int _currentIndex = 0;
 
   List<_SlideData> get _slides => [
     _SlideData(
@@ -38,34 +31,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     ),
   ];
 
-  void _goNext() {
-    if (_currentIndex == _slides.length - 1) {
-      Get.offAllNamed(AppRoutes.userSelection);
-    } else {
-      _pageController.nextPage(
-        duration: const Duration(milliseconds: 350),
-        curve: Curves.easeInOut,
-      );
-    }
-  }
-
-  void _goBack() {
-    if (_currentIndex > 0) {
-      _pageController.previousPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-    }
-  }
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
+    final slides = _slides;
     return Scaffold(
       backgroundColor: AppColors.onboardingBackground,
       body: SafeArea(
@@ -80,7 +48,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 child: Padding(
                   padding: EdgeInsets.only(top: 4.h),
                   child: TextButton(
-                    onPressed: () => Get.offAllNamed(AppRoutes.userSelection),
+                    onPressed: controller.skip,
                     style: TextButton.styleFrom(
                       padding: EdgeInsets.zero,
                       minimumSize: Size.zero,
@@ -103,11 +71,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
             Expanded(
               child: PageView.builder(
-                controller: _pageController,
-                itemCount: _slides.length,
-                onPageChanged: (index) => setState(() => _currentIndex = index),
+                controller: controller.pageController,
+                itemCount: slides.length,
+                onPageChanged: controller.onPageChanged,
                 itemBuilder: (context, index) {
-                  final slide = _slides[index];
+                  final slide = slides[index];
                   return _OnboardingSlide(
                     index: index,
                     imagePath: slide.imagePath,
@@ -122,8 +90,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
             // Bottom navigation (Back / Next / Page Indicator)
             SmoothPageIndicator(
-              controller: _pageController,
-              count: _slides.length,
+              controller: controller.pageController,
+              count: slides.length,
               effect: ExpandingDotsEffect(
                 dotHeight: 8.h,
                 dotWidth: 8.w,
@@ -139,65 +107,94 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             // Bottom navigation (Back / Next)
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 20.w),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Back button (يسار)
-                  TextButton.icon(
-                    onPressed: _currentIndex == 0 ? null : _goBack,
-                    style: TextButton.styleFrom(
-                      foregroundColor: _nextActionColor,
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 12.w,
-                        vertical: 8.h,
+              child: Obx(
+                () => Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Back button (يسار)
+                    TextButton.icon(
+                      onPressed: controller.currentIndex.value == 0
+                          ? null
+                          : controller.goBack,
+                      style: TextButton.styleFrom(
+                        foregroundColor: _nextActionColor,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12.w,
+                          vertical: 8.h,
+                        ),
                       ),
-                    ),
-                    icon: Icon(
-                      Icons.chevron_left,
-                      size: 22.sp,
-                      color: _currentIndex == 0
-                          ? AppColors.textHint
-                          : _nextActionColor,
-                    ),
-                    label: Text(
-                      AppStrings.back,
-                      style: TextStyle(
-                        fontFamily: AppFonts.family,
-                        fontSize: 18.sp,
-                        fontWeight: FontWeight.w700,
-                        color: _currentIndex == 0
+                      icon: Icon(
+                        Icons.chevron_left,
+                        size: 22.sp,
+                        color: controller.currentIndex.value == 0
                             ? AppColors.textHint
                             : _nextActionColor,
                       ),
+                      label: Text(
+                        AppStrings.back,
+                        style: TextStyle(
+                          fontFamily: AppFonts.family,
+                          fontSize: 18.sp,
+                          fontWeight: FontWeight.w700,
+                          color: controller.currentIndex.value == 0
+                              ? AppColors.textHint
+                              : _nextActionColor,
+                        ),
+                      ),
                     ),
-                  ),
-                  // Next button (يمين)
-                  _currentIndex == _slides.length - 1
-                      ? TextButton(
-                          onPressed: _goNext,
-                          style: TextButton.styleFrom(
-                            foregroundColor: _nextActionColor,
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 12.w,
-                              vertical: 8.h,
+                    // Next button (يمين)
+                    controller.currentIndex.value == slides.length - 1
+                        ? TextButton(
+                            onPressed: () => controller.goNext(slides.length),
+                            style: TextButton.styleFrom(
+                              foregroundColor: _nextActionColor,
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 12.w,
+                                vertical: 8.h,
+                              ),
                             ),
-                          ),
-                          child: Directionality(
-                            textDirection: TextDirection.ltr,
+                            child: Directionality(
+                              textDirection: TextDirection.ltr,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Transform.flip(
+                                    flipX: true,
+                                    child: Icon(
+                                      Icons.chevron_right,
+                                      size: 22.sp,
+                                      color: _nextActionColor,
+                                    ),
+                                  ),
+                                  SizedBox(width: 6.w),
+                                  Text(
+                                    AppStrings.start,
+                                    style: TextStyle(
+                                      fontFamily: AppFonts.family,
+                                      fontSize: 18.sp,
+                                      fontWeight: FontWeight.w700,
+                                      color: _nextActionColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          )
+                        : TextButton(
+                            onPressed: () => controller.goNext(slides.length),
+                            style: TextButton.styleFrom(
+                              foregroundColor: _nextActionColor,
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 12.w,
+                                vertical: 8.h,
+                              ),
+                            ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Transform.flip(
-                                  flipX: true,
-                                  child: Icon(
-                                    Icons.chevron_right,
-                                    size: 22.sp,
-                                    color: _nextActionColor,
-                                  ),
-                                ),
-                                SizedBox(width: 6.w),
                                 Text(
-                                  AppStrings.start,
+                                  AppStrings.next,
+
                                   style: TextStyle(
                                     fontFamily: AppFonts.family,
                                     fontSize: 18.sp,
@@ -205,42 +202,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                     color: _nextActionColor,
                                   ),
                                 ),
+                                SizedBox(width: 8.w),
+                                Icon(
+                                  Icons.chevron_right,
+                                  size: 22.sp,
+                                  color: _nextActionColor,
+                                ),
                               ],
                             ),
                           ),
-                        )
-                      : TextButton(
-                          onPressed: _goNext,
-                          style: TextButton.styleFrom(
-                            foregroundColor: _nextActionColor,
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 12.w,
-                              vertical: 8.h,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                AppStrings.next,
-                                
-                                style: TextStyle(
-                                  fontFamily: AppFonts.family,
-                                  fontSize: 18.sp,
-                                  fontWeight: FontWeight.w700,
-                                  color: _nextActionColor,
-                                ),
-                              ),
-                              SizedBox(width: 8.w),
-                              Icon(
-                                Icons.chevron_right,
-                                size: 22.sp,
-                                color: _nextActionColor,
-                              ),
-                            ],
-                          ),
-                        ),
-                ],
+                  ],
+                ),
               ),
             ),
 

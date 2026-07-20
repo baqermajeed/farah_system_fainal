@@ -5,7 +5,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
-import 'package:farah_sys_final/controllers/appointment_controller.dart';
+import 'package:farah_sys_final/controllers/appointments_by_date_controller.dart';
 import 'package:farah_sys_final/controllers/patient_controller.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/models/appointment_model.dart';
@@ -15,61 +15,17 @@ import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
-class AppointmentsByDateScreen extends StatefulWidget {
+/// شاشة مواعيد تاريخ محدد — GetView؛ المنطق في AppointmentsByDateController.
+class AppointmentsByDateScreen extends GetView<AppointmentsByDateController> {
   const AppointmentsByDateScreen({super.key});
 
   @override
-  State<AppointmentsByDateScreen> createState() =>
-      _AppointmentsByDateScreenState();
-}
-
-class _AppointmentsByDateScreenState extends State<AppointmentsByDateScreen> {
-  DateTime? selectedDate;
-
-  @override
-  void initState() {
-    super.initState();
-    // Get date from arguments
-    final args = Get.arguments as Map<String, dynamic>?;
-    selectedDate = args?['date'] as DateTime?;
-
-    if (selectedDate != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _loadAppointmentsForDate(selectedDate!);
-      });
-    }
-  }
-
-  void _loadAppointmentsForDate(DateTime date) async {
-    final appointmentController = Get.find<AppointmentController>();
-    final patientController = Get.find<PatientController>();
-
-    // Normalize date to local date (remove time component)
-    final normalizedDate = DateTime(date.year, date.month, date.day);
-    final dateFromStr = DateFormat('yyyy-MM-dd').format(normalizedDate);
-
-    // date_to should be the next day (backend uses scheduled_at < end)
-    final nextDay = normalizedDate.add(const Duration(days: 1));
-    final dateToStr = DateFormat('yyyy-MM-dd').format(nextDay);
-
-    // Load appointments for the selected date
-    await appointmentController.loadDoctorAppointments(
-      dateFrom: dateFromStr,
-      dateTo: dateToStr,
-    );
-
-    // Load patients to get their names and images
-    if (patientController.patients.isEmpty) {
-      patientController.loadPatients();
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final appointmentController = Get.find<AppointmentController>();
+    final selectedDate = controller.selectedDate;
+    final appointmentController = controller.appointmentController;
     final dateFormat = DateFormat('yyyy-MM-dd', 'ar');
     final formattedDate = selectedDate != null
-        ? dateFormat.format(selectedDate!)
+        ? dateFormat.format(selectedDate)
         : '';
 
     final baseTheme = Theme.of(context);
@@ -126,9 +82,9 @@ class _AppointmentsByDateScreenState extends State<AppointmentsByDateScreen> {
 
                 // Normalize selected date (remove time component)
                 final normalizedSelectedDate = DateTime(
-                  selectedDate!.year,
-                  selectedDate!.month,
-                  selectedDate!.day,
+                  selectedDate.year,
+                  selectedDate.month,
+                  selectedDate.day,
                 );
 
                 // Debug: Print all appointments and selected date

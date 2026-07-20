@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -6,49 +5,23 @@ import 'package:flutter/material.dart';
 import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
-import 'package:image_cropper/image_cropper.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
-import 'package:farah_sys_final/controllers/auth_controller.dart';
-import 'package:farah_sys_final/controllers/patient_controller.dart';
-import 'package:farah_sys_final/services/auth_service.dart';
+import 'package:farah_sys_final/controllers/edit_patient_profile_controller.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
-import 'package:farah_sys_final/core/constants/iraq_governorates.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
 
 class _EditProfileAssets {
   static const back = 'assets/icon/backblack.png';
 }
 
-class EditPatientProfileScreen extends StatefulWidget {
+/// شاشة تعديل الملف الشخصي للمريض — GetView؛ المنطق في EditPatientProfileController.
+class EditPatientProfileScreen extends GetView<EditPatientProfileController> {
   const EditPatientProfileScreen({super.key});
 
-  @override
-  State<EditPatientProfileScreen> createState() =>
-      _EditPatientProfileScreenState();
-}
-
-class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
   static const Color _bg = Color(0xFFF8FAFF);
   static const Color _navy = Color(0xFF1A3263);
   static const Color _grayText = Color(0xFF8A97A8);
   static const Color _border = Color(0xFFE8ECF0);
-
-  final AuthController _authController = Get.find<AuthController>();
-  final PatientController _patientController = Get.find<PatientController>();
-  final AuthService _authService = AuthService();
-  final ImagePicker _imagePicker = ImagePicker();
-
-  final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _phoneController = TextEditingController();
-  final TextEditingController _ageController = TextEditingController();
-  String? selectedGender;
-  String? selectedCity;
-  bool _isUploadingImage = false;
-  int _imageTimestamp = DateTime.now().millisecondsSinceEpoch;
-
-  List<String> get cities => IraqGovernorates.arabicNames;
 
   static List<BoxShadow> get _softShadow => [
         BoxShadow(
@@ -57,55 +30,6 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
           offset: const Offset(0, 4),
         ),
       ];
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadCurrentData();
-    });
-  }
-
-  Future<void> _loadCurrentData() async {
-    if (_patientController.myProfile.value == null) {
-      await _patientController.loadMyProfile();
-    }
-    if (_authController.currentUser.value == null) {
-      await _authController.checkLoggedInUser();
-    }
-
-    final user = _authController.currentUser.value;
-    final profile = _patientController.myProfile.value;
-
-    setState(() {
-      _nameController.text = user?.name ?? profile?.name ?? '';
-      _phoneController.text = user?.phoneNumber ?? profile?.phoneNumber ?? '';
-      _ageController.text = (user?.age ?? profile?.age ?? 0).toString();
-
-      final gender = user?.gender ?? profile?.gender;
-      if (gender == 'male') {
-        selectedGender = AppStrings.male;
-      } else if (gender == 'female') {
-        selectedGender = AppStrings.female;
-      } else {
-        selectedGender = gender;
-      }
-
-      final cityFromData = user?.city ?? profile?.city;
-      selectedCity = IraqGovernorates.toArabic(cityFromData);
-      if (selectedCity != null && !cities.contains(selectedCity)) {
-        selectedCity = null;
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _phoneController.dispose();
-    _ageController.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -146,14 +70,14 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
                           _buildField(
                             label: AppStrings.name,
                             icon: Icons.person_outline,
-                            controller: _nameController,
+                            controller: controller.nameController,
                             hint: 'أدخل الاسم',
                           ),
                           _fieldDivider(),
                           _buildField(
                             label: AppStrings.phoneNumber,
                             icon: Icons.phone_outlined,
-                            controller: _phoneController,
+                            controller: controller.phoneController,
                             hint: '0000 000 0000',
                             readOnly: true,
                             suffix: Icon(
@@ -170,18 +94,18 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
                           _buildField(
                             label: AppStrings.age,
                             icon: Icons.calendar_month_outlined,
-                            controller: _ageController,
+                            controller: controller.ageController,
                             hint: 'أدخل العمر',
                             keyboardType: TextInputType.number,
                           ),
                           _fieldDivider(),
                           _buildGenderSection(),
                           _fieldDivider(),
-                          _buildCitySection(),
+                          _buildCitySection(context),
                         ],
                       ),
                       SizedBox(height: 24.h),
-                      Obx(() => _buildSaveButton()),
+                      Obx(() => _buildSaveButton(context)),
                     ],
                   ),
                 ),
@@ -335,26 +259,28 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
               ],
             ),
             SizedBox(height: 10.h),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildGenderChip(
-                    label: AppStrings.male,
-                    isSelected: selectedGender == AppStrings.male,
-                    onTap: () => setState(() => selectedGender = AppStrings.male),
+            Obx(() {
+              final selectedGender = controller.selectedGender.value;
+              return Row(
+                children: [
+                  Expanded(
+                    child: _buildGenderChip(
+                      label: AppStrings.male,
+                      isSelected: selectedGender == AppStrings.male,
+                      onTap: () => controller.setGender(AppStrings.male),
+                    ),
                   ),
-                ),
-                SizedBox(width: 10.w),
-                Expanded(
-                  child: _buildGenderChip(
-                    label: AppStrings.female,
-                    isSelected: selectedGender == AppStrings.female,
-                    onTap: () =>
-                        setState(() => selectedGender = AppStrings.female),
+                  SizedBox(width: 10.w),
+                  Expanded(
+                    child: _buildGenderChip(
+                      label: AppStrings.female,
+                      isSelected: selectedGender == AppStrings.female,
+                      onTap: () => controller.setGender(AppStrings.female),
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              );
+            }),
           ],
         ),
       ),
@@ -392,7 +318,7 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
     );
   }
 
-  Widget _buildCitySection() {
+  Widget _buildCitySection(BuildContext context) {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
       child: Directionality(
@@ -418,37 +344,40 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
             Material(
               color: Colors.transparent,
               child: InkWell(
-                onTap: _showCityPicker,
+                onTap: () => _showCityPicker(context),
                 borderRadius: BorderRadius.circular(12.r),
                 child: Padding(
                   padding: EdgeInsets.symmetric(vertical: 4.h),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          selectedCity ?? 'اختر المحافظة',
-                          style: AppFonts.lamaSans(
-                            fontSize: 15.sp,
-                            fontWeight: FontWeight.w700,
-                            color: selectedCity != null ? _navy : _grayText,
+                  child: Obx(() {
+                    final selectedCity = controller.selectedCity.value;
+                    return Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            selectedCity ?? 'اختر المحافظة',
+                            style: AppFonts.lamaSans(
+                              fontSize: 15.sp,
+                              fontWeight: FontWeight.w700,
+                              color: selectedCity != null ? _navy : _grayText,
+                            ),
                           ),
                         ),
-                      ),
-                      Container(
-                        width: 32.w,
-                        height: 32.w,
-                        decoration: BoxDecoration(
-                          color: _bg,
-                          borderRadius: BorderRadius.circular(10.r),
+                        Container(
+                          width: 32.w,
+                          height: 32.w,
+                          decoration: BoxDecoration(
+                            color: _bg,
+                            borderRadius: BorderRadius.circular(10.r),
+                          ),
+                          child: Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            color: _navy,
+                            size: 20.sp,
+                          ),
                         ),
-                        child: Icon(
-                          Icons.keyboard_arrow_down_rounded,
-                          color: _navy,
-                          size: 20.sp,
-                        ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    );
+                  }),
                 ),
               ),
             ),
@@ -458,7 +387,7 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
     );
   }
 
-  void _showCityPicker() {
+  void _showCityPicker(BuildContext context) {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -511,24 +440,27 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
                 ),
                 SizedBox(height: 16.h),
                 Flexible(
-                  child: ListView.separated(
-                    padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 20.h),
-                    shrinkWrap: true,
-                    itemCount: cities.length,
-                    separatorBuilder: (_, __) => SizedBox(height: 8.h),
-                    itemBuilder: (context, index) {
-                      final city = cities[index];
-                      final isSelected = selectedCity == city;
-                      return _buildCityOption(
-                        city: city,
-                        isSelected: isSelected,
-                        onTap: () {
-                          setState(() => selectedCity = city);
-                          Navigator.pop(sheetContext);
-                        },
-                      );
-                    },
-                  ),
+                  child: Obx(() {
+                    final selectedCity = controller.selectedCity.value;
+                    return ListView.separated(
+                      padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 20.h),
+                      shrinkWrap: true,
+                      itemCount: controller.cities.length,
+                      separatorBuilder: (_, __) => SizedBox(height: 8.h),
+                      itemBuilder: (context, index) {
+                        final city = controller.cities[index];
+                        final isSelected = selectedCity == city;
+                        return _buildCityOption(
+                          city: city,
+                          isSelected: isSelected,
+                          onTap: () {
+                            controller.setCity(city);
+                            Navigator.pop(sheetContext);
+                          },
+                        );
+                      },
+                    );
+                  }),
                 ),
               ],
             ),
@@ -623,10 +555,10 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
     );
   }
 
-  Widget _buildSaveButton() {
-    final isLoading = _patientController.isLoading.value;
+  Widget _buildSaveButton(BuildContext context) {
+    final isLoading = controller.isLoading;
     return GestureDetector(
-      onTap: isLoading ? null : _saveProfile,
+      onTap: isLoading ? null : () => _saveProfile(context),
       child: AnimatedOpacity(
         opacity: isLoading ? 0.7 : 1,
         duration: const Duration(milliseconds: 200),
@@ -662,8 +594,8 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
     );
   }
 
-  Future<void> _saveProfile() async {
-    if (_nameController.text.isEmpty) {
+  Future<void> _saveProfile(BuildContext context) async {
+    if (controller.nameController.text.isEmpty) {
       _showResultDialog(
         context,
         isSuccess: false,
@@ -673,23 +605,7 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
     }
 
     try {
-      String? genderValue;
-      if (selectedGender == AppStrings.male) {
-        genderValue = 'male';
-      } else if (selectedGender == AppStrings.female) {
-        genderValue = 'female';
-      } else {
-        genderValue = selectedGender;
-      }
-
-      final cityValue = IraqGovernorates.toEnglish(selectedCity);
-
-      await _patientController.updateMyProfile(
-        name: _nameController.text,
-        gender: genderValue,
-        age: int.tryParse(_ageController.text),
-        city: cityValue,
-      );
+      await controller.saveProfile();
 
       Get.back();
       Future.delayed(const Duration(milliseconds: 300), () {
@@ -801,66 +717,17 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
     );
   }
 
-  Future<void> _pickAndUploadImage() async {
-    try {
-      final XFile? image = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
-      );
-      if (image == null) return;
-
-      final croppedFile = await ImageCropper().cropImage(
-        sourcePath: image.path,
-        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
-        compressQuality: 80,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        uiSettings: [
-          AndroidUiSettings(
-            toolbarTitle: 'تعديل الصورة',
-            toolbarColor: AppColors.primary,
-            toolbarWidgetColor: Colors.white,
-            initAspectRatio: CropAspectRatioPreset.square,
-            lockAspectRatio: true,
-          ),
-          IOSUiSettings(
-            title: 'تعديل الصورة',
-            aspectRatioLockEnabled: true,
-            resetAspectRatioEnabled: false,
-          ),
-        ],
-      );
-      if (croppedFile == null) return;
-
-      setState(() => _isUploadingImage = true);
-
-      await _authService.uploadProfileImage(File(croppedFile.path));
-      await _authController.checkLoggedInUser();
-
-      if (mounted) {
-        setState(() {
-          _imageTimestamp = DateTime.now().millisecondsSinceEpoch;
-        });
-        Get.snackbar('نجح', 'تم تحديث الصورة بنجاح');
-      }
-    } catch (e) {
-      if (mounted) {
-        Get.snackbar('خطأ', 'فشل تحديث الصورة');
-      }
-    } finally {
-      if (mounted) setState(() => _isUploadingImage = false);
-    }
-  }
-
   Widget _buildProfileImage() {
-    final user = _authController.currentUser.value;
+    final user = controller.authController.currentUser.value;
     final imageUrl = user?.imageUrl;
     final validImageUrl = ImageUtils.convertToValidUrl(imageUrl);
     final hasImage =
         validImageUrl != null && ImageUtils.isValidImageUrl(validImageUrl);
+    final isUploadingImage = controller.isUploadingImage.value;
 
     Widget avatar;
     if (hasImage) {
-      final url = '$validImageUrl?t=$_imageTimestamp';
+      final url = '$validImageUrl?t=${controller.imageTimestamp.value}';
       avatar = CircleAvatar(
         radius: 52.r,
         backgroundColor: const Color(0xFFE8ECF0),
@@ -893,18 +760,18 @@ class _EditPatientProfileScreenState extends State<EditPatientProfileScreen> {
       alignment: Alignment.center,
       children: [
         avatar,
-        if (_isUploadingImage)
+        if (isUploadingImage)
           SizedBox(
             width: 104.w,
             height: 104.w,
             child: const CircularProgressIndicator(strokeWidth: 2),
           ),
-        if (!_isUploadingImage)
+        if (!isUploadingImage)
           Positioned(
             bottom: 0,
             right: 0,
             child: GestureDetector(
-              onTap: _pickAndUploadImage,
+              onTap: controller.pickAndUploadImage,
               child: Container(
                 width: 34.w,
                 height: 34.w,

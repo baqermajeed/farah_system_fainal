@@ -5,9 +5,7 @@ import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
-import 'package:farah_sys_final/controllers/auth_controller.dart';
-import 'package:farah_sys_final/controllers/implant_stage_controller.dart';
-import 'package:farah_sys_final/controllers/patient_controller.dart';
+import 'package:farah_sys_final/controllers/dental_implant_timeline_controller.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
 import 'package:farah_sys_final/core/widgets/loading_widget.dart';
 import 'package:farah_sys_final/models/implant_stage_model.dart';
@@ -27,16 +25,10 @@ class _TimelineAssets {
   ];
 }
 
-class DentalImplantTimelineScreen extends StatefulWidget {
+class DentalImplantTimelineScreen
+    extends GetView<DentalImplantTimelineController> {
   const DentalImplantTimelineScreen({super.key});
 
-  @override
-  State<DentalImplantTimelineScreen> createState() =>
-      _DentalImplantTimelineScreenState();
-}
-
-class _DentalImplantTimelineScreenState
-    extends State<DentalImplantTimelineScreen> {
   static const Color _navy = Color(0xFF1A2B5A);
   static const Color _subtitleBlue = Color(0xFF8A94A6);
   static const Color _mutedBlue = Color(0xFF8A94A6);
@@ -48,116 +40,9 @@ class _DentalImplantTimelineScreenState
   static const Color _divider = Color(0xFFF0F4F8);
   static const Color _calendarBg = Color(0xFF6B7CFF);
 
-  /// أسماء المراحل كما هي مخزّنة في الـ API
-  static const List<String> _allStageNames = [
-    'مرحلة زراعة الاسنان',
-    'مرحلة رفع خيط العملية',
-    'متابعة حالة المريض',
-    'المتابعة الثانية لحالة المريض',
-    'التقاط طبعة الاسنان',
-    'التركيب التجريبي الاول',
-    'التركيب التجريبي الثاني',
-    'التركيب النهائي الاخير',
-  ];
-
-  /// أسماء العرض المطابقة للتصميم
-  static const List<String> _displayStageNames = [
-    'مرحلة زراعة الاسنان',
-    'مرحلة رفع خيط العملية',
-    'متابعة حالة المريض',
-    'المتابعة الثانية لحالة المريض',
-    'التقاط طبعة الاسنان',
-    'التركيب التجريبي الاول',
-    'التركيب التجريبي الثاني',
-    'التركيب النهائي الدائم',
-  ];
-
-  static const List<String> _completedDescriptions = [
-    'تمت زراعة الغرسة بنجاح',
-    'تم رفع خيط العملية بنجاح',
-    'تمت المتابعة والتقييم',
-    'تمت المتابعة الثانية بنجاح',
-    'تم التقاط الطبعة بنجاح',
-    'تم التركيب التجريبي الاول بنجاح',
-    'تم التركيب التجريبي الثاني بنجاح',
-    'تم التركيب النهائي بنجاح',
-  ];
-
-  late final ImplantStageController _implantStageController;
-  late final PatientController _patientController;
-  late final AuthController _authController;
-
-  @override
-  void initState() {
-    super.initState();
-    _implantStageController = Get.put(ImplantStageController());
-    _patientController = Get.find<PatientController>();
-    _authController = Get.find<AuthController>();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
-  }
-
-  Future<void> _loadData() async {
-    final patientId = _authController.patientProfileId.value;
-    if (patientId == null || patientId.isEmpty) return;
-
-    await Future.wait([
-      _patientController.loadMyDoctor(),
-      _implantStageController.loadStages(patientId),
-    ]);
-  }
-
-  String _doctorSubtitle() {
-    final name = _patientController.myDoctor.value?['name']?.toString();
-    if (name != null && name.isNotEmpty) {
-      return 'مع د. $name';
-    }
-    return 'متابعة مراحل زراعة أسنانك';
-  }
-
-  int? _lastCompletedIndex(List<ImplantStageModel> patientStages) {
-    int? lastCompletedIndex;
-    for (int i = patientStages.length - 1; i >= 0; i--) {
-      if (!patientStages[i].isCompleted) continue;
-      final indexInAll = _allStageNames.indexOf(patientStages[i].stageName);
-      if (indexInAll != -1) {
-        lastCompletedIndex = indexInAll;
-        break;
-      }
-    }
-    return lastCompletedIndex;
-  }
-
-  ImplantStageModel _stageForName(
-    String stageName,
-    List<ImplantStageModel> patientStages,
-    String patientId,
-  ) {
-    return patientStages.firstWhere(
-      (s) => s.stageName == stageName,
-      orElse: () => ImplantStageModel(
-        id: '',
-        patientId: patientId,
-        stageName: stageName,
-        scheduledAt: DateTime.now(),
-        isCompleted: false,
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-      ),
-    );
-  }
-
-  DateTime? _treatmentStartDate(List<ImplantStageModel> patientStages) {
-    if (patientStages.isEmpty) return null;
-    final firstName = _allStageNames.first;
-    final first = patientStages.where((s) => s.stageName == firstName);
-    if (first.isNotEmpty) return first.first.scheduledAt;
-    return patientStages.first.scheduledAt;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final patientId = _authController.patientProfileId.value ?? '';
+    final patientId = controller.patientId;
 
     final baseTheme = Theme.of(context);
     final theme = baseTheme.copyWith(
@@ -185,15 +70,17 @@ class _DentalImplantTimelineScreenState
           ),
           child: SafeArea(
             child: Obx(() {
-              if (_implantStageController.isLoading.value &&
-                  _implantStageController.stages.isEmpty) {
+              final implantStageController = controller.implantStageController;
+              if (implantStageController.isLoading.value &&
+                  implantStageController.stages.isEmpty) {
                 return const LoadingWidget(message: 'جاري تحميل المراحل...');
               }
 
               final patientStages =
-                  _implantStageController.stagesForPatient(patientId);
-              final lastCompletedIndex = _lastCompletedIndex(patientStages);
-              final startDate = _treatmentStartDate(patientStages);
+                  implantStageController.stagesForPatient(patientId);
+              final lastCompletedIndex =
+                  controller.lastCompletedIndex(patientStages);
+              final startDate = controller.treatmentStartDate(patientStages);
 
               return SingleChildScrollView(
                 padding: EdgeInsets.only(bottom: 20.h),
@@ -265,7 +152,7 @@ class _DentalImplantTimelineScreenState
                         SizedBox(height: 6.h),
                         Obx(
                           () => Text(
-                            _doctorSubtitle(),
+                            controller.doctorSubtitle(),
                             style: AppFonts.lamaSans(
                               fontSize: 14.sp,
                               fontWeight: FontWeight.w500,
@@ -400,42 +287,55 @@ class _DentalImplantTimelineScreenState
         ],
       ),
       child: Column(
-        children: List.generate(_allStageNames.length, (index) {
-          final stageName = _allStageNames[index];
-          final stage = _stageForName(stageName, patientStages, patientId);
-          final isLast = index == _allStageNames.length - 1;
-          final isFirst = index == 0;
-          final stageExists = stage.id.isNotEmpty;
+        children: List.generate(
+          DentalImplantTimelineController.allStageNames.length,
+          (index) {
+            final stageName =
+                DentalImplantTimelineController.allStageNames[index];
+            final stage = controller.stageForName(
+              stageName,
+              patientStages,
+              patientId,
+            );
+            final isLast = index ==
+                DentalImplantTimelineController.allStageNames.length - 1;
+            final isFirst = index == 0;
+            final stageExists = stage.id.isNotEmpty;
 
-          final isNextToLastCompleted =
-              lastCompletedIndex != null && index == lastCompletedIndex + 1;
+            final isNextToLastCompleted =
+                lastCompletedIndex != null && index == lastCompletedIndex + 1;
 
-          final showAppointmentInfo = stage.isCompleted ||
-              isNextToLastCompleted ||
-              (isFirst && stageExists);
+            final showAppointmentInfo = stage.isCompleted ||
+                isNextToLastCompleted ||
+                (isFirst && stageExists);
 
-          final isCurrent = !stage.isCompleted &&
-              (isNextToLastCompleted ||
-                  (lastCompletedIndex == null && index == 0));
+            final isCurrent = !stage.isCompleted &&
+                (isNextToLastCompleted ||
+                    (lastCompletedIndex == null && index == 0));
 
-          final nextCompleted = index < _allStageNames.length - 1 &&
-              _stageForName(
-                _allStageNames[index + 1],
-                patientStages,
-                patientId,
-              ).isCompleted;
+            final nextCompleted = index <
+                    DentalImplantTimelineController.allStageNames.length - 1 &&
+                controller
+                    .stageForName(
+                      DentalImplantTimelineController.allStageNames[
+                          index + 1],
+                      patientStages,
+                      patientId,
+                    )
+                    .isCompleted;
 
-          final lineCompleted = stage.isCompleted || nextCompleted;
+            final lineCompleted = stage.isCompleted || nextCompleted;
 
-          return _buildTimelineRow(
-            index: index,
-            stage: stage,
-            isLast: isLast,
-            isCurrent: isCurrent,
-            lineCompleted: lineCompleted,
-            showAppointmentInfo: showAppointmentInfo,
-          );
-        }),
+            return _buildTimelineRow(
+              index: index,
+              stage: stage,
+              isLast: isLast,
+              isCurrent: isCurrent,
+              lineCompleted: lineCompleted,
+              showAppointmentInfo: showAppointmentInfo,
+            );
+          },
+        ),
       ),
     );
   }
@@ -601,7 +501,7 @@ class _DentalImplantTimelineScreenState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _displayStageNames[index],
+                  DentalImplantTimelineController.displayStageNames[index],
                   style: AppFonts.lamaSans(
                     fontSize: 14.5.sp,
                     fontWeight: FontWeight.w800,
@@ -658,7 +558,7 @@ class _DentalImplantTimelineScreenState
     required bool stageExists,
   }) {
     if (isCompleted) {
-      return _completedDescriptions[index];
+      return DentalImplantTimelineController.completedDescriptions[index];
     }
     if (isCurrent || (showAppointmentInfo && stageExists)) {
       return 'الموعد القادم';

@@ -6,26 +6,11 @@ import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
 import 'package:farah_sys_final/core/widgets/custom_text_field.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
-import 'package:farah_sys_final/controllers/auth_controller.dart';
+import 'package:farah_sys_final/controllers/doctor_login_controller.dart';
 
-class DoctorLoginScreen extends StatefulWidget {
+/// شاشة تسجيل دخول الطبيب — GetView؛ المنطق في DoctorLoginController.
+class DoctorLoginScreen extends GetView<DoctorLoginController> {
   const DoctorLoginScreen({super.key});
-
-  @override
-  State<DoctorLoginScreen> createState() => _DoctorLoginScreenState();
-}
-
-class _DoctorLoginScreenState extends State<DoctorLoginScreen> {
-  final AuthController _authController = Get.find<AuthController>();
-  final TextEditingController _usernameController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
-
-  @override
-  void dispose() {
-    _usernameController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +19,6 @@ class _DoctorLoginScreenState extends State<DoctorLoginScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-            // Main content with padding
             SingleChildScrollView(
               child: Padding(
                 padding: EdgeInsets.symmetric(horizontal: 24.w),
@@ -42,14 +26,12 @@ class _DoctorLoginScreenState extends State<DoctorLoginScreen> {
                   children: [
                     SizedBox(height: 56.h),
                     SizedBox(height: 12.h),
-                    // Logo with background tooth icon
                     SizedBox(
                       height: 250.h,
                       child: Stack(
                         alignment: Alignment.center,
                         clipBehavior: Clip.none,
                         children: [
-                          // Large faint tooth icon in background
                           Positioned(
                             child: Opacity(
                               opacity: 0.85,
@@ -61,7 +43,6 @@ class _DoctorLoginScreenState extends State<DoctorLoginScreen> {
                               ),
                             ),
                           ),
-                          // Main logo
                           Image.asset(
                             'assets/images/logo.png',
                             width: 140.w,
@@ -89,7 +70,6 @@ class _DoctorLoginScreenState extends State<DoctorLoginScreen> {
                       ),
                     ),
                     SizedBox(height: 16.h),
-                    // Login title
                     Text(
                       AppStrings.login,
                       style: TextStyle(
@@ -100,26 +80,23 @@ class _DoctorLoginScreenState extends State<DoctorLoginScreen> {
                       ),
                     ),
                     SizedBox(height: 24.h),
-                    // Username field
                     CustomTextField(
                       labelText: AppStrings.doctorName,
-                      controller: _usernameController,
+                      controller: controller.usernameController,
                     ),
                     SizedBox(height: 16.h),
-                    // Password field
                     CustomTextField(
                       labelText: AppStrings.password,
-                      controller: _passwordController,
+                      controller: controller.passwordController,
                       obscureText: true,
                     ),
                     SizedBox(height: 24.h),
-                    // Login button (without icon)
                     Obx(
                       () => Container(
                         width: double.infinity,
                         height: 50.h,
                         decoration: BoxDecoration(
-                          color: _authController.isLoading.value
+                          color: controller.auth.isLoading.value
                               ? AppColors.textHint
                               : AppColors.secondary,
                           borderRadius: BorderRadius.circular(16.r),
@@ -127,27 +104,12 @@ class _DoctorLoginScreenState extends State<DoctorLoginScreen> {
                         child: Material(
                           color: Colors.transparent,
                           child: InkWell(
-                            onTap: _authController.isLoading.value
+                            onTap: controller.auth.isLoading.value
                                 ? null
-                                : () async {
-                                    if (_usernameController.text.isEmpty ||
-                                        _passwordController.text.isEmpty) {
-                                      Get.snackbar(
-                                        'خطأ',
-                                        'يرجى إدخال اسم المستخدم وكلمة المرور',
-                                        snackPosition: SnackPosition.TOP,
-                                      );
-                                      return;
-                                    }
-
-                                    await _authController.loginDoctor(
-                                      username: _usernameController.text.trim(),
-                                      password: _passwordController.text,
-                                    );
-                                  },
+                                : controller.submit,
                             borderRadius: BorderRadius.circular(16.r),
                             child: Center(
-                              child: _authController.isLoading.value
+                              child: controller.auth.isLoading.value
                                   ? SizedBox(
                                       width: 20.w,
                                       height: 20.h,
@@ -155,8 +117,8 @@ class _DoctorLoginScreenState extends State<DoctorLoginScreen> {
                                         strokeWidth: 2,
                                         valueColor:
                                             AlwaysStoppedAnimation<Color>(
-                                              AppColors.white,
-                                            ),
+                                          AppColors.white,
+                                        ),
                                       ),
                                     )
                                   : Text(
@@ -177,8 +139,7 @@ class _DoctorLoginScreenState extends State<DoctorLoginScreen> {
                 ),
               ),
             ),
-            // Back button positioned at top left without padding
-            Positioned(top: 16.h, left: 16, child: BackButtonWidget()),
+            Positioned(top: 16.h, left: 16, child: const BackButtonWidget()),
           ],
         ),
       ),

@@ -4,19 +4,13 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
-import 'package:farah_sys_final/core/routes/app_routes.dart';
+import 'package:farah_sys_final/controllers/user_selection_controller.dart';
 
-class UserSelectionScreen extends StatefulWidget {
+/// شاشة اختيار نوع المستخدم — GetView؛ المنطق في UserSelectionController.
+class UserSelectionScreen extends GetView<UserSelectionController> {
   const UserSelectionScreen({super.key});
 
-  @override
-  State<UserSelectionScreen> createState() => _UserSelectionScreenState();
-}
-
-class _UserSelectionScreenState extends State<UserSelectionScreen> {
   static const Color _actionNavy = Color(0xFF032252);
-
-  String? selectedUserType;
 
   @override
   Widget build(BuildContext context) {
@@ -91,40 +85,39 @@ class _UserSelectionScreenState extends State<UserSelectionScreen> {
                     SizedBox(height: 32.h),
                     // Patient button
                     Center(
-                      child: _buildUserTypeButton(
-                        label: AppStrings.patient,
-                        isSelected: selectedUserType == 'patient',
-                        onTap: () {
-                          setState(() {
-                            selectedUserType = 'patient';
-                          });
-                        },
+                      child: Obx(
+                        () => _buildUserTypeButton(
+                          label: AppStrings.patient,
+                          isSelected:
+                              controller.selectedUserType.value == 'patient',
+                          onTap: () => controller.selectUserType('patient'),
+                        ),
                       ),
                     ),
                     SizedBox(height: 16.h),
                     // Doctor button
                     Center(
-                      child: _buildUserTypeButton(
-                        label: AppStrings.doctor,
-                        isSelected: selectedUserType == 'doctor',
-                        onTap: () {
-                          setState(() {
-                            selectedUserType = 'doctor';
-                          });
-                        },
+                      child: Obx(
+                        () => _buildUserTypeButton(
+                          label: AppStrings.doctor,
+                          isSelected:
+                              controller.selectedUserType.value == 'doctor',
+                          onTap: () => controller.selectUserType('doctor'),
+                        ),
                       ),
                     ),
                     SizedBox(height: 16.h),
                     // Receptionist button
                     Center(
-                      child: _buildUserTypeButton(
-                        label: 'موظف',
-                        isSelected: selectedUserType == 'receptionist',
-                        onTap: () {
-                          setState(() {
-                            selectedUserType = 'receptionist';
-                          });
-                        },
+                      child: Obx(
+                        () => _buildUserTypeButton(
+                          label: 'موظف',
+                          isSelected:
+                              controller.selectedUserType.value ==
+                              'receptionist',
+                          onTap: () =>
+                              controller.selectUserType('receptionist'),
+                        ),
                       ),
                     ),
                   ],
@@ -133,60 +126,56 @@ class _UserSelectionScreenState extends State<UserSelectionScreen> {
               // Next button
               Padding(
                 padding: EdgeInsets.only(bottom: 32.h),
-                child: GestureDetector(
-                  onTap: selectedUserType == null
-                      ? null
-                      : () {
-                          if (selectedUserType == 'patient') {
-                            Get.toNamed(AppRoutes.patientLogin);
-                          } else if (selectedUserType == 'doctor') {
-                            Get.toNamed(AppRoutes.doctorLogin);
-                          } else if (selectedUserType == 'receptionist') {
-                            Get.toNamed(AppRoutes.receptionLogin);
-                          }
-                        },
-                  child: Opacity(
-                    opacity: selectedUserType == null ? 0.5 : 1.0,
-                    child: Container(
-                      width: double.infinity,
-                      height: 56.h,
-                      decoration: BoxDecoration(
-                        color: _actionNavy,
-                        borderRadius: BorderRadius.circular(16.r),
-                      ),
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          // Centered text
-                          Text(
-                            AppStrings.next,
-                            style: TextStyle(
-                              fontFamily: AppFonts.family,
-                              fontSize: 18.sp,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.white,
-                            ),
-                          ),
-                          // Arrow icon on the left
-                          Positioned(
-                            left: 8.w,
-                            child: Container(
-                              width: 40.w,
-                              height: 40.h,
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(8.r),
+                child: Obx(
+                  () => GestureDetector(
+                    onTap: controller.selectedUserType.value == null
+                        ? null
+                        : controller.navigateNext,
+                    child: Opacity(
+                      opacity: controller.selectedUserType.value == null
+                          ? 0.5
+                          : 1.0,
+                      child: Container(
+                        width: double.infinity,
+                        height: 56.h,
+                        decoration: BoxDecoration(
+                          color: _actionNavy,
+                          borderRadius: BorderRadius.circular(16.r),
+                        ),
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            // Centered text
+                            Text(
+                              AppStrings.next,
+                              style: TextStyle(
+                                fontFamily: AppFonts.family,
+                                fontSize: 18.sp,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.white,
                               ),
-                              child: Center(
-                                child: Icon(
-                                  Icons.arrow_forward,
-                                  color: _actionNavy,
-                                  size: 20.sp,
+                            ),
+                            // Arrow icon on the left
+                            Positioned(
+                              left: 8.w,
+                              child: Container(
+                                width: 40.w,
+                                height: 40.h,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(8.r),
+                                ),
+                                child: Center(
+                                  child: Icon(
+                                    Icons.arrow_forward,
+                                    color: _actionNavy,
+                                    size: 20.sp,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),

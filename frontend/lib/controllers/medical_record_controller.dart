@@ -52,17 +52,9 @@ class MedicalRecordController extends GetxController {
         print('❌ [MedicalRecordController] Error updating cache: $e');
       }
     } on ApiException catch (e) {
-      if (NetworkUtils.isNetworkError(e)) {
-        NetworkUtils.showNetworkErrorDialog();
-      } else {
-        Get.snackbar('خطأ', e.message);
-      }
+      await NetworkUtils.showError(e);
     } catch (e) {
-      if (NetworkUtils.isNetworkError(e)) {
-        NetworkUtils.showNetworkErrorDialog();
-      } else {
-        Get.snackbar('خطأ', 'حدث خطأ أثناء تحميل السجلات');
-      }
+      await NetworkUtils.showError(e, fallbackMessage: 'حدث خطأ أثناء تحميل السجلات');
     } finally {
       isLoading.value = false;
     }
@@ -113,22 +105,14 @@ class MedicalRecordController extends GetxController {
         records.removeWhere((r) => r.id == tempRecord!.id);
       }
 
-      if (NetworkUtils.isNetworkError(e)) {
-        NetworkUtils.showNetworkErrorDialog();
-      } else {
-        Get.snackbar('خطأ', e.message);
-      }
+      await NetworkUtils.showError(e);
       rethrow;
     } catch (e) {
       if (tempRecord != null) {
         records.removeWhere((r) => r.id == tempRecord!.id);
       }
 
-      if (NetworkUtils.isNetworkError(e)) {
-        NetworkUtils.showNetworkErrorDialog();
-      } else {
-        Get.snackbar('خطأ', 'حدث خطأ أثناء إضافة السجل');
-      }
+      await NetworkUtils.showError(e, fallbackMessage: 'حدث خطأ أثناء إضافة السجل');
       rethrow;
     } finally {
       // لا نستخدم isLoading هنا حتى لا نظهر تحميل عام على كامل الشاشة
@@ -157,18 +141,10 @@ class MedicalRecordController extends GetxController {
       }
       Get.snackbar('نجح', 'تم تحديث السجل بنجاح');
     } on ApiException catch (e) {
-      if (NetworkUtils.isNetworkError(e)) {
-        NetworkUtils.showNetworkErrorDialog();
-      } else {
-        Get.snackbar('خطأ', e.message);
-      }
+      await NetworkUtils.showError(e);
       rethrow;
     } catch (e) {
-      if (NetworkUtils.isNetworkError(e)) {
-        NetworkUtils.showNetworkErrorDialog();
-      } else {
-        Get.snackbar('خطأ', 'حدث خطأ أثناء تحديث السجل');
-      }
+      await NetworkUtils.showError(e, fallbackMessage: 'حدث خطأ أثناء تحديث السجل');
       rethrow;
     } finally {
       isLoading.value = false;
@@ -190,18 +166,10 @@ class MedicalRecordController extends GetxController {
       records.removeWhere((r) => r.id == recordId);
       Get.snackbar('نجح', 'تم حذف السجل بنجاح');
     } on ApiException catch (e) {
-      if (NetworkUtils.isNetworkError(e)) {
-        NetworkUtils.showNetworkErrorDialog();
-      } else {
-        Get.snackbar('خطأ', e.message);
-      }
+      await NetworkUtils.showError(e);
       rethrow;
     } catch (e) {
-      if (NetworkUtils.isNetworkError(e)) {
-        NetworkUtils.showNetworkErrorDialog();
-      } else {
-        Get.snackbar('خطأ', 'حدث خطأ أثناء حذف السجل');
-      }
+      await NetworkUtils.showError(e, fallbackMessage: 'حدث خطأ أثناء حذف السجل');
       rethrow;
     } finally {
       isLoading.value = false;

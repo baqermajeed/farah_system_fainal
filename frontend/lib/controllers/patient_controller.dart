@@ -144,18 +144,10 @@ class PatientController extends GetxController {
       }
     } on ApiException catch (e) {
       print('❌ [PatientController] ApiException: ${e.message}');
-      if (NetworkUtils.isNetworkError(e)) {
-        await NetworkUtils.showNetworkErrorDialog();
-      } else {
-        Get.snackbar('خطأ', e.message);
-      }
+      await NetworkUtils.showError(e);
     } catch (e) {
       print('❌ [PatientController] Error: $e');
-      if (NetworkUtils.isNetworkError(e)) {
-        await NetworkUtils.showNetworkErrorDialog();
-      } else {
-        Get.snackbar('خطأ', 'حدث خطأ أثناء تحميل المرضى');
-      }
+      await NetworkUtils.showError(e, fallbackMessage: 'حدث خطأ أثناء تحميل المرضى');
     } finally {
       isLoading.value = false;
     }
@@ -173,18 +165,17 @@ class PatientController extends GetxController {
     } on ApiException catch (e) {
       print('❌ [PatientController] Error loading profile: ${e.message}');
       if (showError) {
-        // تأجيل عرض snackbar حتى بعد اكتمال البناء
-        Future.microtask(() {
-          Get.snackbar('خطأ', e.message);
-        });
+        Future.microtask(() => NetworkUtils.showError(e));
       }
     } catch (e) {
       print('❌ [PatientController] Error loading profile: $e');
       if (showError) {
-        // تأجيل عرض snackbar حتى بعد اكتمال البناء
-        Future.microtask(() {
-          Get.snackbar('خطأ', 'حدث خطأ أثناء تحميل البيانات');
-        });
+        Future.microtask(
+          () => NetworkUtils.showError(
+            e,
+            fallbackMessage: 'حدث خطأ أثناء تحميل البيانات',
+          ),
+        );
       }
     } finally {
       isLoading.value = false;
@@ -286,11 +277,7 @@ class PatientController extends GetxController {
         } catch (_) {}
       }
 
-      if (NetworkUtils.isNetworkError(e)) {
-        await NetworkUtils.showNetworkErrorDialog();
-      } else {
-        Get.snackbar('خطأ', e.message);
-      }
+      await NetworkUtils.showError(e);
     } catch (e) {
       // تراجع (Rollback)
       if (oldPatient != null) {
@@ -311,11 +298,7 @@ class PatientController extends GetxController {
         } catch (_) {}
       }
 
-      if (NetworkUtils.isNetworkError(e)) {
-        await NetworkUtils.showNetworkErrorDialog();
-      } else {
-        Get.snackbar('خطأ', 'حدث خطأ أثناء تحديث نوع العلاج');
-      }
+      await NetworkUtils.showError(e, fallbackMessage: 'حدث خطأ أثناء تحديث نوع العلاج');
     } finally {
       isLoading.value = false;
     }

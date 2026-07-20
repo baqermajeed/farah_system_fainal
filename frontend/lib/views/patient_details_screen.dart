@@ -15,18 +15,11 @@ import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
 import 'package:farah_sys_final/core/utils/network_utils.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
-import 'package:farah_sys_final/controllers/patient_controller.dart';
-import 'package:farah_sys_final/controllers/appointment_controller.dart';
-import 'package:farah_sys_final/controllers/gallery_controller.dart';
 import 'package:farah_sys_final/controllers/working_hours_controller.dart';
-import 'package:farah_sys_final/controllers/medical_record_controller.dart';
-import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/controllers/implant_stage_controller.dart';
+import 'package:farah_sys_final/controllers/patient_details_controller.dart';
 import 'package:farah_sys_final/models/implant_stage_model.dart';
 import 'package:farah_sys_final/models/medical_record_model.dart';
-import 'package:farah_sys_final/services/working_hours_service.dart';
-import 'package:farah_sys_final/services/patient_service.dart';
-import 'package:farah_sys_final/services/chat_service.dart';
 import 'package:farah_sys_final/models/appointment_model.dart';
 import 'package:farah_sys_final/models/doctor_model.dart';
 import 'package:farah_sys_final/models/patient_model.dart';
@@ -42,13 +35,6 @@ const List<BoxShadow> kPatientFileShadow = [
     offset: Offset(0, 6),
   ),
 ];
-
-class PatientDetailsScreen extends StatefulWidget {
-  const PatientDetailsScreen({super.key});
-
-  @override
-  State<PatientDetailsScreen> createState() => _PatientDetailsScreenState();
-}
 
 // Delegate for sticky TabBar
 class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
@@ -77,113 +63,8 @@ class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
   }
 }
 
-class _PatientDetailsScreenState extends State<PatientDetailsScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-
-  final PatientController _patientController = Get.find<PatientController>();
-  final AppointmentController _appointmentController =
-      Get.find<AppointmentController>();
-  final AuthController _authController = Get.find<AuthController>();
-  final PatientService _patientService = PatientService();
-  final ChatService _chatService = ChatService();
-  late final GalleryController _galleryController;
-  late final MedicalRecordController _medicalRecordController;
-  final WorkingHoursService _workingHoursService = WorkingHoursService();
-  final ImagePicker _imagePicker = ImagePicker();
-  String? patientId;
-  AppointmentModel? _selectedAppointmentArg;
-  String? _selectedAppointmentId;
-  final Map<String, GlobalKey> _appointmentItemKeys = {};
-  bool _didAutoScrollToSelected = false;
-  bool _didAutoScrollToSelectedImplantStage = false;
-  final Map<String, GlobalKey> _implantStageItemKeys = {};
-
-  // Unread messages count
-  final RxInt _unreadCount = 0.obs;
-
-  // State for doctors
-  final RxList<DoctorModel> _patientDoctors = <DoctorModel>[].obs;
-  final RxBool _isLoadingDoctors = false.obs;
-
-  // Selection mode state
-  Set<String> selectedAppointmentIds = {};
-  bool isSelectionMode = false;
-
-  @override
-  void initState() {
-    super.initState();
-    // Get patientId (and optional selected appointment) from arguments
-    final args = Get.arguments as Map<String, dynamic>?;
-    patientId = args?['patientId'];
-    final dynamic passedAppointment = args?['appointment'];
-    if (passedAppointment is AppointmentModel) {
-      _selectedAppointmentArg = passedAppointment;
-    }
-    final dynamic passedAppointmentId = args?['appointmentId'];
-    _selectedAppointmentId =
-        _selectedAppointmentArg?.id ?? passedAppointmentId?.toString();
-
-    // If we came from an appointment tap, open the "المواعيد" tab by default.
-    _tabController = TabController(
-      length: 3,
-      vsync: this,
-      initialIndex: _selectedAppointmentId != null ? 1 : 0,
-    );
-
-    // Add listener for immediate tab change updates
-    _tabController.addListener(() {
-      setState(() {});
-    });
-
-    // Initialize GalleryController
-    _galleryController = Get.put(GalleryController());
-    // Initialize MedicalRecordController
-    _medicalRecordController = Get.put(MedicalRecordController());
-
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (patientId != null) {
-        final userType = _authController.currentUser.value?.userType;
-        final isReceptionist =
-            userType != null && userType.toLowerCase() == 'receptionist';
-
-        // For receptionist, ensure patients list is loaded so getPatientById works
-        if (isReceptionist) {
-          // Check if patient exists in the list, if not, reload patients
-          final patient = _patientController.getPatientById(patientId!);
-          if (patient == null) {
-            await _patientController.loadPatients();
-          }
-          _loadPatientDoctors(patientId!);
-        } else {
-          // Only load appointments, gallery, and records for non-receptionists (doctors)
-          _appointmentController.loadPatientAppointmentsById(patientId!);
-          // Load patient gallery
-          _galleryController.loadGallery(patientId!);
-          // Load patient records
-          _medicalRecordController.loadPatientRecords(patientId!);
-          // Load unread count
-          _loadUnreadCount();
-
-          // Load implant stages if treatment type is زراعة
-          final patient = _patientController.getPatientById(patientId!);
-          if (patient != null &&
-              patient.treatmentHistory != null &&
-              patient.treatmentHistory!.isNotEmpty &&
-              patient.treatmentHistory!.first == 'زراعة') {
-            final implantStageController = Get.put(ImplantStageController());
-            implantStageController.ensureStagesLoaded(patientId!);
-          }
-        }
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
+class PatientDetailsScreen extends GetView<PatientDetailsController> {
+  const PatientDetailsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -195,24 +76,24 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
 
     return Theme(
       data: cairoTheme,
-      child: Scaffold(
+      child: Obx(() => Scaffold(
         backgroundColor: const Color(0xFFF4FEFF),
-        floatingActionButton: _tabController.index == 1 &&
-                isSelectionMode &&
-                selectedAppointmentIds.isNotEmpty
+        floatingActionButton: controller.currentTabIndex.value == 1 &&
+                controller.isSelectionMode.value &&
+                controller.selectedAppointmentIds.isNotEmpty
             ? FloatingActionButton.extended(
                 onPressed: () => _showDeleteConfirmDialog(context),
                 backgroundColor: Colors.red,
                 icon: Icon(Icons.delete, color: AppColors.white),
                 label: Text(
-                  'حذف (${selectedAppointmentIds.length})',
+                  'حذف (${controller.selectedAppointmentIds.length})',
                   style: AppFonts.lamaSans(color: AppColors.white),
                 ),
               )
             : null,
         body: SafeArea(
           child: Obx(() {
-          final userType = _authController.currentUser.value?.userType;
+          final userType = controller.authController.currentUser.value?.userType;
           final isReceptionist =
               userType != null && userType.toLowerCase() == 'receptionist';
 
@@ -254,13 +135,10 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                 ),
                               ),
                               // Cancel selection button when in selection mode
-                              if (isSelectionMode)
+                              if (controller.isSelectionMode.value)
                                 GestureDetector(
                                   onTap: () {
-                                    setState(() {
-                                      isSelectionMode = false;
-                                      selectedAppointmentIds.clear();
-                                    });
+                                    controller.exitSelectionMode();
                                   },
                                   child: Container(
                                     padding: EdgeInsets.all(8.w),
@@ -283,20 +161,20 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
 
                                   return GestureDetector(
                                     onTap: () async {
-                                      if (patientId != null) {
+                                      if (controller.patientId != null) {
                                         await Get.toNamed(
                                           AppRoutes.chat,
-                                          arguments: {'patientId': patientId},
+                                          arguments: {'patientId': controller.patientId},
                                         );
                                         // Reload unread count when returning from chat
                                         await Future.delayed(
                                           const Duration(milliseconds: 300),
                                         );
-                                        _loadUnreadCount();
+                                        controller.loadUnreadCount();
                                       }
                                     },
                                     child: Obx(() {
-                                      final hasUnread = _unreadCount.value > 0;
+                                      final hasUnread = controller.unreadCount.value > 0;
                                       return Stack(
                                         children: [
                                           Center(
@@ -338,8 +216,8 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                       // Patient Information Card
                       SliverToBoxAdapter(
                         child: Obx(() {
-                          final patient = patientId != null
-                              ? _patientController.getPatientById(patientId!)
+                          final patient = controller.patientId != null
+                              ? controller.patientController.getPatientById(controller.patientId!)
                               : null;
 
                           if (patient == null) {
@@ -347,7 +225,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                           }
 
                           final userType =
-                              _authController.currentUser.value?.userType;
+                              controller.authController.currentUser.value?.userType;
                           final isReceptionist =
                               userType != null &&
                               userType.toLowerCase() == 'receptionist';
@@ -647,7 +525,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                 boxShadow: kPatientFileShadow,
                               ),
                               child: TabBar(
-                                controller: _tabController,
+                                controller: controller.tabController,
                                 indicator: BoxDecoration(
                                   color: const Color(0xB3649FCC), // 70% of #649FCC
                                   borderRadius: BorderRadius.circular(16.r),
@@ -682,7 +560,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                   body: isReceptionist
                       ? Container(color: const Color(0xFFF4FEFF))
                       : TabBarView(
-                          controller: _tabController,
+                          controller: controller.tabController,
                           children: [
                             _buildRecordsTab(),
                             _buildAppointmentsTab(),
@@ -696,12 +574,12 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
               Padding(
                 padding: EdgeInsets.all(24.w),
                 child: Obx(() {
-                  final patient = patientId != null
-                      ? _patientController.getPatientById(patientId!)
+                  final patient = controller.patientId != null
+                      ? controller.patientController.getPatientById(controller.patientId!)
                       : null;
 
                   final userTypeForButton =
-                      _authController.currentUser.value?.userType;
+                      controller.authController.currentUser.value?.userType;
                   final isReceptionistForButton =
                       userTypeForButton != null &&
                       userTypeForButton.toLowerCase() == 'receptionist';
@@ -725,11 +603,11 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                 'currentDoctorIds': patient.doctorIds,
                               },
                             )?.then((result) async {
-                              if (result == true && patientId != null) {
+                              if (result == true && controller.patientId != null) {
                                 // Reload patient doctors
-                                await _loadPatientDoctors(patientId!);
+                                await controller.loadPatientDoctors(controller.patientId!);
                                 // Reload patients list in PatientController to update the patient data
-                                await _patientController.loadPatients();
+                                await controller.patientController.loadPatients();
                               }
                             });
                           }
@@ -753,7 +631,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                     );
                   } else {
                     // For doctor: show dynamic button based on selected tab
-                    final tabIndex = _tabController.index;
+                    final tabIndex = controller.currentTabIndex.value;
 
                     // التحقق من نوع العلاج - إخفاء زر حجز الموعد إذا كان "زراعة"
                     final isImplantTreatment =
@@ -776,7 +654,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                       ),
                       child: ElevatedButton(
                         onPressed: () {
-                          _onButtonPressed(tabIndex);
+                          _onButtonPressed(context, tabIndex);
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.transparent,
@@ -802,13 +680,13 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
           );
           }),
         ),
-      ),
+      )),
     );
   }
 
   Widget _buildRecordsTab() {
     return Obx(() {
-      if (_medicalRecordController.isLoading.value) {
+      if (controller.medicalRecordController.isLoading.value) {
         return Container(
           color: const Color(0xFFF4FEFF),
           child: Center(
@@ -817,8 +695,8 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
         );
       }
 
-      final records = _medicalRecordController.records
-          .where((record) => record.patientId == patientId)
+      final records = controller.medicalRecordController.records
+          .where((record) => record.patientId == controller.patientId)
           .toList();
 
       if (records.isEmpty) {
@@ -1017,8 +895,8 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
   }
   Widget _buildAppointmentsTab() {
     // التحقق من نوع العلاج
-    final patient = patientId != null
-        ? _patientController.getPatientById(patientId!)
+    final patient = controller.patientId != null
+        ? controller.patientController.getPatientById(controller.patientId!)
         : null;
 
     final isImplantTreatment =
@@ -1033,8 +911,8 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
     }
 
     // في وضع العرض، نستخدم Obx فقط عند الحاجة
-    final appointments = _appointmentController.appointments
-        .where((apt) => apt.patientId == patientId)
+    final appointments = controller.appointmentController.appointments
+        .where((apt) => apt.patientId == controller.patientId)
         .toList();
 
     if (appointments.isEmpty) {
@@ -1069,8 +947,8 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
     }
 
     return Obx(() {
-      final updatedAppointments = _appointmentController.appointments
-          .where((apt) => apt.patientId == patientId)
+      final updatedAppointments = controller.appointmentController.appointments
+          .where((apt) => apt.patientId == controller.patientId)
           .toList();
 
       if (updatedAppointments.isEmpty) {
@@ -1105,8 +983,8 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
       }
 
       final now = DateTime.now();
-      final patient = patientId != null
-          ? _patientController.getPatientById(patientId!)
+      final patient = controller.patientId != null
+          ? controller.patientController.getPatientById(controller.patientId!)
           : null;
 
       // Sort appointments: upcoming first, then past
@@ -1135,9 +1013,9 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
       });
 
       // Auto-scroll to the tapped appointment card (no new UI).
-      if (!_didAutoScrollToSelected && _selectedAppointmentId != null) {
+      if (!controller.didAutoScrollToSelected && controller.selectedAppointmentId != null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          final key = _appointmentItemKeys[_selectedAppointmentId!];
+          final key = controller.appointmentItemKeys[controller.selectedAppointmentId!];
           final ctx = key?.currentContext;
           if (ctx != null) {
             Scrollable.ensureVisible(
@@ -1146,7 +1024,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
               duration: const Duration(milliseconds: 350),
               curve: Curves.easeInOut,
             );
-            _didAutoScrollToSelected = true;
+            controller.didAutoScrollToSelected = true;
           }
         });
       }
@@ -1166,7 +1044,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                 (appointment.date.isAfter(now) ||
                     appointment.date.isAfter(now.subtract(Duration(hours: 1))));
 
-            final isSelected = selectedAppointmentIds.contains(appointment.id);
+            final isSelected = controller.selectedAppointmentIds.contains(appointment.id);
 
             // تحديد حالة Checkbox بناءً على status
             final bool isCompleted = appointmentStatus == 'completed';
@@ -1213,7 +1091,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
               formattedTime = appointment.time;
             }
 
-            final itemKey = _appointmentItemKeys.putIfAbsent(
+            final itemKey = controller.appointmentItemKeys.putIfAbsent(
               appointment.id,
               () => GlobalKey(),
             );
@@ -1222,12 +1100,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
               key: itemKey,
               child: GestureDetector(
                 onLongPress: () {
-                  setState(() {
-                    isSelectionMode = true;
-                    if (!selectedAppointmentIds.contains(appointment.id)) {
-                      selectedAppointmentIds.add(appointment.id);
-                    }
-                  });
+                  controller.startSelectionWith(appointment.id);
                 },
                 child: Container(
                 margin: EdgeInsets.only(bottom: 16.h),
@@ -1236,7 +1109,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                   color: AppColors.white,
                   borderRadius: BorderRadius.circular(12.r),
                   border: Border.all(
-                    color: isSelectionMode && isSelected
+                    color: controller.isSelectionMode.value && isSelected
                         ? AppColors.primary
                         : (isCompleted
                               ? AppColors
@@ -1246,7 +1119,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                           .error // أحمر للملغي
                                     : AppColors
                                           .warning)), // برتقالي لقيد الانتظار
-                    width: isSelectionMode && isSelected
+                    width: controller.isSelectionMode.value && isSelected
                         ? 2
                         : (isPending || isCompleted || isCancelled ? 2 : 1),
                   ),
@@ -1258,22 +1131,11 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                       children: [
                         // Checkbox on the left - يعرض الحالة بناءً على status
                         GestureDetector(
-                          onTap: isSelectionMode
+                          onTap: controller.isSelectionMode.value
                               ? () {
-                                  setState(() {
-                                    if (isSelected) {
-                                      selectedAppointmentIds.remove(
-                                        appointment.id,
-                                      );
-                                      if (selectedAppointmentIds.isEmpty) {
-                                        isSelectionMode = false;
-                                      }
-                                    } else {
-                                      selectedAppointmentIds.add(
-                                        appointment.id,
-                                      );
-                                    }
-                                  });
+                                  controller.toggleAppointmentSelected(
+                                    appointment.id,
+                                  );
                                 }
                               : null,
                           child: Container(
@@ -1282,7 +1144,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                             margin: EdgeInsets.only(top: 2.h, left: 8.w),
                             decoration: BoxDecoration(
                               border: Border.all(
-                                color: isSelectionMode && isSelected
+                                color: controller.isSelectionMode.value && isSelected
                                     ? AppColors.primary
                                     : (isCompleted
                                           ? AppColors.primary
@@ -1292,7 +1154,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                 width: 2,
                               ),
                               borderRadius: BorderRadius.circular(4.r),
-                              color: isSelectionMode && isSelected
+                              color: controller.isSelectionMode.value && isSelected
                                   ? AppColors.primary
                                   : (isCompleted
                                         ? AppColors.primary
@@ -1300,7 +1162,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                               ? AppColors.error
                                               : Colors.transparent)),
                             ),
-                            child: isSelectionMode && isSelected
+                            child: controller.isSelectionMode.value && isSelected
                                 ? Icon(
                                     Icons.check,
                                     color: AppColors.white,
@@ -1488,10 +1350,10 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                 ),
                               ),
 
-                              if (!isSelectionMode) SizedBox(width: 8.w),
+                              if (!controller.isSelectionMode.value) SizedBox(width: 8.w),
 
                               // زر تغيير الحالة (للطبيب فقط) - بجانب الكونتينر
-                              if (!isSelectionMode)
+                              if (!controller.isSelectionMode.value)
                                 Padding(
                                   padding: EdgeInsets.only(top: 4.h),
                                   child: TextButton.icon(
@@ -1499,7 +1361,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                       _showChangeStatusDialog(
                                         context,
                                         appointment,
-                                        patientId!,
+                                        controller.patientId!,
                                       );
                                     },
                                     icon: Icon(
@@ -1532,7 +1394,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                 ),
                             ],
                           ),
-                        ] else if (!isSelectionMode) ...[
+                        ] else if (!controller.isSelectionMode.value) ...[
                           // إذا لم تكن هناك ملاحظة، نعرض زر تغيير الحالة فقط
                           SizedBox(height: 12.h),
                           Align(
@@ -1542,7 +1404,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                 _showChangeStatusDialog(
                                   context,
                                   appointment,
-                                  patientId!,
+                                  controller.patientId!,
                                 );
                               },
                               icon: Icon(
@@ -1720,7 +1582,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
   void _showChangeStatusDialog(
     BuildContext context,
     AppointmentModel appointment,
-    String patientId,
+    String appointmentPatientId,
   ) {
     final statusOptions = [
       {'value': 'scheduled', 'label': 'قيد الانتظار', 'icon': Icons.schedule},
@@ -1768,14 +1630,14 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
               onTap: () async {
                 Navigator.of(context).pop();
                 try {
-                  await _appointmentController.updateAppointmentStatus(
-                    patientId,
+                  await controller.appointmentController.updateAppointmentStatus(
+                    appointmentPatientId,
                     appointment.id,
                     option['value'] as String,
                   );
                   // إعادة تحميل المواعيد
-                  await _appointmentController.loadPatientAppointmentsById(
-                    patientId,
+                  await controller.appointmentController.loadPatientAppointmentsById(
+                    appointmentPatientId,
                   );
                 } catch (e) {
                   // الخطأ معالج في Controller
@@ -1798,17 +1660,17 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
   }
 
   Widget _buildImplantStagesView() {
-    final userType = _authController.currentUser.value?.userType;
+    final userType = controller.authController.currentUser.value?.userType;
     final isDoctor = userType != null && userType.toLowerCase() == 'doctor';
 
     // الحصول على ImplantStageController (إنشاءه إذا لم يكن موجوداً)
     final implantStageController = Get.put(ImplantStageController());
 
     // تحميل المراحل إذا لم تكن محملة بعد
-    if (patientId != null &&
+    if (controller.patientId != null &&
         !implantStageController.isLoading.value) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        implantStageController.ensureStagesLoaded(patientId!);
+        implantStageController.ensureStagesLoaded(controller.patientId!);
       });
     }
 
@@ -1823,16 +1685,16 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
       }
 
       // Only consider stages for this patient (controller may hold stages for multiple patients)
-      final pid = patientId ?? '';
+      final pid = controller.patientId ?? '';
       final patientStages =
           pid.isEmpty ? <ImplantStageModel>[] : implantStageController.stagesForPatient(pid);
 
       // Auto-scroll to the tapped implant-stage "appointment" (no new UI).
-      if (!_didAutoScrollToSelectedImplantStage &&
-          _selectedAppointmentId != null &&
-          patientStages.any((s) => s.id == _selectedAppointmentId)) {
+      if (!controller.didAutoScrollToSelectedImplantStage &&
+          controller.selectedAppointmentId != null &&
+          patientStages.any((s) => s.id == controller.selectedAppointmentId)) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          final ctx = _implantStageItemKeys[_selectedAppointmentId!]?.currentContext;
+          final ctx = controller.implantStageItemKeys[controller.selectedAppointmentId!]?.currentContext;
           if (ctx != null) {
             Scrollable.ensureVisible(
               ctx,
@@ -1840,7 +1702,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
               duration: const Duration(milliseconds: 350),
               curve: Curves.easeInOut,
             );
-            _didAutoScrollToSelectedImplantStage = true;
+            controller.didAutoScrollToSelectedImplantStage = true;
           }
         });
       }
@@ -1958,7 +1820,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
               (s) => s.stageName == stageName,
               orElse: () => ImplantStageModel(
                 id: '',
-                patientId: patientId ?? '',
+                patientId: controller.patientId ?? '',
                 stageName: stageName,
                 scheduledAt: DateTime.now(),
                 isCompleted: false,
@@ -1977,7 +1839,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                 (s) => s.stageName == nextStageName,
                 orElse: () => ImplantStageModel(
                   id: '',
-                  patientId: patientId ?? '',
+                  patientId: controller.patientId ?? '',
                   stageName: nextStageName,
                   scheduledAt: DateTime.now(),
                   isCompleted: false,
@@ -1999,7 +1861,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
             // التحقق من أن المرحلة موجودة (تم إنشاؤها) - id غير فارغ
             final stageExists = existingStage.id.isNotEmpty;
 
-            final stageKey = _implantStageItemKeys.putIfAbsent(
+            final stageKey = controller.implantStageItemKeys.putIfAbsent(
               existingStage.id,
               () => GlobalKey(),
             );
@@ -2007,6 +1869,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
             return KeyedSubtree(
               key: stageKey,
               child: _buildImplantStageItem(
+                context: context,
                 stage: existingStage,
                 isLast: isLast,
                 hasNextCompleted: hasNextCompleted,
@@ -2026,6 +1889,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
   }
 
   Widget _buildImplantStageItem({
+    required BuildContext context,
     required ImplantStageModel stage,
     required bool isLast,
     required bool hasNextCompleted,
@@ -2046,7 +1910,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                 ? () {
                     _showEditImplantStageDateDialog(
                       context,
-                      patientId!,
+                      controller.patientId!,
                       stage.stageName,
                       stage.scheduledAt,
                     );
@@ -2117,13 +1981,13 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                       if (stage.isCompleted) {
                         // إلغاء الإكمال
                         success = await implantStageController.uncompleteStage(
-                          patientId!,
+                          controller.patientId!,
                           stage.stageName,
                         );
                       } else {
                         // إكمال المرحلة
                         success = await implantStageController.completeStage(
-                          patientId!,
+                          controller.patientId!,
                           stage.stageName,
                         );
                       }
@@ -2136,18 +2000,8 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                             ? implantStageController.errorMessage.value
                             : 'فشل تحديث حالة المرحلة';
                         
-                        // إذا لم يكن الخطأ متعلق بالشبكة، نعرض Snackbar
-                        // (إذا كان متعلق بالشبكة، Controller يعرض الدايلوج بالفعل)
-                        if (!NetworkUtils.isNetworkError(errorMsg)) {
-                          Get.snackbar(
-                            'خطأ',
-                            errorMsg,
-                            snackPosition: SnackPosition.BOTTOM,
-                            backgroundColor: AppColors.error,
-                            colorText: AppColors.white,
-                            duration: Duration(seconds: 4),
-                          );
-                        }
+                        // Network/server-connection wording → internet dialog only.
+                        await NetworkUtils.showError(errorMsg);
                       }
                     }
                   : null,
@@ -2183,7 +2037,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
 
   Widget _buildGalleryTab() {
     return Obx(() {
-      if (_galleryController.isLoading.value) {
+      if (controller.galleryController.isLoading.value) {
         return Container(
           color: AppColors.white,
           padding: EdgeInsets.all(16.w),
@@ -2208,7 +2062,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
         );
       }
 
-      if (_galleryController.galleryImages.isEmpty) {
+      if (controller.galleryController.galleryImages.isEmpty) {
         return Container(
           color: const Color(0xFFF4FEFF),
           child: Center(
@@ -2250,9 +2104,9 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
             mainAxisSpacing: 8.h,
             childAspectRatio: 1.0,
           ),
-          itemCount: _galleryController.galleryImages.length,
+          itemCount: controller.galleryController.galleryImages.length,
           itemBuilder: (context, index) {
-            final image = _galleryController.galleryImages[index];
+            final image = controller.galleryController.galleryImages[index];
             return GestureDetector(
               onTap: () {
                 _showImageDetailsDialog(context, image);
@@ -2324,20 +2178,20 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
     }
   }
 
-  void _onButtonPressed(int tabIndex) {
+  void _onButtonPressed(BuildContext context, int tabIndex) {
     switch (tabIndex) {
       case 0: // السجلات (Records)
-        if (patientId != null) {
+        if (controller.patientId != null) {
           _showAddRecordDialog(context);
         }
         break;
       case 1: // المواعيد (Appointments)
-        if (patientId != null) {
+        if (controller.patientId != null) {
           _showBookAppointmentDialog(context);
         }
         break;
       case 2: // المعرض (Gallery)
-        if (patientId != null) {
+        if (controller.patientId != null) {
           _showAddImageDialog(context);
         }
         break;
@@ -2375,8 +2229,8 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
     final TextEditingController notesController = TextEditingController();
 
     // Get patient and doctor ID
-    final patient = patientId != null
-        ? _patientController.getPatientById(patientId!)
+    final patient = controller.patientId != null
+        ? controller.patientController.getPatientById(controller.patientId!)
         : null;
     final doctorIds = patient?.doctorIds ?? [];
     final doctorId = doctorIds.isNotEmpty ? doctorIds.first : null;
@@ -2433,19 +2287,19 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                               final dateStr =
                                   '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
                               final userType =
-                                  (_authController.currentUser.value?.userType ??
+                                  (controller.authController.currentUser.value?.userType ??
                                           '')
                                       .toLowerCase();
                               final isReceptionOrAdmin =
                                   userType == 'receptionist' ||
                                       userType == 'admin';
                               final slots = isReceptionOrAdmin
-                                  ? await _workingHoursService
+                                  ? await controller.workingHoursService
                                       .getAvailableSlotsForReception(
                                         doctorId,
                                         dateStr,
                                       )
-                                  : await _workingHoursService.getAvailableSlots(
+                                  : await controller.workingHoursService.getAvailableSlots(
                                       doctorId,
                                       dateStr,
                                     );
@@ -2551,8 +2405,8 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                             Navigator.of(context).pop();
 
                             try {
-                              await _appointmentController.addAppointment(
-                                patientId: patientId!,
+                              await controller.appointmentController.addAppointment(
+                                patientId: controller.patientId!,
                                 scheduledAt: appointmentDateTime,
                                 note: notesController.text.isNotEmpty
                                     ? notesController.text
@@ -2563,8 +2417,8 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                               );
 
                               // Reload appointments
-                              _appointmentController
-                                  .loadPatientAppointmentsById(patientId!);
+                              controller.appointmentController
+                                  .loadPatientAppointmentsById(controller.patientId!);
                             } catch (e) {
                               print(
                                 '❌ [PatientDetailsScreen] Error adding appointment: $e',
@@ -3047,7 +2901,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
           GestureDetector(
             onTap: () async {
               try {
-                final List<XFile>? images = await _imagePicker.pickMultiImage(
+                final List<XFile>? images = await controller.imagePicker.pickMultiImage(
                   imageQuality: 85,
                 );
 
@@ -3254,7 +3108,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
         return AlertDialog(
           title: Text('تأكيد الحذف'),
           content: Text(
-            'هل أنت متأكد من حذف ${selectedAppointmentIds.length} موعد محدد؟',
+            'هل أنت متأكد من حذف ${controller.selectedAppointmentIds.length} موعد محدد؟',
           ),
           actions: [
             TextButton(
@@ -3264,7 +3118,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
             TextButton(
               onPressed: () async {
                 Navigator.of(context).pop();
-                await _deleteSelectedAppointments();
+                await controller.deleteSelectedAppointments();
               },
               child: Text('حذف', style: TextStyle(color: Colors.red)),
             ),
@@ -3272,52 +3126,6 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
         );
       },
     );
-  }
-
-  Future<void> _deleteSelectedAppointments() async {
-    if (patientId == null || selectedAppointmentIds.isEmpty) return;
-
-    final idsToDelete = List<String>.from(selectedAppointmentIds);
-    int successCount = 0;
-    int failCount = 0;
-
-    for (final appointmentId in idsToDelete) {
-      try {
-        await _appointmentController.deleteAppointment(
-          patientId!,
-          appointmentId,
-        );
-        successCount++;
-      } catch (e) {
-        failCount++;
-        print(
-          '❌ [PatientDetailsScreen] Error deleting appointment $appointmentId: $e',
-        );
-      }
-    }
-
-    setState(() {
-      selectedAppointmentIds.clear();
-      isSelectionMode = false;
-    });
-
-    if (failCount == 0) {
-      Get.snackbar(
-        'نجح',
-        'تم حذف $successCount موعد بنجاح',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: AppColors.primary,
-        colorText: AppColors.white,
-      );
-    } else {
-      Get.snackbar(
-        'تحذير',
-        'تم حذف $successCount موعد، فشل حذف $failCount موعد',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.orange,
-        colorText: AppColors.white,
-      );
-    }
   }
 
   void _showAddImageDialog(BuildContext context) {
@@ -3361,7 +3169,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                           if (isUploading) return;
 
                           try {
-                            final XFile? image = await _imagePicker.pickImage(
+                            final XFile? image = await controller.imagePicker.pickImage(
                               source: ImageSource.gallery,
                               imageQuality: 85,
                             );
@@ -3501,9 +3309,9 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                         isUploading = true;
                                       });
 
-                                      final success = await _galleryController
+                                      final success = await controller.galleryController
                                           .uploadImage(
-                                            patientId!,
+                                            controller.patientId!,
                                             selectedImage!,
                                             noteController.text.trim().isEmpty
                                                 ? null
@@ -3523,7 +3331,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                         } else {
                                           Get.snackbar(
                                             'خطأ',
-                                            _galleryController
+                                            controller.galleryController
                                                 .errorMessage
                                                 .value,
                                             snackPosition: SnackPosition.BOTTOM,
@@ -3918,13 +3726,13 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                 ),
                               );
 
-                              if (confirm == true && patientId != null) {
+                              if (confirm == true && controller.patientId != null) {
                                 setDialogState(() {
                                   isDeleting = true;
                                 });
 
-                                final success = await _galleryController
-                                    .deleteImage(patientId!, galleryImage.id);
+                                final success = await controller.galleryController
+                                    .deleteImage(controller.patientId!, galleryImage.id);
 
                                 if (context.mounted) {
                                   if (success) {
@@ -3942,11 +3750,11 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                     });
                                     Get.snackbar(
                                       'خطأ',
-                                      _galleryController
+                                      controller.galleryController
                                               .errorMessage
                                               .value
                                               .isNotEmpty
-                                          ? _galleryController
+                                          ? controller.galleryController
                                                 .errorMessage
                                                 .value
                                           : 'فشل حذف الصورة',
@@ -4155,7 +3963,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
     }
   }
 
-  void _showQrCodeDialog(BuildContext context, String patientId) {
+  void _showQrCodeDialog(BuildContext context, String qrPatientId) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -4200,7 +4008,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                     borderRadius: BorderRadius.circular(16.r),
                   ),
                   child: QrImageView(
-                    data: patientId,
+                    data: qrPatientId,
                     version: QrVersions.auto,
                     size: 250.w,
                     backgroundColor: Colors.white,
@@ -4298,7 +4106,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
 
   void _showEditImplantStageDateDialog(
     BuildContext context,
-    String patientId,
+    String stagePatientId,
     String stageName,
     DateTime currentDate,
   ) {
@@ -4314,7 +4122,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
         '$displayHour:${minute.toString().padLeft(2, '0')} ${isPM ? 'م' : 'ص'}';
 
     // Get patient and doctor ID
-    final patient = _patientController.getPatientById(patientId);
+    final patient = controller.patientController.getPatientById(stagePatientId);
     final doctorIds = patient?.doctorIds ?? [];
     final doctorId = doctorIds.isNotEmpty ? doctorIds.first : null;
 
@@ -4371,17 +4179,17 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                         final dateStr =
                             '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
                         final userType =
-                            (_authController.currentUser.value?.userType ?? '')
+                            (controller.authController.currentUser.value?.userType ?? '')
                                 .toLowerCase();
                         final isReceptionOrAdmin =
                             userType == 'receptionist' || userType == 'admin';
                         final slots = isReceptionOrAdmin
-                            ? await _workingHoursService
+                            ? await controller.workingHoursService
                                 .getAvailableSlotsForReception(
                                   doctorId,
                                   dateStr,
                                 )
-                            : await _workingHoursService.getAvailableSlots(
+                            : await controller.workingHoursService.getAvailableSlots(
                                 doctorId,
                                 dateStr,
                               );
@@ -4441,7 +4249,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                       // Update stage date
                       final success = await implantStageController
                           .updateStageDate(
-                            patientId,
+                            stagePatientId,
                             stageName,
                             selectedDate!,
                             '$hour:${minute.toString().padLeft(2, '0')}',
@@ -4450,7 +4258,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                       if (success) {
                         Navigator.of(context).pop();
                         // إعادة تحميل المراحل بعد التعديل
-                        implantStageController.loadStages(patientId);
+                        implantStageController.loadStages(stagePatientId);
                         // إظهار دايلوج النجاح بعد إغلاق الدايلوج الحالي
                         Future.delayed(const Duration(milliseconds: 300), () {
                           if (context.mounted) {
@@ -4731,7 +4539,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                               }
 
                               final patientController =
-                                  Get.find<PatientController>();
+                                  controller.patientController;
 
                               try {
                                 // الحصول على معرف المريض بشكل آمن
@@ -4760,18 +4568,18 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                 final updatedPatient = patientController
                                     .getPatientById(actualPatientId);
                                 if (updatedPatient != null) {
-                                  _patientController.selectedPatient.value =
+                                  controller.patientController.selectedPatient.value =
                                       updatedPatient;
                                 }
 
                                 // إذا كان النوع "زراعة"، تحميل المراحل
                                 if (treatmentType == 'زراعة' &&
-                                    patientId != null) {
+                                    controller.patientId != null) {
                                   final implantStageController = Get.put(
                                     ImplantStageController(),
                                   );
                                   await implantStageController.loadStages(
-                                    patientId!,
+                                    controller.patientId!,
                                   );
                                 }
 
@@ -4780,8 +4588,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                   'نجح',
                                   'تم تحديث نوع العلاج بنجاح',
                                 );
-                                // إعادة بناء الصفحة لتحديث العرض
-                                setState(() {});
+                                // العرض يعاد بناؤه تلقائياً بفضل التفاعلية (Obx)
                               } catch (e) {
                                 Get.snackbar(
                                   'خطأ',
@@ -5117,10 +4924,10 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
             TextButton(
               onPressed: () async {
                 Navigator.of(context).pop();
-                if (patientId != null) {
+                if (controller.patientId != null) {
                   try {
-                    await _medicalRecordController.deleteRecord(
-                      patientId: patientId!,
+                    await controller.medicalRecordController.deleteRecord(
+                      patientId: controller.patientId!,
                       recordId: record.id,
                     );
                   } catch (e) {
@@ -5215,7 +5022,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                       GestureDetector(
                         onTap: () async {
                           try {
-                            final List<XFile> images = await _imagePicker
+                            final List<XFile> images = await controller.imagePicker
                                 .pickMultiImage(imageQuality: 85);
                             if (images.isNotEmpty) {
                               setDialogState(() {
@@ -5362,7 +5169,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                           Expanded(
                             child: ElevatedButton(
                               onPressed: () async {
-                                if (patientId != null) {
+                                if (controller.patientId != null) {
                                   // حفظ القيم قبل إغلاق الـ dialog
                                   final noteText = noteController.text.trim();
                                   final imagesToSend = selectedImages.isEmpty
@@ -5378,8 +5185,8 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                   );
 
                                   try {
-                                    await _medicalRecordController.addRecord(
-                                      patientId: patientId!,
+                                    await controller.medicalRecordController.addRecord(
+                                      patientId: controller.patientId!,
                                       note: noteText.isEmpty ? null : noteText,
                                       imageFiles: imagesToSend,
                                     );
@@ -5624,7 +5431,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                       GestureDetector(
                         onTap: () async {
                           try {
-                            final List<XFile> images = await _imagePicker
+                            final List<XFile> images = await controller.imagePicker
                                 .pickMultiImage(imageQuality: 85);
                             if (images.isNotEmpty) {
                               setDialogState(() {
@@ -5771,7 +5578,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                           Expanded(
                             child: ElevatedButton(
                               onPressed: () async {
-                                if (patientId != null) {
+                                if (controller.patientId != null) {
                                   // حفظ القيم قبل إغلاق الـ dialog
                                   final noteText = noteController.text.trim();
                                   // إذا كان هناك صور جديدة أو تم حذف صور، نرسل الصور الجديدة فقط
@@ -5791,8 +5598,8 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
                                   );
 
                                   try {
-                                    await _medicalRecordController.updateRecord(
-                                      patientId: patientId!,
+                                    await controller.medicalRecordController.updateRecord(
+                                      patientId: controller.patientId!,
                                       recordId: record.id,
                                       note: noteText.isEmpty ? null : noteText,
                                       imageFiles: imagesToSend,
@@ -5842,38 +5649,9 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
     });
   }
 
-  Future<void> _loadUnreadCount() async {
-    if (patientId == null) return;
-    try {
-      final chatList = await _chatService.getChatList();
-      final chat = chatList.firstWhere(
-        (c) => c['patient_id']?.toString() == patientId,
-        orElse: () => <String, dynamic>{},
-      );
-      final unreadCount = chat['unread_count'] as int? ?? 0;
-      _unreadCount.value = unreadCount;
-    } catch (e) {
-      print('❌ Error loading unread count: $e');
-      _unreadCount.value = 0;
-    }
-  }
-
-  Future<void> _loadPatientDoctors(String patientId) async {
-    _isLoadingDoctors.value = true;
-    try {
-      final doctors = await _patientService.getPatientDoctors(patientId);
-      _patientDoctors.value = doctors;
-    } catch (e) {
-      // Error handling - can show snackbar if needed
-      _patientDoctors.clear();
-    } finally {
-      _isLoadingDoctors.value = false;
-    }
-  }
-
   Widget _buildDoctorsSection(PatientModel patient) {
     return Obx(() {
-      if (_isLoadingDoctors.value) {
+      if (controller.isLoadingDoctors.value) {
         return Container(
           margin: EdgeInsets.symmetric(horizontal: 24.w),
           padding: EdgeInsets.all(16.w),
@@ -5902,7 +5680,7 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
               textAlign: TextAlign.center,
             ),
             SizedBox(height: 16.h),
-            if (_patientDoctors.isEmpty)
+            if (controller.patientDoctors.isEmpty)
               Container(
                 padding: EdgeInsets.all(12.w),
                 decoration: BoxDecoration(
@@ -5930,9 +5708,9 @@ class _PatientDetailsScreenState extends State<PatientDetailsScreen>
               ListView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                itemCount: _patientDoctors.length,
+                itemCount: controller.patientDoctors.length,
                 itemBuilder: (context, index) {
-                  final doctor = _patientDoctors[index];
+                  final doctor = controller.patientDoctors[index];
                   final doctorName = doctor.name ?? 'طبيب';
                   final doctorInitials = doctorName.isNotEmpty
                       ? doctorName

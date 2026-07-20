@@ -1,96 +1,22 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
-import 'package:image_cropper/image_cropper.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
 import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/core/widgets/custom_button.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
-import 'package:farah_sys_final/controllers/auth_controller.dart';
+import 'package:farah_sys_final/controllers/reception_profile_controller.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
-import 'package:farah_sys_final/services/auth_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:image_picker/image_picker.dart';
 
-class ReceptionProfileScreen extends StatefulWidget {
+/// شاشة الملف الشخصي لموظف الاستقبال — GetView؛ المنطق في ReceptionProfileController.
+class ReceptionProfileScreen extends GetView<ReceptionProfileController> {
   const ReceptionProfileScreen({super.key});
 
   @override
-  State<ReceptionProfileScreen> createState() => _ReceptionProfileScreenState();
-}
-
-class _ReceptionProfileScreenState extends State<ReceptionProfileScreen> {
-  final AuthController _authController = Get.find<AuthController>();
-  final AuthService _authService = AuthService();
-  final ImagePicker _imagePicker = ImagePicker();
-
-  bool _isUploadingImage = false;
-  int _imageTimestamp = DateTime.now().millisecondsSinceEpoch;
-
-  Future<void> _pickAndUploadProfileImage() async {
-    if (_isUploadingImage) return;
-
-    try {
-      final xFile = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
-      );
-      if (xFile == null) return;
-
-      // Crop the image
-      final croppedFile = await ImageCropper().cropImage(
-        sourcePath: xFile.path,
-        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
-        compressQuality: 80,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        uiSettings: [
-          AndroidUiSettings(
-            toolbarTitle: 'تعديل الصورة',
-            toolbarColor: AppColors.primary,
-            toolbarWidgetColor: Colors.white,
-            initAspectRatio: CropAspectRatioPreset.square,
-            lockAspectRatio: true,
-            hideBottomControls: false,
-          ),
-          IOSUiSettings(
-            title: 'تعديل الصورة',
-            aspectRatioLockEnabled: true,
-            resetAspectRatioEnabled: false,
-          ),
-        ],
-      );
-
-      if (croppedFile == null) return;
-
-      setState(() {
-        _isUploadingImage = true;
-      });
-
-      await _authService.uploadProfileImage(File(croppedFile.path));
-      await _authController.checkLoggedInUser(navigate: false);
-
-      setState(() {
-        _imageTimestamp = DateTime.now().millisecondsSinceEpoch;
-      });
-
-      Get.snackbar('تم', 'تم تحديث الصورة الشخصية بنجاح');
-    } catch (e) {
-      Get.snackbar('خطأ', 'فشل رفع الصورة: ${e.toString()}');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isUploadingImage = false;
-        });
-      }
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final authController = _authController;
+    final authController = controller.authController;
 
     return Scaffold(
       body: SafeArea(
@@ -124,7 +50,7 @@ class _ReceptionProfileScreenState extends State<ReceptionProfileScreen> {
               SizedBox(height: 24.h),
               // Profile Image
               GestureDetector(
-                onTap: _pickAndUploadProfileImage,
+                onTap: controller.pickAndUploadImage,
                 child: Stack(
                   alignment: Alignment.bottomLeft,
                   children: [
@@ -132,8 +58,10 @@ class _ReceptionProfileScreenState extends State<ReceptionProfileScreen> {
                       final user = authController.currentUser.value;
                       final validUrl = ImageUtils.convertToValidUrl(user?.imageUrl);
                       final hasImage = validUrl != null && ImageUtils.isValidImageUrl(validUrl);
-                      final displayUrl =
-                          hasImage ? '$validUrl?t=$_imageTimestamp' : null;
+                      final isUploadingImage = controller.isUploadingImage.value;
+                      final displayUrl = hasImage
+                          ? '$validUrl?t=${controller.imageTimestamp.value}'
+                          : null;
 
                       return CircleAvatar(
                         radius: 60.r,
@@ -152,7 +80,7 @@ class _ReceptionProfileScreenState extends State<ReceptionProfileScreen> {
                                   placeholder: (context, url) => Container(
                                     color: AppColors.primaryLight,
                                     child: Center(
-                                      child: _isUploadingImage
+                                      child: isUploadingImage
                                           ? const CircularProgressIndicator()
                                           : Icon(
                                               Icons.person,
@@ -176,31 +104,34 @@ class _ReceptionProfileScreenState extends State<ReceptionProfileScreen> {
                       );
                     }),
                     // Small edit badge
-                    Container(
-                      width: 34.w,
-                      height: 34.w,
-                      decoration: BoxDecoration(
-                        color: AppColors.primary,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
-                      ),
-                      child: Center(
-                        child: _isUploadingImage
-                            ? SizedBox(
-                                width: 16.w,
-                                height: 16.w,
-                                child: const CircularProgressIndicator(
-                                  strokeWidth: 2,
+                    Obx(() {
+                      final isUploadingImage = controller.isUploadingImage.value;
+                      return Container(
+                        width: 34.w,
+                        height: 34.w,
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                        child: Center(
+                          child: isUploadingImage
+                              ? SizedBox(
+                                  width: 16.w,
+                                  height: 16.w,
+                                  child: const CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : Icon(
+                                  Icons.camera_alt,
+                                  size: 16.sp,
                                   color: Colors.white,
                                 ),
-                              )
-                            : Icon(
-                                Icons.camera_alt,
-                                size: 16.sp,
-                                color: Colors.white,
-                              ),
-                      ),
-                    ),
+                        ),
+                      );
+                    }),
                   ],
                 ),
               ),
@@ -378,7 +309,7 @@ class _ReceptionProfileScreenState extends State<ReceptionProfileScreen> {
                       CustomButton(
                         text: AppStrings.logout,
                         onPressed: () async {
-                          await authController.logout();
+                          await controller.logout();
                         },
                         backgroundColor: AppColors.error,
                         width: double.infinity,

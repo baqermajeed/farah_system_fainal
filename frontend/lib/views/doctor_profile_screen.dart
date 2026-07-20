@@ -1,120 +1,29 @@
-import 'dart:io';
 import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:image_cropper/image_cropper.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
 import 'package:farah_sys_final/core/widgets/custom_button.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
-import 'package:farah_sys_final/controllers/auth_controller.dart';
-import 'package:farah_sys_final/services/auth_service.dart';
+import 'package:farah_sys_final/controllers/doctor_profile_controller.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
-class DoctorProfileScreen extends StatefulWidget {
+/// شاشة الملف الشخصي للطبيب — GetView؛ المنطق في DoctorProfileController.
+class DoctorProfileScreen extends GetView<DoctorProfileController> {
   const DoctorProfileScreen({super.key});
 
-  @override
-  State<DoctorProfileScreen> createState() => _DoctorProfileScreenState();
-}
-
-class _DoctorProfileScreenState extends State<DoctorProfileScreen> {
-  final AuthController _authController = Get.find<AuthController>();
-  final AuthService _authService = AuthService();
-  final ImagePicker _imagePicker = ImagePicker();
-  bool _isUploadingImage = false;
-  int _imageTimestamp = DateTime.now().millisecondsSinceEpoch;
-
-  Future<void> _pickAndUploadImage() async {
-    try {
-      final XFile? image = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
-      );
-
-      if (image == null) return;
-
-      // Crop the image
-      final croppedFile = await ImageCropper().cropImage(
-        sourcePath: image.path,
-        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
-        compressQuality: 80,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        uiSettings: [
-          AndroidUiSettings(
-            toolbarTitle: 'تعديل الصورة',
-            toolbarColor: AppColors.primary,
-            toolbarWidgetColor: Colors.white,
-            initAspectRatio: CropAspectRatioPreset.square,
-            lockAspectRatio: true,
-            hideBottomControls: false,
-          ),
-          IOSUiSettings(
-            title: 'تعديل الصورة',
-            aspectRatioLockEnabled: true,
-            resetAspectRatioEnabled: false,
-          ),
-        ],
-      );
-
-      if (croppedFile == null) return;
-
-      setState(() {
-        _isUploadingImage = true;
-      });
-
-      final imageFile = File(croppedFile.path);
-      await _authService.uploadProfileImage(imageFile);
-
-      // تحديث معلومات المستخدم
-      await _authController.checkLoggedInUser(navigate: false);
-
-      // إجبار تحديث الواجهة مع timestamp جديد لإعادة تحميل الصورة
-      if (mounted) {
-        setState(() {
-          _imageTimestamp = DateTime.now().millisecondsSinceEpoch;
-        });
-
-        Get.snackbar(
-          'نجح',
-          'تم تحديث الصورة بنجاح',
-          snackPosition: SnackPosition.TOP,
-          backgroundColor: Colors.green,
-          colorText: AppColors.white,
-          duration: const Duration(seconds: 2),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        Get.snackbar(
-          'خطأ',
-          'فشل تحديث الصورة: ${e.toString()}',
-          snackPosition: SnackPosition.TOP,
-          backgroundColor: Colors.red,
-          colorText: AppColors.white,
-          duration: const Duration(seconds: 2),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isUploadingImage = false;
-        });
-      }
-    }
-  }
-
   Widget _buildProfileImage() {
-    final user = _authController.currentUser.value;
+    final user = controller.authController.currentUser.value;
     final imageUrl = user?.imageUrl;
     final validImageUrl = ImageUtils.convertToValidUrl(imageUrl);
+    final isUploadingImage = controller.isUploadingImage.value;
+    final imageTimestamp = controller.imageTimestamp.value;
 
     if (validImageUrl != null && ImageUtils.isValidImageUrl(validImageUrl)) {
       // إضافة timestamp لإجبار إعادة التحميل عند التحديث
-      final imageUrlWithTimestamp = '$validImageUrl?t=$_imageTimestamp';
+      final imageUrlWithTimestamp = '$validImageUrl?t=$imageTimestamp';
 
       return Stack(
         children: [
@@ -138,12 +47,12 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen> {
               ),
             ),
           ),
-          if (!_isUploadingImage)
+          if (!isUploadingImage)
             Positioned(
               bottom: 0,
               right: 0,
               child: GestureDetector(
-                onTap: _pickAndUploadImage,
+                onTap: controller.pickAndUploadImage,
                 child: Container(
                   padding: EdgeInsets.all(8.w),
                   decoration: BoxDecoration(
@@ -159,7 +68,7 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen> {
                 ),
               ),
             ),
-          if (_isUploadingImage)
+          if (isUploadingImage)
             Positioned.fill(
               child: Container(
                 decoration: BoxDecoration(
@@ -199,12 +108,12 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen> {
           backgroundColor: AppColors.primaryLight,
           child: Icon(Icons.person, size: 60.sp, color: AppColors.white),
         ),
-        if (!_isUploadingImage)
+        if (!isUploadingImage)
           Positioned(
             bottom: 0,
             right: 0,
             child: GestureDetector(
-              onTap: _pickAndUploadImage,
+              onTap: controller.pickAndUploadImage,
               child: Container(
                 padding: EdgeInsets.all(8.w),
                 decoration: BoxDecoration(
@@ -220,7 +129,7 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen> {
               ),
             ),
           ),
-        if (_isUploadingImage)
+        if (isUploadingImage)
           Positioned.fill(
             child: Container(
               decoration: BoxDecoration(
@@ -289,7 +198,7 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen> {
               Obx(() => _buildProfileImage()),
               SizedBox(height: 32.h),
               Obx(() {
-                final user = _authController.currentUser.value;
+                final user = controller.authController.currentUser.value;
 
                 return Padding(
                   padding: EdgeInsets.symmetric(horizontal: 24.w),
@@ -507,7 +416,7 @@ class _DoctorProfileScreenState extends State<DoctorProfileScreen> {
                       CustomButton(
                         text: AppStrings.logout,
                         onPressed: () async {
-                          await _authController.logout();
+                          await controller.logout();
                         },
                         backgroundColor: AppColors.error,
                         width: double.infinity,
