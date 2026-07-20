@@ -1,6 +1,8 @@
 import 'package:farah_sys_final/services/api_service.dart';
+import 'package:farah_sys_final/core/network/api_exception.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
+import 'package:farah_sys_final/services/auth_service.dart';
 
 class NotificationModel {
   final String id;
@@ -20,6 +22,24 @@ class NotificationModel {
     required this.isRead,
     required this.sentAt,
   });
+
+  String? get patientId {
+    final raw = data['patientId'] ?? data['patient_id'];
+    final s = raw?.toString().trim();
+    if (s == null || s.isEmpty) return null;
+    return s;
+  }
+
+  /// هل يظهر هذا الإشعار لفرد العائلة المحدد؟
+  bool belongsToPatient(String? activePatientId) {
+    if (activePatientId == null || activePatientId.isEmpty) return false;
+    final scoped = patientId;
+    if (scoped != null) {
+      return scoped == activePatientId;
+    }
+    // إشعارات عامة للحساب فقط (broadcast)
+    return type.toLowerCase() == 'general';
+  }
 
   factory NotificationModel.fromJson(Map<String, dynamic> json) {
     return NotificationModel(
@@ -43,7 +63,6 @@ class NotificationModel {
     return <String, dynamic>{};
   }
 
-  /// السيرفر يخزّن UTC؛ إن جاء بدون Z/+00:00 نفترض UTC ثم نحوّل للمحلي.
   static DateTime _parseSentAt(dynamic raw) {
     try {
       var s = raw?.toString().trim() ?? '';
@@ -53,14 +72,13 @@ class NotificationModel {
         s = '${s.substring(0, s.length - 6)}Z';
       }
 
-      final hasTz = s.endsWith('Z') ||
-          RegExp(r'[+-]\d{2}:\d{2}$').hasMatch(s);
+      final hasTz =
+          s.endsWith('Z') || RegExp(r'[+-]\d{2}:\d{2}$').hasMatch(s);
       if (!hasTz && s.length >= 19) {
         s = '${s}Z';
       }
 
-      final parsed = DateTime.parse(s);
-      return parsed.toLocal();
+      return DateTime.parse(s).toLocal();
     } catch (_) {
       return DateTime.now();
     }
@@ -93,10 +111,25 @@ class NotificationModel {
 
 class NotificationService {
   final ApiService _api = ApiService();
+  final AuthService _authService = AuthService();
 
-  String? get _activePatientId {
-    if (!Get.isRegistered<AuthController>()) return null;
-    return Get.find<AuthController>().patientProfileId.value;
+  Future<String> resolveActivePatientId({String? patientId}) async {
+    if (patientId != null && patientId.isNotEmpty) return patientId;
+
+    if (Get.isRegistered<AuthController>()) {
+      final memory = Get.find<AuthController>().patientProfileId.value;
+      if (memory != null && memory.isNotEmpty) return memory;
+    }
+
+    final stored = await _authService.getActivePatientId();
+    if (stored != null && stored.isNotEmpty) {
+      if (Get.isRegistered<AuthController>()) {
+        Get.find<AuthController>().patientProfileId.value = stored;
+      }
+      return stored;
+    }
+
+    throw ApiException('لم يتم تحديد فرد العائلة النشط للإشعارات');
   }
 
   Future<List<NotificationModel>> getNotifications({
@@ -105,36 +138,29 @@ class NotificationService {
     bool unreadOnly = false,
     String? patientId,
   }) async {
-    final query = <String, dynamic>{
-      'skip': skip,
-      'limit': limit,
-      'unread_only': unreadOnly,
-    };
-    final pid = patientId ?? _activePatientId;
-    if (pid != null && pid.isNotEmpty) {
-      query['patient_id'] = pid;
-    }
-
+    final pid = await resolveActivePatientId(patientId: patientId);
     final response = await _api.get(
       '/notifications',
-      queryParameters: query,
+      queryParameters: {
+        'skip': skip,
+        'limit': limit,
+        'unread_only': unreadOnly,
+        'patient_id': pid,
+      },
     );
     final list = response.data as List? ?? [];
     return list
         .whereType<Map>()
         .map((e) => NotificationModel.fromJson(Map<String, dynamic>.from(e)))
+        .where((n) => n.belongsToPatient(pid))
         .toList();
   }
 
   Future<int> getUnreadCount({String? patientId}) async {
-    final pid = patientId ?? _activePatientId;
-    final query = <String, dynamic>{};
-    if (pid != null && pid.isNotEmpty) {
-      query['patient_id'] = pid;
-    }
+    final pid = await resolveActivePatientId(patientId: patientId);
     final response = await _api.get(
       '/notifications/unread-count',
-      queryParameters: query.isEmpty ? null : query,
+      queryParameters: {'patient_id': pid},
     );
     final data = response.data;
     if (data is Map) {
@@ -153,12 +179,10 @@ class NotificationService {
   }
 
   Future<int> markAllAsRead({String? patientId}) async {
-    final pid = patientId ?? _activePatientId;
+    final pid = await resolveActivePatientId(patientId: patientId);
     final response = await _api.post(
       '/notifications/mark-all-read',
-      queryParameters: (pid != null && pid.isNotEmpty)
-          ? {'patient_id': pid}
-          : null,
+      queryParameters: {'patient_id': pid},
     );
     final data = response.data;
     if (data is Map) {

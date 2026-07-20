@@ -1,7 +1,7 @@
 from typing import Optional, Any
 from beanie import PydanticObjectId as OID
 
-from app.models import DeviceToken, Notification, User
+from app.models import DeviceToken, Notification, User, Patient
 from app.constants import Role
 from app.utils.firebase import send_firebase_message
 
@@ -30,38 +30,48 @@ def _as_oid(value: str | OID | None) -> OID | None:
         return None
 
 
-def _patient_scope_filter(patient_id: str | OID) -> dict[str, Any]:
+def _notification_patient_key(notif: Notification) -> str | None:
+    """معرف الملف الطبي المرتبط بالإشعار إن وُجد."""
+    if getattr(notif, "patient_id", None) is not None:
+        return str(notif.patient_id)
+    data = getattr(notif, "data", None) or {}
+    raw = data.get("patientId") or data.get("patient_id")
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    return s or None
+
+
+def notification_visible_to_patient(notif: Notification, patient_id: str | OID) -> bool:
     """
-    إشعارات الفرد:
-    - patient_id مطابق (حقل أو data.patientId للتوافق مع السجلات القديمة)
-    - أو إشعار عام للحساب (type=general بدون patient)
+    قواعد العرض لفرد عائلة:
+    - إن كان للإشعار patient_id → يظهر لهذا الفرد فقط
+    - إن كان عاماً (general) بدون patient → يظهر لكل الأفراد
+    - أي إشعار طبي قديم بلا patient_id → لا يظهر عند التصفية (عزل صارم)
     """
+    target = str(_as_oid(patient_id) or patient_id)
+    scoped = _notification_patient_key(notif)
+    if scoped is not None:
+        return scoped == target
+
+    notif_type = (getattr(notif, "type", None) or "general").lower()
+    return notif_type == "general"
+
+
+async def ensure_patient_belongs_to_user(
+    *,
+    user_id: str | OID,
+    patient_id: str | OID,
+) -> Patient:
+    """يتأكد أن الملف الطبي يخص نفس حساب المستخدم."""
+    uid = user_id if isinstance(user_id, OID) else OID(str(user_id))
     pid = _as_oid(patient_id)
-    pid_str = str(pid) if pid else str(patient_id)
-    return {
-        "$or": [
-            {"patient_id": pid},
-            {"data.patientId": pid_str},
-            {
-                "type": "general",
-                "$and": [
-                    {
-                        "$or": [
-                            {"patient_id": None},
-                            {"patient_id": {"$exists": False}},
-                        ]
-                    },
-                    {
-                        "$or": [
-                            {"data.patientId": {"$exists": False}},
-                            {"data.patientId": None},
-                            {"data.patientId": ""},
-                        ]
-                    },
-                ],
-            },
-        ]
-    }
+    if pid is None:
+        raise ValueError("invalid patient_id")
+    patient = await Patient.get(pid)
+    if not patient or patient.user_id != uid:
+        raise PermissionError("patient does not belong to user")
+    return patient
 
 
 async def register_device_token(*, user_id: str, token: str, platform: Optional[str]) -> DeviceToken:
@@ -94,10 +104,9 @@ async def notify_user(
 
     pid = _as_oid(patient_id)
     if pid is None:
-        # توافق مع data.patientId إن وُجد
         pid = _as_oid(payload.get("patientId") or payload.get("patient_id"))
     if pid is not None:
-        payload.setdefault("patientId", str(pid))
+        payload["patientId"] = str(pid)
 
     notif = Notification(
         user_id=uid,
@@ -135,14 +144,20 @@ async def list_user_notifications(
     patient_id: str | OID | None = None,
 ) -> list[Notification]:
     uid = user_id if isinstance(user_id, OID) else OID(user_id)
-    filters: list[Any] = [Notification.user_id == uid]
+    query = Notification.find(Notification.user_id == uid)
     if unread_only:
-        filters.append(Notification.is_read == False)  # noqa: E712
-    if patient_id:
-        filters.append(_patient_scope_filter(patient_id))
+        query = query.find(Notification.is_read == False)  # noqa: E712
 
-    query = Notification.find(*filters)
-    return await query.sort(-Notification.sent_at).skip(skip).limit(limit).to_list()
+    # بدون تصفية عائلة: السلوك القديم
+    if not patient_id:
+        return await query.sort(-Notification.sent_at).skip(skip).limit(limit).to_list()
+
+    # تصفية موثوقة في Python (Beanie + dict $or قد تفشل بصمت)
+    # نجلب دفعة أكبر ثم نقصّ حسب الفرد ثم نطبّق الصفحات
+    batch_size = max((skip + limit) * 5, 100)
+    raw = await query.sort(-Notification.sent_at).limit(batch_size).to_list()
+    scoped = [n for n in raw if notification_visible_to_patient(n, patient_id)]
+    return scoped[skip : skip + limit]
 
 
 async def unread_count(
@@ -151,13 +166,15 @@ async def unread_count(
     patient_id: str | OID | None = None,
 ) -> int:
     uid = user_id if isinstance(user_id, OID) else OID(user_id)
-    filters: list[Any] = [
+    query = Notification.find(
         Notification.user_id == uid,
         Notification.is_read == False,  # noqa: E712
-    ]
-    if patient_id:
-        filters.append(_patient_scope_filter(patient_id))
-    return await Notification.find(*filters).count()
+    )
+    if not patient_id:
+        return await query.count()
+
+    items = await query.to_list()
+    return sum(1 for n in items if notification_visible_to_patient(n, patient_id))
 
 
 async def mark_as_read(*, user_id: str | OID, notification_id: str) -> Notification | None:
@@ -180,13 +197,12 @@ async def mark_all_as_read(
     patient_id: str | OID | None = None,
 ) -> int:
     uid = user_id if isinstance(user_id, OID) else OID(user_id)
-    filters: list[Any] = [
+    unread = await Notification.find(
         Notification.user_id == uid,
         Notification.is_read == False,  # noqa: E712
-    ]
+    ).to_list()
     if patient_id:
-        filters.append(_patient_scope_filter(patient_id))
-    unread = await Notification.find(*filters).to_list()
+        unread = [n for n in unread if notification_visible_to_patient(n, patient_id)]
     for n in unread:
         n.is_read = True
         await n.save()

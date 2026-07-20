@@ -99,27 +99,23 @@ class NotificationsScreenController extends GetxController {
     }
   }
 
-  bool _sameList(List<NotificationModel> a, List<NotificationModel> b) {
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (a[i].id != b[i].id ||
-          a[i].isRead != b[i].isRead ||
-          a[i].title != b[i].title ||
-          a[i].body != b[i].body ||
-          a[i].sentAt != b[i].sentAt) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  /// تحميل أولي: كاش فوري ثم تحديث خلفي لآخر 30.
+  /// تحميل أولي: كاش فوري (مصفّى) ثم تحديث من السيرفر لفرد العائلة النشط فقط.
   Future<void> loadNotifications({bool forceRefresh = false}) async {
-    final cached = _readCache();
+    final auth = Get.isRegistered<AuthController>()
+        ? Get.find<AuthController>()
+        : null;
+    final activePatientId = auth?.patientProfileId.value;
+
+    final cached = _readCache()
+        .where((n) => n.belongsToPatient(activePatientId))
+        .toList();
     final hasCache = cached.isNotEmpty;
 
-    if (hasCache && notifications.isEmpty) {
+    if (hasCache && (notifications.isEmpty || forceRefresh)) {
       notifications.assignAll(cached);
+    } else if (!hasCache) {
+      // لا نعرض كاش فرد آخر
+      notifications.clear();
     }
 
     if (!hasCache && notifications.isEmpty) {
@@ -132,26 +128,13 @@ class NotificationsScreenController extends GetxController {
       final items = await _notificationService.getNotifications(
         skip: 0,
         limit: pageSize,
+        patientId: activePatientId,
       );
 
       hasMore.value = items.length >= pageSize;
-
-      if (!_sameList(notifications.take(items.length).toList(), items) ||
-          forceRefresh ||
-          notifications.isEmpty) {
-        // استبدل الصفحة الأولى، وأبقِ الرسائل الأقدم المحمّلة إن وُجدت
-        if (notifications.length <= pageSize) {
-          notifications.assignAll(items);
-        } else {
-          final older = notifications.skip(pageSize).toList();
-          final ids = items.map((e) => e.id).toSet();
-          final keptOlder =
-              older.where((n) => !ids.contains(n.id)).toList();
-          notifications.assignAll([...items, ...keptOlder]);
-        }
-      }
-
-      await _writeCache(notifications.toList());
+      // استبدل دائماً بنتيجة الفرد النشط (لا تخلط مع كاش قديم)
+      notifications.assignAll(items);
+      await _writeCache(items);
     } catch (e) {
       if (kDebugMode) {
         debugPrint('❌ Error loading notifications: $e');
@@ -174,6 +157,10 @@ class NotificationsScreenController extends GetxController {
       return;
     }
 
+    final activePatientId = Get.isRegistered<AuthController>()
+        ? Get.find<AuthController>().patientProfileId.value
+        : null;
+
     _loadingMoreLock = true;
     isLoadingMore.value = true;
     try {
@@ -181,6 +168,7 @@ class NotificationsScreenController extends GetxController {
       final items = await _notificationService.getNotifications(
         skip: skip,
         limit: pageSize,
+        patientId: activePatientId,
       );
 
       if (items.length < pageSize) {
@@ -189,7 +177,10 @@ class NotificationsScreenController extends GetxController {
       if (items.isEmpty) return;
 
       final existingIds = notifications.map((n) => n.id).toSet();
-      final toAdd = items.where((n) => !existingIds.contains(n.id)).toList();
+      final toAdd = items
+          .where((n) => !existingIds.contains(n.id))
+          .where((n) => n.belongsToPatient(activePatientId))
+          .toList();
       if (toAdd.isNotEmpty) {
         notifications.addAll(toAdd);
         await _writeCache(notifications.toList());

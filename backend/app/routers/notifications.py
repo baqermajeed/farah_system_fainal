@@ -27,15 +27,41 @@ def _sent_at_iso(value) -> str:
 
 
 def _to_out(n) -> NotificationOut:
+    data = getattr(n, "data", None) or {}
+    # أظهر patientId دائماً في data لتسهيل التصفية على العميل
+    if getattr(n, "patient_id", None) is not None:
+        data = {**data, "patientId": str(n.patient_id)}
     return NotificationOut(
         id=str(n.id),
         title=n.title,
         body=n.body,
         type=getattr(n, "type", None) or "general",
-        data=getattr(n, "data", None) or {},
+        data=data,
         is_read=bool(getattr(n, "is_read", False)),
         sent_at=_sent_at_iso(getattr(n, "sent_at", None)),
     )
+
+
+async def _resolve_patient_scope(current, patient_id: str | None) -> str | None:
+    """للمرضى: نلزم تصفية بفرد العائلة. لغيرهم: اختياري."""
+    if current.role != Role.PATIENT:
+        return patient_id
+
+    if not patient_id:
+        raise HTTPException(
+            status_code=400,
+            detail="patient_id مطلوب لعرض إشعارات فرد العائلة",
+        )
+    try:
+        await notification_service.ensure_patient_belongs_to_user(
+            user_id=current.id,
+            patient_id=patient_id,
+        )
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="patient_id غير صالح")
+    return patient_id
 
 
 @router.post("/register", status_code=204)
@@ -57,13 +83,14 @@ async def list_notifications(
     patient_id: str | None = Query(None, description="تصفية حسب فرد العائلة النشط"),
     current=Depends(get_current_user),
 ):
-    """قائمة إشعارات المستخدم الحالي (اختيارياً لملف طبي محدد)."""
+    """قائمة إشعارات المستخدم — للمريض تُصفّى حسب فرد العائلة."""
+    scoped_patient_id = await _resolve_patient_scope(current, patient_id)
     items = await notification_service.list_user_notifications(
         user_id=current.id,
         skip=skip,
         limit=limit,
         unread_only=unread_only,
-        patient_id=patient_id,
+        patient_id=scoped_patient_id,
     )
     return [_to_out(n) for n in items]
 
@@ -73,10 +100,11 @@ async def get_unread_count(
     patient_id: str | None = Query(None, description="تصفية حسب فرد العائلة النشط"),
     current=Depends(get_current_user),
 ):
-    """عدد الإشعارات غير المقروءة."""
+    """عدد الإشعارات غير المقروءة لفرد العائلة النشط."""
+    scoped_patient_id = await _resolve_patient_scope(current, patient_id)
     count = await notification_service.unread_count(
         user_id=current.id,
-        patient_id=patient_id,
+        patient_id=scoped_patient_id,
     )
     return UnreadCountOut(count=count)
 
@@ -98,10 +126,11 @@ async def mark_all_read(
     patient_id: str | None = Query(None, description="تعليم مقروء لفرد العائلة النشط فقط"),
     current=Depends(get_current_user),
 ):
-    """تعليم كل الإشعارات كمقروءة (ضمن نطاق الفرد إن وُجد)."""
+    """تعليم إشعارات فرد العائلة كمقروءة."""
+    scoped_patient_id = await _resolve_patient_scope(current, patient_id)
     updated = await notification_service.mark_all_as_read(
         user_id=current.id,
-        patient_id=patient_id,
+        patient_id=scoped_patient_id,
     )
     return UnreadCountOut(count=updated)
 
