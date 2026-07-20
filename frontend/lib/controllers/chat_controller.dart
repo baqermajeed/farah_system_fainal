@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/models/message_model.dart';
@@ -342,18 +343,31 @@ class ChatController extends GetxController {
         );
       }
 
-      // Join conversation using room_id if available, otherwise use patient_id
-      if (currentRoomId != null) {
-        print('👤 [ChatController] Joining room by id: $currentRoomId');
-        socketService.joinRoomById(currentRoomId!);
-      } else {
-        print(
-          '👤 [ChatController] Joining conversation for patient: $patientId (fallback)',
-        );
-        socketService.joinConversation(
-          patientId,
-          doctorId: doctorId ?? currentDoctorId,
-        );
+      // سجّل المستمعين قبل الانضمام حتى لا يُفقد حدث joined_conversation
+      socketService.off('joined_conversation');
+      final joinCompleter = Completer<String?>();
+      socketService.on('joined_conversation', (data) {
+        final roomId = data['room_id']?.toString();
+        currentRoomId = roomId;
+        print('✅ Joined conversation: $currentRoomId');
+        if (!joinCompleter.isCompleted) {
+          joinCompleter.complete(roomId);
+        }
+      });
+
+      // دائماً نحل الغرفة عبر patient_id (+ doctor_id) حتى لا تُخلط غرف أفراد العائلة
+      print(
+        '👤 [ChatController] Joining conversation for patient: $patientId (doctor: ${doctorId ?? currentDoctorId})',
+      );
+      socketService.joinConversation(
+        patientId,
+        doctorId: doctorId ?? currentDoctorId,
+      );
+
+      try {
+        await joinCompleter.future.timeout(const Duration(seconds: 8));
+      } catch (_) {
+        print('⚠️ [ChatController] Timeout waiting for joined_conversation');
       }
 
       // Reset connecting flag after joining
@@ -492,12 +506,6 @@ class ChatController extends GetxController {
           print('❌ [ChatController] Error parsing sent message: $e');
           print('❌ [ChatController] Data: $data');
         }
-      });
-
-      // Listen for joined conversation
-      socketService.on('joined_conversation', (data) {
-        currentRoomId = data['room_id']?.toString();
-        print('✅ Joined conversation: $currentRoomId');
       });
 
       // Listen for errors

@@ -7,7 +7,7 @@ from app.security import get_current_user
 from app.schemas import ChatMessageOut, ChatMessageIn, ChatListItemOut
 from app.models import ChatRoom, ChatMessage, Patient, User, Doctor
 from app.constants import Role
-from app.utils.chat_helpers import ensure_chat_room_user_ids
+from app.utils.chat_helpers import ensure_chat_room_user_ids, get_or_create_chat_room
 from app.utils.r2_clinic import upload_clinic_image
 from app.utils.patient_out import resolve_patient_identity, patient_name_hint_for_id
 from app.utils.logger import get_logger
@@ -60,46 +60,7 @@ async def _get_or_room_for_user(*, patient_id: str, user: User, doctor_id: str |
     else:
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    patient_user_id = patient.user_id
-    doctor_user_id = selected_doctor.user_id
-
-    # غرفة منفصلة لكل (patient_id + doctor_id) — لا تلابس بين أفراد العائلة
-    room = await ChatRoom.find_one(
-        ChatRoom.patient_id == patient.id,
-        ChatRoom.doctor_id == selected_doctor.id,
-    )
-
-    if not room:
-        legacy_room = await ChatRoom.find_one(
-            ChatRoom.patient_user_id == patient_user_id,
-            ChatRoom.doctor_user_id == doctor_user_id,
-        )
-        if legacy_room and (
-            legacy_room.patient_id is None or legacy_room.patient_id == patient.id
-        ):
-            room = legacy_room
-
-    if room:
-        room = await ensure_chat_room_user_ids(room)
-        updated = False
-        if room.patient_id is None:
-            room.patient_id = patient.id
-            updated = True
-        if room.doctor_id is None:
-            room.doctor_id = selected_doctor.id
-            updated = True
-        if updated:
-            await room.save()
-    else:
-        room = ChatRoom(
-            patient_user_id=patient_user_id,
-            doctor_user_id=doctor_user_id,
-            patient_id=patient.id,
-            doctor_id=selected_doctor.id,
-        )
-        await room.insert()
-
-    return room
+    return await get_or_create_chat_room(patient=patient, doctor=selected_doctor)
 
 @router.get("/list", response_model=list[ChatListItemOut])
 async def get_chat_list(current: User = Depends(get_current_user)):
