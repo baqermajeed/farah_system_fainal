@@ -745,14 +745,18 @@ async def create_gallery_image(
             return existing
 
     doctor_oid = OID(doctor_id) if doctor_id else None
-    gi = GalleryImage(
-        patient_id=OID(patient_id),
-        uploaded_by_user_id=OID(uploaded_by_user_id),
-        image_path=image_path,
-        note=note,
-        doctor_id=doctor_oid,
-        client_operation_id=client_operation_id,
-    )
+    gi_kwargs: dict = {
+        "patient_id": OID(patient_id),
+        "uploaded_by_user_id": OID(uploaded_by_user_id),
+        "image_path": image_path,
+        "note": note,
+        "doctor_id": doctor_oid,
+    }
+    # لا نخزّن null صراحةً — الفهرس الفريد sparse يسمح بسجل واحد فقط بقيمة null
+    if client_operation_id:
+        gi_kwargs["client_operation_id"] = client_operation_id
+
+    gi = GalleryImage(**gi_kwargs)
     try:
         await gi.insert()
     except Exception:

@@ -257,18 +257,21 @@ class GalleryController extends GetxController {
       galleryImages.insert(0, tempImage);
 
       final userType = _authController.currentUser.value?.userType.toLowerCase();
+      final operationId = _newId();
       GalleryImageModel newImage;
       if (userType == 'doctor') {
         newImage = await _doctorService.uploadGalleryImage(
           patientId,
           imageFile,
           note,
+          idempotencyKey: operationId,
         );
       } else if (userType == 'receptionist') {
         newImage = await _patientService.uploadReceptionGalleryImage(
           patientId: patientId,
           imageFile: imageFile,
           note: note,
+          idempotencyKey: operationId,
         );
       } else {
         throw ApiException('هذا الدور غير مخوّل لرفع صور المعرض');

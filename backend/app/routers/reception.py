@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, Body, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, Query, Body, HTTPException, UploadFile, File, Form, Header
 from typing import List, Optional
 from datetime import datetime, timezone
 import re
@@ -360,6 +360,7 @@ async def upload_patient_gallery_image(
     patient_id: str,
     note: str | None = Form(None),
     image: UploadFile = File(...),
+    x_idempotency_key: str | None = Header(default=None, alias="X-Idempotency-Key"),
     current=Depends(get_current_user),
 ):
     """
@@ -370,6 +371,23 @@ async def upload_patient_gallery_image(
       الصور التي قام برفعها بنفسه (باستخدام endpoint منفصل).
     """
     try:
+        if x_idempotency_key:
+            from app.models.media import GalleryImage
+
+            existing = await GalleryImage.find_one(
+                GalleryImage.client_operation_id == x_idempotency_key
+            )
+            if existing:
+                return GalleryOut(
+                    id=str(existing.id),
+                    patient_id=str(existing.patient_id),
+                    image_path=existing.image_path,
+                    note=existing.note,
+                    created_at=existing.created_at.isoformat()
+                    if existing.created_at
+                    else datetime.now(timezone.utc).isoformat(),
+                )
+
         content_type = (image.content_type or "").split(";")[0].strip().lower()
         if not content_type or content_type not in IMAGE_TYPES:
             raise HTTPException(
@@ -395,6 +413,7 @@ async def upload_patient_gallery_image(
             image_path=image_path,
             note=note,
             doctor_id=None,
+            client_operation_id=x_idempotency_key,
         )
         return GalleryOut(
             id=str(gi.id),

@@ -447,6 +447,7 @@ class PatientService {
     Uint8List? imageBytes,
     String? fileName,
     String? note,
+    String? idempotencyKey,
   }) async {
     try {
       final name = (fileName != null && fileName.isNotEmpty)
@@ -478,9 +479,10 @@ class PatientService {
       final response = await _api.post(
         ApiConstants.receptionPatientGallery(patientId),
         formData: formData,
+        options: _idempotencyOptions(idempotencyKey),
       );
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200 || response.statusCode == 201) {
         return GalleryImageModel.fromJson(
           (response.data as Map).cast<String, dynamic>(),
         );
@@ -493,6 +495,13 @@ class PatientService {
       }
       throw ApiException('فشل رفع الصورة (الاستقبال): ${e.toString()}');
     }
+  }
+
+  dio.Options? _idempotencyOptions(String? idempotencyKey) {
+    if (idempotencyKey == null || idempotencyKey.isEmpty) return null;
+    return dio.Options(
+      headers: {'X-Idempotency-Key': idempotencyKey},
+    );
   }
 
   // جلب معلومات الطبيب المرتبط بالمريض
