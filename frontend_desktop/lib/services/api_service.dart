@@ -43,6 +43,12 @@ class ApiService {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
+          // FormData: clear forced application/json so Dio can set multipart + boundary
+          if (options.data is dio.FormData) {
+            options.headers.remove(Headers.contentTypeHeader);
+            options.contentType = Headers.multipartFormDataContentType;
+          }
+
           // Add token to headers
           try {
             final token = await _storage.read(key: ApiConstants.tokenKey);
@@ -464,7 +470,9 @@ class ApiService {
     if (options?.headers != null) {
       print('🌐 [ApiService] Request Headers: ${options!.headers}');
     }
-    if (data is String) {
+    if (formData != null) {
+      print('🌐 [ApiService] Data Type: FormData');
+    } else if (data is String) {
       print('🌐 [ApiService] Data Type: String (${data.length} chars)');
       print('🌐 [ApiService] Data Preview: ${data.length > 100 ? data.substring(0, 100) + "..." : data}');
     } else if (data != null) {

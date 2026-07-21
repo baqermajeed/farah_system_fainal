@@ -1,11 +1,9 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:image_cropper/image_cropper.dart';
 
 import '../core/constants/app_colors.dart';
 import '../core/constants/iraq_governorates.dart';
@@ -200,19 +198,10 @@ class AddPatientController extends GetxController {
       final XFile? picked = await _imagePicker.pickImage(source: source);
       if (picked == null) return;
 
-      // Crop the image
-      final croppedFile = await ImageCropper().cropImage(
-        sourcePath: picked.path,
-        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
-        compressQuality: 80,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        uiSettings: appImageCropperUiSettings(),
-      );
-
+      final croppedFile = await cropProfileImage(picked.path);
       if (croppedFile == null) return;
 
-      final bytes = await File(croppedFile.path).readAsBytes();
+      final bytes = await croppedFile.readAsBytes();
       final fileName = picked.name.isNotEmpty
           ? picked.name
           : 'patient_${DateTime.now().millisecondsSinceEpoch}.jpg';

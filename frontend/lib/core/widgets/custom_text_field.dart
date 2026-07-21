@@ -19,6 +19,8 @@ class CustomTextField extends StatelessWidget {
   final TextAlign textAlign;
   final FocusNode? focusNode;
   final int? maxLength;
+  final String? errorText;
+  final bool showErrorIcon;
 
   const CustomTextField({
     super.key,
@@ -37,10 +39,20 @@ class CustomTextField extends StatelessWidget {
     this.textAlign = TextAlign.right,
     this.focusNode,
     this.maxLength,
+    this.errorText,
+    this.showErrorIcon = true,
   });
+
+  bool get _hasError => errorText != null;
 
   @override
   Widget build(BuildContext context) {
+    final borderRadius = BorderRadius.circular(16.r);
+    final errorBorder = OutlineInputBorder(
+      borderRadius: borderRadius,
+      borderSide: BorderSide(color: AppColors.error, width: 1.5),
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
@@ -55,7 +67,7 @@ class CustomTextField extends StatelessWidget {
                 fontFamily: AppFonts.family,
                 fontSize: 16.sp,
                 fontWeight: FontWeight.w500,
-                color: AppColors.textPrimary,
+                color: _hasError ? AppColors.error : AppColors.textPrimary,
               ),
             ),
           ),
@@ -83,9 +95,33 @@ class CustomTextField extends StatelessWidget {
             hintText: hintText,
             hintTextDirection: TextDirection.rtl,
             prefixIcon: prefixIcon,
-            suffixIcon: suffixIcon,
+            suffixIcon: _hasError && showErrorIcon
+                ? Icon(
+                    Icons.error_outline_rounded,
+                    color: AppColors.error,
+                    size: 22.sp,
+                  )
+                : suffixIcon,
+            // سلسلة فارغة = حدود/أيقونة خطأ بدون نص (للرسائل المشتركة تحت حقل آخر)
+            errorText: _hasError
+                ? (errorText!.isEmpty ? ' ' : errorText)
+                : null,
+            errorStyle: errorText != null && errorText!.isEmpty
+                ? const TextStyle(height: 0, fontSize: 0)
+                : TextStyle(
+                    fontFamily: AppFonts.family,
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.error,
+                  ),
             counterText: maxLength != null ? '' : null,
-            contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
+            contentPadding:
+                EdgeInsets.symmetric(horizontal: 16.w, vertical: 16.h),
+            enabledBorder: _hasError ? errorBorder : null,
+            focusedBorder: _hasError ? errorBorder : null,
+            border: _hasError ? errorBorder : null,
+            errorBorder: errorBorder,
+            focusedErrorBorder: errorBorder,
           ),
         ),
       ],

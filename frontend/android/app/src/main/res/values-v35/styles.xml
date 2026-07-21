@@ -1,7 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Android 15+: خروج من edge-to-edge حتى لا يغطي شريط الحالة زر التأكيد -->
     <style name="Ucrop.CropTheme" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:windowFullscreen">false</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:windowTranslucentStatus">false</item>
+        <item name="android:statusBarColor">#FF5B9FCC</item>
+        <item name="android:navigationBarColor">#FF000000</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:fitsSystemWindows">true</item>
+        <!-- Android 15: إلزام الخروج من edge-to-edge لهذه الشاشة -->
         <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
     </style>
 </resources>

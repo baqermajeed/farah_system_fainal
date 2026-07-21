@@ -106,20 +106,6 @@ class UserSelectionScreen extends GetView<UserSelectionController> {
                         ),
                       ),
                     ),
-                    SizedBox(height: 16.h),
-                    // Receptionist button
-                    Center(
-                      child: Obx(
-                        () => _buildUserTypeButton(
-                          label: 'موظف',
-                          isSelected:
-                              controller.selectedUserType.value ==
-                              'receptionist',
-                          onTap: () =>
-                              controller.selectUserType('receptionist'),
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),

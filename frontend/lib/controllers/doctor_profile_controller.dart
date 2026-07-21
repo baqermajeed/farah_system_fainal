@@ -1,8 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
@@ -26,26 +23,13 @@ class DoctorProfileController extends GetxController {
 
       if (image == null) return;
 
-      final croppedFile = await ImageCropper().cropImage(
-        sourcePath: image.path,
-        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
-        compressQuality: 80,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        uiSettings: appImageCropperUiSettings(),
-      );
-
+      final croppedFile = await cropProfileImage(image.path);
       if (croppedFile == null) return;
 
       isUploadingImage.value = true;
 
-      final imageFile = File(croppedFile.path);
-      await _authService.uploadProfileImage(imageFile);
-
-      // تحديث معلومات المستخدم
+      await _authService.uploadProfileImage(croppedFile);
       await authController.checkLoggedInUser(navigate: false);
-
-      // إجبار تحديث الواجهة مع timestamp جديد لإعادة تحميل الصورة
       imageTimestamp.value = DateTime.now().millisecondsSinceEpoch;
 
       Get.snackbar(

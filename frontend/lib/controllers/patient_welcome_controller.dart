@@ -5,6 +5,7 @@ import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/controllers/patient_controller.dart';
+import 'package:farah_sys_final/services/patient_service.dart';
 
 /// Controller لشاشة ترحيب المريض — يتابع ربط الطبيب دورياً وينقل تلقائياً.
 class PatientWelcomeController extends GetxController {
@@ -13,12 +14,14 @@ class PatientWelcomeController extends GetxController {
   AuthController get authController => Get.find<AuthController>();
   PatientController get patientController => Get.find<PatientController>();
 
+  /// أكثر من فرد = حساب عائلي (إظهار زر الإعدادات بدل الخروج المباشر).
+  final RxBool isFamilyAccount = false.obs;
+
   @override
   void onInit() {
     super.onInit();
-    // التحقق فوراً عند فتح الشاشة
+    _loadFamilyStatus();
     _checkDoctorAssignment();
-    // التحقق من حالة المريض كل 5 ثوانٍ
     _checkTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
       _checkDoctorAssignment();
     });
@@ -30,11 +33,19 @@ class PatientWelcomeController extends GetxController {
     super.onClose();
   }
 
+  Future<void> _loadFamilyStatus() async {
+    try {
+      final members = await PatientService().getFamilyProfiles();
+      isFamilyAccount.value = members.length > 1;
+    } catch (_) {
+      isFamilyAccount.value = false;
+    }
+  }
+
   Future<void> _checkDoctorAssignment() async {
     try {
       final hasDoctor = await patientController.checkDoctorAssignment();
       if (hasDoctor) {
-        // إذا تم ربط المريض بطبيب، الانتقال إلى الصفحة الرئيسية
         _checkTimer?.cancel();
         Get.offAllNamed(AppRoutes.patientHome);
       }

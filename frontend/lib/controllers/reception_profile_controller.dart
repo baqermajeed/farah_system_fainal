@@ -1,7 +1,4 @@
-import 'dart:io';
-
 import 'package:get/get.dart';
-import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/services/auth_service.dart';
@@ -25,21 +22,12 @@ class ReceptionProfileController extends GetxController {
       );
       if (xFile == null) return;
 
-      // Crop the image
-      final croppedFile = await ImageCropper().cropImage(
-        sourcePath: xFile.path,
-        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
-        compressQuality: 80,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        uiSettings: appImageCropperUiSettings(),
-      );
-
+      final croppedFile = await cropProfileImage(xFile.path);
       if (croppedFile == null) return;
 
       isUploadingImage.value = true;
 
-      await _authService.uploadProfileImage(File(croppedFile.path));
+      await _authService.uploadProfileImage(croppedFile);
       await authController.checkLoggedInUser(navigate: false);
 
       imageTimestamp.value = DateTime.now().millisecondsSinceEpoch;

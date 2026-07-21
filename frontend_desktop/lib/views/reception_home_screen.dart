@@ -4551,6 +4551,8 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
 
   void _showAddImageDialog(BuildContext context, String patientId) {
     File? selectedImage;
+    Uint8List? selectedImageBytes;
+    String? selectedImageName;
     final TextEditingController noteController = TextEditingController();
     bool isUploading = false;
 
@@ -4600,17 +4602,41 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                                   .pickFiles(
                                     type: FileType.image,
                                     allowMultiple: false,
+                                    withData: true,
                                   );
 
-                              if (result != null &&
-                                  result.files.isNotEmpty &&
-                                  result.files.first.path != null) {
-                                setDialogState(() {
-                                  selectedImage = File(
-                                    result.files.first.path!,
-                                  );
-                                });
+                              if (result == null || result.files.isEmpty) {
+                                return;
                               }
+
+                              final picked = result.files.first;
+                              final bytes = picked.bytes;
+                              final path = picked.path;
+
+                              if (bytes == null && path == null) {
+                                Get.snackbar(
+                                  'خطأ',
+                                  'تعذر قراءة ملف الصورة. جرّب صورة أخرى (JPG أو PNG).',
+                                  snackPosition: SnackPosition.TOP,
+                                  backgroundColor: Colors.red,
+                                  colorText: Colors.white,
+                                );
+                                return;
+                              }
+
+                              setDialogState(() {
+                                selectedImageName = picked.name.isNotEmpty
+                                    ? picked.name
+                                    : 'gallery_${DateTime.now().millisecondsSinceEpoch}.jpg';
+                                if (path != null) {
+                                  selectedImage = File(path);
+                                }
+                                if (bytes != null) {
+                                  selectedImageBytes = bytes;
+                                } else if (path != null) {
+                                  selectedImageBytes = null;
+                                }
+                              });
                             } else {
                               // Use image_picker for mobile platforms
                               final XFile? image = await _imagePicker.pickImage(
@@ -4619,20 +4645,23 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                               );
 
                               if (image != null) {
+                                final bytes = await image.readAsBytes();
                                 setDialogState(() {
                                   selectedImage = File(image.path);
+                                  selectedImageBytes = bytes;
+                                  selectedImageName = image.name;
                                 });
                               }
                             }
                           } catch (e) {
                             print(
-                              '❌ [DoctorHomeScreen] Error picking image: $e',
+                              '❌ [ReceptionHomeScreen] Error picking image: $e',
                             );
                             if (context.mounted) {
                               Get.snackbar(
                                 'خطأ',
                                 'فشل اختيار الصورة: ${e.toString()}',
-                                snackPosition: SnackPosition.BOTTOM,
+                                snackPosition: SnackPosition.TOP,
                                 backgroundColor: Colors.red,
                                 colorText: Colors.white,
                                 duration: const Duration(seconds: 3),
@@ -4651,7 +4680,8 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                               width: 1.5,
                             ),
                           ),
-                          child: selectedImage == null
+                          child: selectedImage == null &&
+                                  selectedImageBytes == null
                               ? Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
@@ -4672,12 +4702,19 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                                 )
                               : ClipRRect(
                                   borderRadius: BorderRadius.circular(12.r),
-                                  child: Image.file(
-                                    selectedImage!,
-                                    fit: BoxFit.cover,
-                                    width: double.infinity,
-                                    height: 200.h,
-                                  ),
+                                  child: selectedImageBytes != null
+                                      ? Image.memory(
+                                          selectedImageBytes!,
+                                          fit: BoxFit.cover,
+                                          width: double.infinity,
+                                          height: 200.h,
+                                        )
+                                      : Image.file(
+                                          selectedImage!,
+                                          fit: BoxFit.cover,
+                                          width: double.infinity,
+                                          height: 200.h,
+                                        ),
                                 ),
                         ),
                       ),
@@ -4746,37 +4783,104 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                           // Add button (right)
                           Expanded(
                             child: GestureDetector(
-                              onTap: isUploading || selectedImage == null
+                              onTap: isUploading ||
+                                      (selectedImage == null &&
+                                          selectedImageBytes == null)
                                   ? null
                                   : () async {
                                       setDialogState(() {
                                         isUploading = true;
                                       });
 
-                                      final success = await _galleryController
-                                          .uploadImage(
-                                            patientId,
-                                            selectedImage!,
-                                            noteController.text.trim().isEmpty
-                                                ? null
-                                                : noteController.text.trim(),
+                                      final note =
+                                          noteController.text.trim().isEmpty
+                                          ? null
+                                          : noteController.text.trim();
+
+                                      bool success = false;
+                                      try {
+                                        if (selectedImageBytes != null) {
+                                          // Write temp file so GalleryController API stays File-based,
+                                          // but upload uses bytes+MIME via service when path is weak.
+                                          final tempDir =
+                                              await Directory.systemTemp.createTemp(
+                                            'farah_gallery_',
                                           );
+                                          // ASCII-safe name avoids multipart/R2 key issues
+                                          final originalName =
+                                              (selectedImageName ?? '')
+                                                  .toLowerCase();
+                                          final ext =
+                                              originalName.endsWith('.png')
+                                              ? '.png'
+                                              : originalName.endsWith('.webp')
+                                              ? '.webp'
+                                              : '.jpg';
+                                          final name =
+                                              'gallery_${DateTime.now().millisecondsSinceEpoch}$ext';
+                                          final tempFile = File(
+                                            '${tempDir.path}${Platform.pathSeparator}$name',
+                                          );
+                                          await tempFile.writeAsBytes(
+                                            selectedImageBytes!,
+                                          );
+                                          success = await _galleryController
+                                              .uploadImage(
+                                                patientId,
+                                                tempFile,
+                                                note,
+                                              );
+                                          try {
+                                            await tempDir.delete(
+                                              recursive: true,
+                                            );
+                                          } catch (_) {}
+                                        } else if (selectedImage != null) {
+                                          success = await _galleryController
+                                              .uploadImage(
+                                                patientId,
+                                                selectedImage!,
+                                                note,
+                                              );
+                                        }
+                                      } catch (e) {
+                                        print(
+                                          '❌ [ReceptionHomeScreen] Gallery upload error: $e',
+                                        );
+                                      }
 
                                       if (dialogContext.mounted) {
                                         if (success) {
                                           Navigator.of(dialogContext).pop();
-                                          // المعرض تم تحديثه متفائلاً في الكونترولر، لا حاجة لإعادة تحميل
                                         } else {
                                           setDialogState(() {
                                             isUploading = false;
                                           });
+                                          final err = _galleryController
+                                              .errorMessage
+                                              .value;
+                                          Get.snackbar(
+                                            'فشل رفع الصورة',
+                                            err.isNotEmpty
+                                                ? err
+                                                : 'تعذر رفع الصورة إلى المعرض. جرّب JPG أو PNG.',
+                                            snackPosition: SnackPosition.TOP,
+                                            backgroundColor: Colors.red,
+                                            colorText: Colors.white,
+                                            duration: const Duration(
+                                              seconds: 4,
+                                            ),
+                                          );
                                         }
                                       }
                                     },
                               child: Container(
                                 height: 48.h,
                                 decoration: BoxDecoration(
-                                  color: (isUploading || selectedImage == null)
+                                  color:
+                                      (isUploading ||
+                                          (selectedImage == null &&
+                                              selectedImageBytes == null))
                                       ? AppColors.divider
                                       : AppColors.primary,
                                   borderRadius: BorderRadius.circular(12.r),

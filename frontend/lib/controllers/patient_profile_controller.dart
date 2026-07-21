@@ -1,7 +1,4 @@
-import 'dart:io';
-
 import 'package:get/get.dart';
-import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/controllers/patient_controller.dart';
@@ -34,19 +31,12 @@ class PatientProfileController extends GetxController {
       );
       if (image == null) return;
 
-      final croppedFile = await ImageCropper().cropImage(
-        sourcePath: image.path,
-        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
-        compressQuality: 80,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        uiSettings: appImageCropperUiSettings(),
-      );
+      final croppedFile = await cropProfileImage(image.path);
       if (croppedFile == null) return;
 
       isUploadingImage.value = true;
 
-      await patientController.uploadMyProfileImage(File(croppedFile.path));
+      await patientController.uploadMyProfileImage(croppedFile);
       imageTimestamp.value = DateTime.now().millisecondsSinceEpoch;
       Get.snackbar('نجح', 'تم تحديث الصورة بنجاح');
     } catch (e) {

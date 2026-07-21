@@ -8,6 +8,10 @@ import 'package:farah_sys_final/core/widgets/custom_text_field.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
 import 'package:farah_sys_final/controllers/doctor_login_controller.dart';
 
+class _LoginAssets {
+  static const back = 'assets/icon/backblack.png';
+}
+
 /// شاشة تسجيل دخول الطبيب — GetView؛ المنطق في DoctorLoginController.
 class DoctorLoginScreen extends GetView<DoctorLoginController> {
   const DoctorLoginScreen({super.key});
@@ -80,15 +84,43 @@ class DoctorLoginScreen extends GetView<DoctorLoginController> {
                       ),
                     ),
                     SizedBox(height: 24.h),
-                    CustomTextField(
-                      labelText: AppStrings.doctorName,
-                      controller: controller.usernameController,
-                    ),
-                    SizedBox(height: 16.h),
-                    CustomTextField(
-                      labelText: AppStrings.password,
-                      controller: controller.passwordController,
-                      obscureText: true,
+                    Theme(
+                      data: Theme.of(context).copyWith(
+                        colorScheme: Theme.of(context).colorScheme.copyWith(
+                          primary: DoctorLoginController.actionNavy,
+                        ),
+                        inputDecorationTheme: Theme.of(context)
+                            .inputDecorationTheme
+                            .copyWith(
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(16.r),
+                                borderSide: const BorderSide(
+                                  color: DoctorLoginController.actionNavy,
+                                  width: 2,
+                                ),
+                              ),
+                            ),
+                      ),
+                      child: Obx(
+                        () => Column(
+                          children: [
+                            CustomTextField(
+                              labelText: AppStrings.doctorName,
+                              controller: controller.usernameController,
+                              onChanged: controller.onUsernameChanged,
+                              errorText: controller.usernameError.value,
+                            ),
+                            SizedBox(height: 16.h),
+                            CustomTextField(
+                              labelText: AppStrings.password,
+                              controller: controller.passwordController,
+                              obscureText: true,
+                              onChanged: controller.onPasswordChanged,
+                              errorText: controller.passwordError.value,
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                     SizedBox(height: 24.h),
                     Obx(
@@ -98,7 +130,7 @@ class DoctorLoginScreen extends GetView<DoctorLoginController> {
                         decoration: BoxDecoration(
                           color: controller.auth.isLoading.value
                               ? AppColors.textHint
-                              : AppColors.secondary,
+                              : DoctorLoginController.actionNavy,
                           borderRadius: BorderRadius.circular(16.r),
                         ),
                         child: Material(
@@ -139,7 +171,11 @@ class DoctorLoginScreen extends GetView<DoctorLoginController> {
                 ),
               ),
             ),
-            Positioned(top: 16.h, left: 16, child: const BackButtonWidget()),
+            Positioned(
+              top: 16.h,
+              left: 16,
+              child: const BackButtonWidget(assetPath: _LoginAssets.back),
+            ),
           ],
         ),
       ),

@@ -470,14 +470,20 @@ class AuthController extends GetxController {
   }
 
   // تسجيل دخول الطاقم (username/password)
-  Future<void> loginDoctor({
+  /// يعيد `null` عند النجاح، أو رسالة الخطأ عند الفشل.
+  /// عند [showErrorUi]=false لا تُعرض Snackbar (ما عدا أخطاء الشبكة).
+  Future<String?> loginDoctor({
     required String username,
     required String password,
+    bool showErrorUi = true,
   }) async {
 
     if (username.trim().isEmpty || password.trim().isEmpty) {
-      Get.snackbar('خطأ', 'يرجى إدخال اسم المستخدم وكلمة المرور');
-      return;
+      const msg = 'يرجى إدخال اسم المستخدم وكلمة المرور';
+      if (showErrorUi) {
+        Get.snackbar('خطأ', msg);
+      }
+      return msg;
     }
 
     try {
@@ -547,20 +553,56 @@ class AuthController extends GetxController {
               _logError(e);
             }
           }
+          return null;
         } else {
           final errorMsg = userRes['error']?.toString() ?? 'فشل جلب معلومات المستخدم';
-          await NetworkUtils.showError(errorMsg);
+          if (showErrorUi) {
+            await NetworkUtils.showError(errorMsg);
+          }
+          return errorMsg;
         }
       } else {
-        final errorMsg = res['error']?.toString() ?? 'فشل تسجيل الدخول';
-        await NetworkUtils.showError(errorMsg, fallbackMessage: 'فشل تسجيل الدخول');
+        final errorMsg = _staffLoginErrorMessage(res);
+        if (showErrorUi || NetworkUtils.isNetworkError(errorMsg) ||
+            NetworkUtils.hasForbiddenConnectionText(errorMsg)) {
+          await NetworkUtils.showError(errorMsg);
+        }
+        return errorMsg;
       }
     } catch (e) {
-      final errorMsg = e.toString();
-      await NetworkUtils.showError(errorMsg, fallbackMessage: 'فشل تسجيل الدخول');
+      final errorMsg = _staffLoginErrorMessage({'error': e.toString(), 'statusCode': null});
+      if (showErrorUi || NetworkUtils.isNetworkError(e) ||
+          NetworkUtils.hasForbiddenConnectionText(errorMsg)) {
+        await NetworkUtils.showError(errorMsg, fallbackMessage: errorMsg);
+      }
+      return errorMsg;
     } finally {
       isLoading.value = false;
     }
+  }
+
+  /// رسالة مناسبة لخطأ بيانات الدخول (بدل «فشل تسجيل الدخول» العامة).
+  String _staffLoginErrorMessage(Map<String, dynamic> res) {
+    const credentialsMsg = 'اسم المستخدم أو كلمة المرور غير صحيحة';
+    final statusCode = res['statusCode'];
+    final raw = res['error']?.toString() ?? '';
+    final lower = raw.toLowerCase();
+
+    if (statusCode == 401 || statusCode == 400 || statusCode == 422) {
+      return credentialsMsg;
+    }
+    if (lower.contains('incorrect') ||
+        lower.contains('invalid') ||
+        lower.contains('unauthorized') ||
+        lower.contains('credential') ||
+        lower.contains('password') ||
+        raw.contains('غير صحيح') ||
+        raw.contains('غير صحيحة') ||
+        raw.contains('فشل تسجيل الدخول')) {
+      return credentialsMsg;
+    }
+    if (raw.trim().isEmpty) return credentialsMsg;
+    return raw;
   }
 
   // تسجيل مريض جديد (مع OTP)

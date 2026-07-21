@@ -1,8 +1,5 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
 import 'package:farah_sys_final/core/constants/iraq_governorates.dart';
@@ -54,7 +51,6 @@ class EditPatientProfileController extends GetxController {
     final user = authController.currentUser.value;
     final profile = patientController.myProfile.value;
 
-    // بيانات العرض/التعديل من الملف الطبي النشط (فرد العائلة)
     nameController.text = profile?.name ?? user?.name ?? '';
     phoneController.text =
         user?.phoneNumber ?? profile?.phoneNumber ?? '';
@@ -118,19 +114,12 @@ class EditPatientProfileController extends GetxController {
       );
       if (image == null) return;
 
-      final croppedFile = await ImageCropper().cropImage(
-        sourcePath: image.path,
-        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
-        compressQuality: 80,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        uiSettings: appImageCropperUiSettings(),
-      );
+      final croppedFile = await cropProfileImage(image.path);
       if (croppedFile == null) return;
 
       isUploadingImage.value = true;
 
-      await patientController.uploadMyProfileImage(File(croppedFile.path));
+      await patientController.uploadMyProfileImage(croppedFile);
       imageTimestamp.value = DateTime.now().millisecondsSinceEpoch;
       Get.snackbar('نجح', 'تم تحديث الصورة بنجاح');
     } catch (e) {

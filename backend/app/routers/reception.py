@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, Body, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, Query, Body, HTTPException, UploadFile, File, Form
 from typing import List, Optional
 from datetime import datetime, timezone
 import re
@@ -32,6 +32,7 @@ from app.services.doctor_working_hours_service import DoctorWorkingHoursService
 from app.utils.r2_clinic import upload_clinic_image
 from app.utils.patient_profile import build_doctor_profile_map
 from app.utils.patient_out import build_patient_out, patient_name_hint_for_id, build_patient_out_from_agg
+from app.utils.logger import get_logger
 
 PHONE_PATTERN = re.compile(r"^07\d{9}$")
 IMAGE_TYPES = (
@@ -41,6 +42,7 @@ IMAGE_TYPES = (
     "image/heic",
     "image/heif",
 )
+logger = get_logger("reception_router")
 
 router = APIRouter(
     prefix="/reception",
@@ -356,8 +358,8 @@ async def update_patient_profile_by_reception(
 @router.post("/patients/{patient_id}/gallery", response_model=GalleryOut)
 async def upload_patient_gallery_image(
     patient_id: str,
+    note: str | None = Form(None),
     image: UploadFile = File(...),
-    note: str | None = None,
     current=Depends(get_current_user),
 ):
     """
@@ -367,37 +369,55 @@ async def upload_patient_gallery_image(
     - عند استعلام موظف الاستقبال عن المعرض من واجهته، نعرض له فقط
       الصور التي قام برفعها بنفسه (باستخدام endpoint منفصل).
     """
-    if IMAGE_TYPES and image.content_type not in IMAGE_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file type. Allowed types: {', '.join(IMAGE_TYPES)}",
-        )
+    try:
+        content_type = (image.content_type or "").split(";")[0].strip().lower()
+        if not content_type or content_type not in IMAGE_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file type. Allowed types: {', '.join(IMAGE_TYPES)}",
+            )
 
-    file_bytes = await image.read()
-    patient_name_hint = await patient_name_hint_for_id(patient_id)
-    image_path = await upload_clinic_image(
-        patient_id=patient_id,
-        folder="gallery",
-        file_bytes=file_bytes,
-        content_type=image.content_type,
-        name_hint=patient_name_hint,
-    )
-    gi = await patient_service.create_gallery_image(
-        patient_id=patient_id,
-        uploaded_by_user_id=str(current.id),
-        image_path=image_path,
-        note=note,
-        doctor_id=None,
-    )
-    return GalleryOut(
-        id=str(gi.id),
-        patient_id=str(gi.patient_id),
-        image_path=gi.image_path,
-        note=gi.note,
-        created_at=gi.created_at.isoformat()
-        if gi.created_at
-        else datetime.now(timezone.utc).isoformat(),
-    )
+        file_bytes = await image.read()
+        if not file_bytes:
+            raise HTTPException(status_code=400, detail="Empty image file")
+
+        patient_name_hint = await patient_name_hint_for_id(patient_id)
+        image_path = await upload_clinic_image(
+            patient_id=patient_id,
+            folder="gallery",
+            file_bytes=file_bytes,
+            content_type=content_type,
+            name_hint=patient_name_hint,
+        )
+        gi = await patient_service.create_gallery_image(
+            patient_id=patient_id,
+            uploaded_by_user_id=str(current.id),
+            image_path=image_path,
+            note=note,
+            doctor_id=None,
+        )
+        return GalleryOut(
+            id=str(gi.id),
+            patient_id=str(gi.patient_id),
+            image_path=gi.image_path,
+            note=gi.note,
+            created_at=gi.created_at.isoformat()
+            if gi.created_at
+            else datetime.now(timezone.utc).isoformat(),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "Reception gallery upload failed for patient %s: %s",
+            patient_id,
+            e,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"فشل رفع صورة المعرض: {e}",
+        )
 
 
 @router.get("/patients/{patient_id}/gallery", response_model=List[GalleryOut])

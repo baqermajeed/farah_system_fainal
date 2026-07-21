@@ -44,9 +44,13 @@ def _ext_from_content_type(content_type: Optional[str]) -> str:
 def _sanitize_name_hint(name_hint: Optional[str]) -> str:
     if not name_hint:
         return ""
+    # Keep ASCII alnum only — Arabic/Unicode in R2 object keys can break signing/uploads.
     cleaned = "".join(
-        ch if ch.isalnum() else "_" for ch in name_hint.strip().replace(" ", "_")
+        ch if (ch.isascii() and ch.isalnum()) else "_"
+        for ch in name_hint.strip().replace(" ", "_")
     )
+    while "__" in cleaned:
+        cleaned = cleaned.replace("__", "_")
     return cleaned.strip("_")
 
 

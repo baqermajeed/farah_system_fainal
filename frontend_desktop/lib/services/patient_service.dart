@@ -20,7 +20,9 @@ class PatientService {
     if (lower.endsWith('.webp')) return MediaType('image', 'webp');
     if (lower.endsWith('.heic')) return MediaType('image', 'heic');
     if (lower.endsWith('.heif')) return MediaType('image', 'heif');
-    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+    if (lower.endsWith('.jpg') ||
+        lower.endsWith('.jpeg') ||
+        lower.endsWith('.jfif')) {
       return MediaType('image', 'jpeg');
     }
     return null;
@@ -442,14 +444,34 @@ class PatientService {
   Future<GalleryImageModel> uploadReceptionGalleryImage({
     required String patientId,
     required File imageFile,
+    Uint8List? imageBytes,
+    String? fileName,
     String? note,
   }) async {
     try {
-      final formData = dio.FormData.fromMap({
-        'image': await dio.MultipartFile.fromFile(
+      final name = (fileName != null && fileName.isNotEmpty)
+          ? fileName
+          : imageFile.path.split('/').last.split('\\').last;
+      final contentType =
+          _guessImageContentType(name) ?? MediaType('image', 'jpeg');
+
+      final dio.MultipartFile multipart;
+      if (imageBytes != null) {
+        multipart = dio.MultipartFile.fromBytes(
+          imageBytes,
+          filename: name,
+          contentType: contentType,
+        );
+      } else {
+        multipart = await dio.MultipartFile.fromFile(
           imageFile.path,
-          filename: imageFile.path.split('/').last.split('\\').last,
-        ),
+          filename: name,
+          contentType: contentType,
+        );
+      }
+
+      final formData = dio.FormData.fromMap({
+        'image': multipart,
         if (note != null && note.isNotEmpty) 'note': note,
       });
 

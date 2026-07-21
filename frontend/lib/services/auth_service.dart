@@ -226,7 +226,7 @@ class AuthService {
         'data': data,
       };
     } catch (e) {
-      return _fail(e, fallback: 'فشل تسجيل الدخول');
+      return _fail(e, fallback: 'اسم المستخدم أو كلمة المرور غير صحيحة');
     }
   }
 

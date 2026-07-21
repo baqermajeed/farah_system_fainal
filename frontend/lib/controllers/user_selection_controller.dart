@@ -18,9 +18,6 @@ class UserSelectionController extends GetxController {
       case 'doctor':
         Get.toNamed(AppRoutes.doctorLogin);
         break;
-      case 'receptionist':
-        Get.toNamed(AppRoutes.receptionLogin);
-        break;
     }
   }
 }
