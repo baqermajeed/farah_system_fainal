@@ -7,6 +7,7 @@ import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
 import 'package:farah_sys_final/core/widgets/empty_state_widget.dart';
 import 'package:farah_sys_final/core/widgets/loading_widget.dart';
+import 'package:farah_sys_final/core/utils/date_time_utils.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
 import 'package:farah_sys_final/controllers/doctor_chats_screen_controller.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -14,6 +15,12 @@ import 'package:intl/intl.dart';
 
 class DoctorChatsScreen extends GetView<DoctorChatsScreenController> {
   const DoctorChatsScreen({super.key});
+
+  static const Color _bg = Color(0xFFFFFFFF);
+  static const Color _searchBg = Color(0xFFF0F2F5);
+  static const Color _titleColor = Color(0xFF111B21);
+  static const Color _subtitleColor = Color(0xFF667781);
+  static const Color _dividerColor = Color(0xFFE9EDEF);
 
   @override
   Widget build(BuildContext context) {
@@ -26,35 +33,34 @@ class DoctorChatsScreen extends GetView<DoctorChatsScreenController> {
     return Theme(
       data: cairoTheme,
       child: Scaffold(
-        backgroundColor: const Color(0xFFF4F8FF),
+        backgroundColor: _bg,
         appBar: PreferredSize(
           preferredSize: Size.fromHeight(kToolbarHeight),
           child: Directionality(
-            textDirection: ui.TextDirection.ltr, // keep back button on LEFT always
+            textDirection: ui.TextDirection.ltr,
             child: AppBar(
-              backgroundColor: Colors.transparent,
+              backgroundColor: _bg,
               elevation: 0,
               scrolledUnderElevation: 0,
+              surfaceTintColor: Colors.transparent,
               automaticallyImplyLeading: false,
               leading: Padding(
                 padding: EdgeInsets.only(left: 16.w),
-                child: const BackButtonWidget(),
+                child: Center(child: const BackButtonWidget()),
               ),
-              leadingWidth: 56.w,
-              title: Padding(
-                padding: EdgeInsets.only(top: 30.h),
-                child: Directionality(
-                  textDirection: ui.TextDirection.rtl,
-                  child: Text(
-                    'المحادثات',
-                    style: AppFonts.lamaSans(
-                      fontSize: 26.sp,
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF1F2A44),
-                    ),
+              leadingWidth: 64.w,
+              title: Directionality(
+                textDirection: ui.TextDirection.rtl,
+                child: Text(
+                  'المحادثات',
+                  style: AppFonts.lamaSans(
+                    fontSize: 22.sp,
+                    fontWeight: FontWeight.w700,
+                    color: _titleColor,
                   ),
                 ),
               ),
+              titleSpacing: 0,
               centerTitle: true,
             ),
           ),
@@ -64,129 +70,32 @@ class DoctorChatsScreen extends GetView<DoctorChatsScreenController> {
             return const LoadingWidget(message: 'جاري تحميل المحادثات...');
           }
 
-          final unreadTotal = controller.chatList.fold<int>(
-            0,
-            (sum, item) => sum + ((item['unread_count'] as int?) ?? 0),
-          );
           final chats = controller.filteredChatList;
 
           return Column(
             children: [
-              Container(
-                margin: EdgeInsets.fromLTRB(16.w, 10.h, 16.w, 10.h),
-                padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 14.h),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF4A90D9), Color(0xFF2F5FA7)],
-                    begin: Alignment.topRight,
-                    end: Alignment.bottomLeft,
-                  ),
-                  borderRadius: BorderRadius.circular(22.r),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF2F5FA7).withValues(alpha: 0.24),
-                      blurRadius: 18,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: Directionality(
-                  textDirection: ui.TextDirection.rtl,
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 44.w,
-                        height: 44.w,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.22),
-                          borderRadius: BorderRadius.circular(14.r),
-                        ),
-                        child: Icon(
-                          Icons.chat_rounded,
-                          color: AppColors.white,
-                          size: 24.sp,
-                        ),
-                      ),
-                      SizedBox(width: 12.w),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'تواصل مع مرضاك بسهولة',
-                              style: AppFonts.lamaSans(
-                                fontSize: 14.sp,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.white,
-                              ),
-                            ),
-                            SizedBox(height: 5.h),
-                            Text(
-                              '${controller.chatList.length} محادثة • $unreadTotal غير مقروءة',
-                              style: AppFonts.lamaSans(
-                                fontSize: 12.sp,
-                                fontWeight: FontWeight.w500,
-                                color: AppColors.white.withValues(alpha: 0.88),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              Container(
-                margin: EdgeInsets.fromLTRB(16.w, 0, 16.w, 8.h),
-                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 2.h),
-                decoration: BoxDecoration(
-                  color: AppColors.white,
-                  borderRadius: BorderRadius.circular(16.r),
-                  border: Border.all(color: const Color(0xFFE4ECF6)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF1F2A44).withValues(alpha: 0.05),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: TextField(
-                  textDirection: ui.TextDirection.rtl,
-                  onChanged: (value) => controller.searchQuery.value = value,
-                  decoration: InputDecoration(
-                    hintText: 'ابحث باسم المريض أو آخر رسالة',
-                    hintStyle: AppFonts.lamaSans(
-                      fontSize: 13.sp,
-                      color: const Color(0xFF9BA9BC),
-                    ),
-                    border: InputBorder.none,
-                    prefixIcon: Icon(
-                      Icons.search_rounded,
-                      color: const Color(0xFF7D8FA8),
-                      size: 20.sp,
-                    ),
-                  ),
-                ),
-              ),
+              _buildSearchBar(),
+              _buildFilterRow(),
               Expanded(
                 child: chats.isEmpty
                     ? EmptyStateWidget(
                         icon: Icons.chat_bubble_outline_rounded,
-                        title: controller.searchQuery.value.trim().isEmpty
-                            ? 'لا توجد محادثات'
-                            : 'لا توجد نتائج',
-                        subtitle: controller.searchQuery.value.trim().isEmpty
-                            ? 'لم يتم بدء أي محادثات بعد'
-                            : 'جرّب كلمة بحث مختلفة',
+                        title: _emptyTitle(),
+                        subtitle: _emptySubtitle(),
                       )
                     : RefreshIndicator(
+                        color: AppColors.primary,
                         onRefresh: controller.loadChatList,
                         child: ListView.separated(
-                          padding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 16.h),
+                          padding: EdgeInsets.only(bottom: 16.h),
                           itemCount: chats.length,
-                          separatorBuilder: (_, __) => SizedBox(height: 10.h),
-                          itemBuilder: (_, i) => _buildChatCard(chats[i]),
+                          separatorBuilder: (_, __) => Divider(
+                            height: 1,
+                            thickness: 0.6,
+                            color: _dividerColor,
+                            indent: 78.w,
+                          ),
+                          itemBuilder: (_, i) => _buildChatTile(chats[i]),
                         ),
                       ),
               ),
@@ -197,142 +106,293 @@ class DoctorChatsScreen extends GetView<DoctorChatsScreenController> {
     );
   }
 
-  Widget _buildChatCard(Map<String, dynamic> chatItem) {
+  String _emptyTitle() {
+    if (controller.searchQuery.value.trim().isNotEmpty) return 'لا توجد نتائج';
+    if (controller.readFilter.value == ChatReadFilter.unread) {
+      return 'لا توجد محادثات غير مقروءة';
+    }
+    if (controller.readFilter.value == ChatReadFilter.read) {
+      return 'لا توجد محادثات مقروءة';
+    }
+    return 'لا توجد محادثات';
+  }
+
+  String _emptySubtitle() {
+    if (controller.searchQuery.value.trim().isNotEmpty) {
+      return 'جرّب كلمة بحث مختلفة';
+    }
+    if (controller.readFilter.value != ChatReadFilter.all) {
+      return 'غيّر الفلتر لعرض جميع المحادثات';
+    }
+    return 'لم يتم بدء أي محادثات بعد';
+  }
+
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 10.h),
+      child: Container(
+        height: 44.h,
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.circular(12.r),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF1F2A44).withValues(alpha: 0.08),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: TextField(
+          textDirection: ui.TextDirection.rtl,
+          onChanged: (value) => controller.searchQuery.value = value,
+          style: AppFonts.lamaSans(
+            fontSize: 15.sp,
+            color: _titleColor,
+          ),
+          decoration: InputDecoration(
+            hintText: 'ابحث باسم المريض أو آخر رسالة',
+            hintStyle: AppFonts.lamaSans(
+              fontSize: 14.sp,
+              color: _subtitleColor,
+            ),
+            border: InputBorder.none,
+            contentPadding: EdgeInsets.symmetric(vertical: 10.h),
+            prefixIcon: Icon(
+              Icons.search_rounded,
+              color: AppColors.primary,
+              size: 22.sp,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterRow() {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 8.h),
+      child: Directionality(
+        textDirection: ui.TextDirection.rtl,
+        child: Row(
+          children: [
+            _buildFilterChip(
+              label: 'الكل',
+              filter: ChatReadFilter.all,
+            ),
+            SizedBox(width: 8.w),
+            _buildFilterChip(
+              label: 'غير مقروءة',
+              filter: ChatReadFilter.unread,
+              count: controller.unreadChatsCount,
+            ),
+            SizedBox(width: 8.w),
+            _buildFilterChip(
+              label: 'مقروءة',
+              filter: ChatReadFilter.read,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterChip({
+    required String label,
+    required ChatReadFilter filter,
+    int? count,
+  }) {
+    final isActive = controller.readFilter.value == filter;
+    final showCount = count != null && count > 0;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => controller.setReadFilter(filter),
+        borderRadius: BorderRadius.circular(20.r),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
+          decoration: BoxDecoration(
+            color: isActive ? AppColors.primary : _searchBg,
+            borderRadius: BorderRadius.circular(20.r),
+            border: Border.all(
+              color: isActive ? AppColors.primary : const Color(0xFFE2E8F0),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: AppFonts.lamaSans(
+                  fontSize: 13.sp,
+                  fontWeight: FontWeight.w600,
+                  color: isActive ? AppColors.white : _subtitleColor,
+                ),
+              ),
+              if (showCount) ...[
+                SizedBox(width: 6.w),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 1.h),
+                  decoration: BoxDecoration(
+                    color: isActive
+                        ? AppColors.white.withValues(alpha: 0.25)
+                        : AppColors.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10.r),
+                  ),
+                  child: Text(
+                    count > 99 ? '99+' : '$count',
+                    style: AppFonts.lamaSans(
+                      fontSize: 11.sp,
+                      fontWeight: FontWeight.w700,
+                      color: isActive ? AppColors.white : AppColors.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChatTile(Map<String, dynamic> chatItem) {
     final name = (chatItem['patient_name'] as String?) ?? 'مريض';
     final rawLast = (chatItem['last_message'] as String?) ?? 'لا توجد رسائل';
     final last = _stripReplyMeta(rawLast);
     final unread = (chatItem['unread_count'] as int?) ?? 0;
+    final hasUnread = unread > 0;
     final timeText = _formatTime(chatItem['last_message_time']?.toString());
     final imageUrl = ImageUtils.convertToValidUrl(chatItem['patient_image_url']);
     final hasImage = imageUrl != null && ImageUtils.isValidImageUrl(imageUrl);
 
     return Material(
-      color: Colors.transparent,
+      color: _bg,
       child: InkWell(
-        borderRadius: BorderRadius.circular(18.r),
         onTap: () => controller.openChat(
           chatItem['patient_id'],
           patientName: chatItem['patient_name']?.toString(),
           patientImageUrl: chatItem['patient_image_url']?.toString(),
         ),
-        child: Ink(
-          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
-          decoration: BoxDecoration(
-            color: AppColors.white,
-            borderRadius: BorderRadius.circular(18.r),
-            border: Border.all(color: const Color(0xFFE4ECF6)),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF1F2A44).withValues(alpha: 0.06),
-                blurRadius: 14,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16.w, 10.h, 16.w, 10.h),
           child: Directionality(
             textDirection: ui.TextDirection.rtl,
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 CircleAvatar(
-                  radius: 27.r,
+                  radius: 28.r,
                   backgroundColor: const Color(0xFFE9F3FF),
                   child: ClipOval(
                     child: hasImage
                         ? CachedNetworkImage(
                             imageUrl: imageUrl,
-                            width: 54.w,
-                            height: 54.w,
+                            width: 56.w,
+                            height: 56.w,
                             fit: BoxFit.cover,
                             fadeInDuration: Duration.zero,
                             fadeOutDuration: Duration.zero,
                             memCacheWidth: 120,
                             memCacheHeight: 120,
                             errorWidget: (_, __, ___) => Icon(
-                              Icons.person,
+                              Icons.person_rounded,
                               color: AppColors.primary,
-                              size: 24.sp,
+                              size: 28.sp,
                             ),
                           )
                         : Icon(
-                            Icons.person,
+                            Icons.person_rounded,
                             color: AppColors.primary,
-                            size: 24.sp,
+                            size: 28.sp,
                           ),
                   ),
                 ),
-                SizedBox(width: 12.w),
+                SizedBox(width: 14.w),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        name,
-                        style: AppFonts.lamaSans(
-                          fontSize: 17.sp,
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0xFF1F2A44),
-                        ),
-                        textAlign: TextAlign.right,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              name,
+                              style: AppFonts.lamaSans(
+                                fontSize: 16.sp,
+                                fontWeight: hasUnread
+                                    ? FontWeight.w700
+                                    : FontWeight.w600,
+                                color: _titleColor,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (timeText.isNotEmpty) ...[
+                            SizedBox(width: 8.w),
+                            Text(
+                              timeText,
+                              style: AppFonts.lamaSans(
+                                fontSize: 12.sp,
+                                fontWeight: hasUnread
+                                    ? FontWeight.w600
+                                    : FontWeight.w500,
+                                color: hasUnread
+                                    ? AppColors.primary
+                                    : _subtitleColor,
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
-                      SizedBox(height: 6.h),
-                      Text(
-                        last,
-                        style: AppFonts.lamaSans(
-                          fontSize: 14.sp,
-                          fontWeight: unread > 0 ? FontWeight.w700 : FontWeight.w500,
-                          color: unread > 0
-                              ? const Color(0xFF2E486A)
-                              : const Color(0xFF8193A9),
-                        ),
-                        textAlign: TextAlign.right,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      SizedBox(height: 4.h),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              last,
+                              style: AppFonts.lamaSans(
+                                fontSize: 14.sp,
+                                fontWeight: hasUnread
+                                    ? FontWeight.w600
+                                    : FontWeight.w400,
+                                color: hasUnread
+                                    ? const Color(0xFF3B4A54)
+                                    : _subtitleColor,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (hasUnread) ...[
+                            SizedBox(width: 8.w),
+                            Container(
+                              constraints: BoxConstraints(minWidth: 22.w),
+                              height: 22.w,
+                              padding: EdgeInsets.symmetric(horizontal: 6.w),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary,
+                                borderRadius: BorderRadius.circular(99.r),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  unread > 99 ? '99+' : '$unread',
+                                  style: AppFonts.lamaSans(
+                                    fontSize: 11.sp,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ],
                   ),
-                ),
-                SizedBox(width: 10.w),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      timeText,
-                      style: AppFonts.lamaSans(
-                        fontSize: 11.sp,
-                        fontWeight: FontWeight.w600,
-                        color: const Color(0xFF93A4BA),
-                      ),
-                    ),
-                    SizedBox(height: 8.h),
-                    if (unread > 0)
-                      Container(
-                        constraints: BoxConstraints(minWidth: 24.w),
-                        height: 24.w,
-                        padding: EdgeInsets.symmetric(horizontal: 6.w),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary,
-                          borderRadius: BorderRadius.circular(99.r),
-                        ),
-                        child: Center(
-                          child: Text(
-                            unread > 99 ? '99+' : '$unread',
-                            style: AppFonts.lamaSans(
-                              fontSize: 11.sp,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.white,
-                            ),
-                          ),
-                        ),
-                      )
-                    else
-                      Icon(
-                        Icons.chevron_left_rounded,
-                        color: const Color(0xFFB7C3D3),
-                        size: 22.sp,
-                      ),
-                  ],
                 ),
               ],
             ),
@@ -343,9 +403,9 @@ class DoctorChatsScreen extends GetView<DoctorChatsScreenController> {
   }
 
   String _formatTime(String? raw) {
-    if (raw == null || raw.isEmpty) return '';
+    final dateTime = DateTimeUtils.parseApiToLocal(raw);
+    if (dateTime == null) return '';
     try {
-      final dateTime = DateTime.parse(raw).toLocal();
       final now = DateTime.now();
       final diff = now.difference(dateTime);
       if (diff.inDays == 0) {
@@ -368,6 +428,11 @@ class DoctorChatsScreen extends GetView<DoctorChatsScreenController> {
   }
 
   String _stripReplyMeta(String value) {
-    return value.replaceFirst(RegExp(r'^\[reply:[^:\]]+::[^\]]*\]\n'), '');
+    var text = value.replaceFirst(
+      RegExp(r'^\[reply:[^:\]]+::[^\]]*\]\n'),
+      '',
+    );
+    text = text.replaceFirst(RegExp(r'^\[reply_image:[^\]]*\]\n'), '');
+    return text.trim().isEmpty ? 'صورة' : text;
   }
 }

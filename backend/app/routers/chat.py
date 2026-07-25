@@ -402,6 +402,21 @@ async def send_message(
         except Exception as e:
             print(f"⚠️ Failed to notify patient about chat message: {e}")
 
+    # إشعار الطبيب عند رسالة من المريض
+    if current.role == Role.PATIENT and room.doctor_user_id:
+        try:
+            from app.services.notification_service import notify_doctor_new_message
+
+            await notify_doctor_new_message(
+                doctor_user_id=room.doctor_user_id,
+                patient_user_id=current.id,
+                patient_id=str(room.patient_id) if room.patient_id else patient_id,
+                patient_name=current.name,
+                room_id=str(room.id),
+            )
+        except Exception as e:
+            print(f"⚠️ Failed to notify doctor about chat message: {e}")
+
     # بعد الحفظ الناجح نرجع دائماً 200 حتى لو فشل شيء ثانوي في التسلسل
     try:
         return ChatMessageOut(

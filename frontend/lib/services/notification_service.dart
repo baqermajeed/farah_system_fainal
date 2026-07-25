@@ -113,6 +113,18 @@ class NotificationService {
   final ApiService _api = ApiService();
   final AuthService _authService = AuthService();
 
+  bool get _isPatientAccount {
+    if (!Get.isRegistered<AuthController>()) return false;
+    final type =
+        Get.find<AuthController>().currentUser.value?.userType.toLowerCase();
+    return type == 'patient';
+  }
+
+  Future<String?> resolvePatientIdForNotifications({String? patientId}) async {
+    if (!_isPatientAccount) return null;
+    return resolveActivePatientId(patientId: patientId);
+  }
+
   Future<String> resolveActivePatientId({String? patientId}) async {
     if (patientId != null && patientId.isNotEmpty) return patientId;
 
@@ -138,29 +150,39 @@ class NotificationService {
     bool unreadOnly = false,
     String? patientId,
   }) async {
-    final pid = await resolveActivePatientId(patientId: patientId);
+    final isPatient = _isPatientAccount;
+    final pid = await resolvePatientIdForNotifications(patientId: patientId);
+    final queryParameters = <String, dynamic>{
+      'skip': skip,
+      'limit': limit,
+      'unread_only': unreadOnly,
+    };
+    if (pid != null) {
+      queryParameters['patient_id'] = pid;
+    }
+
     final response = await _api.get(
       '/notifications',
-      queryParameters: {
-        'skip': skip,
-        'limit': limit,
-        'unread_only': unreadOnly,
-        'patient_id': pid,
-      },
+      queryParameters: queryParameters,
     );
     final list = response.data as List? ?? [];
     return list
         .whereType<Map>()
         .map((e) => NotificationModel.fromJson(Map<String, dynamic>.from(e)))
-        .where((n) => n.belongsToPatient(pid))
+        .where((n) => !isPatient || n.belongsToPatient(pid))
         .toList();
   }
 
   Future<int> getUnreadCount({String? patientId}) async {
-    final pid = await resolveActivePatientId(patientId: patientId);
+    final pid = await resolvePatientIdForNotifications(patientId: patientId);
+    final queryParameters = <String, dynamic>{};
+    if (pid != null) {
+      queryParameters['patient_id'] = pid;
+    }
+
     final response = await _api.get(
       '/notifications/unread-count',
-      queryParameters: {'patient_id': pid},
+      queryParameters: queryParameters,
     );
     final data = response.data;
     if (data is Map) {
@@ -179,10 +201,15 @@ class NotificationService {
   }
 
   Future<int> markAllAsRead({String? patientId}) async {
-    final pid = await resolveActivePatientId(patientId: patientId);
+    final pid = await resolvePatientIdForNotifications(patientId: patientId);
+    final queryParameters = <String, dynamic>{};
+    if (pid != null) {
+      queryParameters['patient_id'] = pid;
+    }
+
     final response = await _api.post(
       '/notifications/mark-all-read',
-      queryParameters: {'patient_id': pid},
+      queryParameters: queryParameters,
     );
     final data = response.data;
     if (data is Map) {

@@ -410,6 +410,7 @@ class ChatScreen extends GetView<ChatScreenController> {
     return Obx(() {
       final reply = controller.replyingTo.value;
       final editing = controller.editingMessage.value;
+      final pendingImage = controller.pendingImage.value;
       final parsedReply = reply == null ? null : controller.parseMessage(reply.message);
       final replyImage = (reply?.imageUrl ?? '').trim();
       final editingParsed = editing == null
@@ -540,6 +541,50 @@ class ChatScreen extends GetView<ChatScreenController> {
                     ],
                   ),
                 ),
+              if (pendingImage != null && editing == null)
+                Container(
+                  margin: EdgeInsets.fromLTRB(8.w, 4.h, 8.w, 8.h),
+                  padding: EdgeInsets.fromLTRB(10.w, 8.h, 8.w, 8.h),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF4F8FC),
+                    borderRadius: BorderRadius.circular(12.r),
+                    border: Border.all(color: const Color(0xFFD7E5F7)),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'صورة جاهزة للإرسال',
+                          textAlign: TextAlign.right,
+                          style: AppFonts.lamaSans(
+                            fontSize: 12.sp,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFF2D4D76),
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 8.w),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8.r),
+                        child: Image.file(
+                          pendingImage,
+                          width: 44.w,
+                          height: 44.w,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      SizedBox(width: 8.w),
+                      GestureDetector(
+                        onTap: controller.clearPendingImage,
+                        child: Icon(
+                          Icons.close_rounded,
+                          size: 18.sp,
+                          color: const Color(0xFF8AA1BC),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               Row(
                 children: [
                   _buildCircleAction(
@@ -586,7 +631,10 @@ class ChatScreen extends GetView<ChatScreenController> {
                   ValueListenableBuilder<TextEditingValue>(
                     valueListenable: controller.messageController,
                     builder: (context, value, _) {
-                      final canSend = value.text.trim().isNotEmpty;
+                      final canSend = editing != null
+                          ? value.text.trim().isNotEmpty
+                          : value.text.trim().isNotEmpty ||
+                              pendingImage != null;
                       return _buildCircleAction(
                         icon: Icons.send_rounded,
                         color: canSend ? _navy : const Color(0xFFD3DCE8),
@@ -690,7 +738,7 @@ class ChatScreen extends GetView<ChatScreenController> {
             child: GestureDetector(
               onLongPress: () => _showMessageActions(
                 message,
-                canEdit: isSent && !hasImage && parsed.text.trim().isNotEmpty,
+                canEdit: isSent && parsed.text.trim().isNotEmpty,
               ),
               child: Obx(() {
                 final highlighted = controller.highlightedMessageId.value == message.id;

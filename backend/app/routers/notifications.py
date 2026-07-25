@@ -141,9 +141,17 @@ async def mark_all_read(
     dependencies=[Depends(require_roles([Role.ADMIN, Role.RECEPTIONIST]))],
 )
 async def broadcast_general(payload: GeneralNotificationIn):
-    """إرسال تنبيه عام لجميع المرضى (مدير / استقبال)."""
-    sent = await notification_service.notify_all_patients(
-        title=payload.title,
-        body=payload.body,
-    )
+    """إرسال تنبيه عام للمرضى و/أو الأطباء (مدير / استقبال)."""
+    audience = (payload.audience or "patients").strip().lower()
+    sent = 0
+    if audience in {"patients", "all"}:
+        sent += await notification_service.notify_all_patients(
+            title=payload.title,
+            body=payload.body,
+        )
+    if audience in {"doctors", "all"}:
+        sent += await notification_service.notify_all_doctors(
+            title=payload.title,
+            body=payload.body,
+        )
     return BroadcastResultOut(sent_count=sent)

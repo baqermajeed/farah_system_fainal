@@ -455,6 +455,21 @@ async def send_message(sid: str, data: dict):
                 )
             except Exception as e:
                 print(f"⚠️ Failed to notify patient about chat message: {e}")
+
+        # إشعار الطبيب عند رسالة من المريض
+        if user.role == Role.PATIENT and room.doctor_user_id:
+            try:
+                from app.services.notification_service import notify_doctor_new_message
+
+                await notify_doctor_new_message(
+                    doctor_user_id=room.doctor_user_id,
+                    patient_user_id=user.id,
+                    patient_id=str(room.patient_id) if room.patient_id else None,
+                    patient_name=user.name,
+                    room_id=str(room.id),
+                )
+            except Exception as e:
+                print(f"⚠️ Failed to notify doctor about chat message: {e}")
         
         print(f"📨 [Socket] Message sent - Room: {room.id}, Sender: {user_id} (role={user.role}), Receiver: {receiver_id} (role={receiver_role})")
         print(f"    Message data: sender_user_id={message_data['sender_user_id']}, sender_role={message_data['sender_role']}, receiver_id={receiver_id}")

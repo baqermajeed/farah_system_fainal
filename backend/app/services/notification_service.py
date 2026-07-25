@@ -226,6 +226,68 @@ async def notify_all_patients(*, title: str, body: str, data: Optional[dict[str,
     return count
 
 
+async def notify_all_doctors(*, title: str, body: str, data: Optional[dict[str, Any]] = None) -> int:
+    """Broadcast a general notification to all doctor users."""
+    doctors = await User.find(User.role == Role.DOCTOR).to_list()
+    count = 0
+    for user in doctors:
+        await notify_user(
+            user_id=user.id,
+            title=title,
+            body=body,
+            type="general",
+            data=data,
+            patient_id=None,
+        )
+        count += 1
+    return count
+
+
+async def notify_doctor_new_message(
+    *,
+    doctor_user_id: str | OID | None,
+    patient_user_id: str | OID | None = None,
+    patient_id: str | None = None,
+    patient_name: str | None = None,
+    room_id: str | None = None,
+) -> None:
+    """Notify doctor when a patient sends a chat message."""
+    if not doctor_user_id:
+        return
+
+    sender_name = (patient_name or "").strip()
+    if not sender_name:
+        sender_name = "مريض"
+        try:
+            if patient_user_id:
+                patient_user = await User.get(
+                    patient_user_id
+                    if isinstance(patient_user_id, OID)
+                    else OID(str(patient_user_id))
+                )
+                if patient_user and patient_user.name:
+                    sender_name = patient_user.name
+        except Exception:
+            pass
+
+    await notify_user(
+        user_id=doctor_user_id,
+        title="رسالة جديدة",
+        body=f"رسالة جديدة من {sender_name}",
+        type="message",
+        patient_id=patient_id,
+        data={
+            k: v
+            for k, v in {
+                "patientId": patient_id,
+                "roomId": room_id,
+                "patientUserId": str(patient_user_id) if patient_user_id else None,
+            }.items()
+            if v is not None
+        },
+    )
+
+
 async def notify_patient_new_message(
     *,
     patient_user_id: str | OID | None,

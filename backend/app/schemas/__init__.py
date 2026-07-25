@@ -361,6 +361,7 @@ class UnreadCountOut(BaseModel):
 class GeneralNotificationIn(BaseModel):
     title: str
     body: str
+    audience: str = "patients"  # patients | doctors | all
 
 
 class BroadcastResultOut(BaseModel):

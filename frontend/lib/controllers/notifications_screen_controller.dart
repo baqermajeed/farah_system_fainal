@@ -26,16 +26,32 @@ class NotificationsScreenController extends GetxController {
 
   bool _loadingMoreLock = false;
 
+  bool get _isPatientAccount {
+    if (!Get.isRegistered<AuthController>()) return false;
+    final type =
+        Get.find<AuthController>().currentUser.value?.userType.toLowerCase();
+    return type == 'patient';
+  }
+
   String get _cacheKey {
     final auth = Get.isRegistered<AuthController>()
         ? Get.find<AuthController>()
         : null;
     final userId = auth?.currentUser.value?.id ?? 'guest';
-    final patientId = auth?.patientProfileId.value;
-    if (patientId != null && patientId.isNotEmpty) {
-      return 'user_${userId}_patient_$patientId';
+    if (_isPatientAccount) {
+      final patientId = auth?.patientProfileId.value;
+      if (patientId != null && patientId.isNotEmpty) {
+        return 'user_${userId}_patient_$patientId';
+      }
+    } else {
+      return 'user_${userId}_doctor';
     }
     return 'user_$userId';
+  }
+
+  bool _notificationVisible(NotificationModel notification, String? activePatientId) {
+    if (!_isPatientAccount) return true;
+    return notification.belongsToPatient(activePatientId);
   }
 
   @override
@@ -107,7 +123,7 @@ class NotificationsScreenController extends GetxController {
     final activePatientId = auth?.patientProfileId.value;
 
     final cached = _readCache()
-        .where((n) => n.belongsToPatient(activePatientId))
+        .where((n) => _notificationVisible(n, activePatientId))
         .toList();
     final hasCache = cached.isNotEmpty;
 
@@ -179,7 +195,7 @@ class NotificationsScreenController extends GetxController {
       final existingIds = notifications.map((n) => n.id).toSet();
       final toAdd = items
           .where((n) => !existingIds.contains(n.id))
-          .where((n) => n.belongsToPatient(activePatientId))
+          .where((n) => _notificationVisible(n, activePatientId))
           .toList();
       if (toAdd.isNotEmpty) {
         notifications.addAll(toAdd);

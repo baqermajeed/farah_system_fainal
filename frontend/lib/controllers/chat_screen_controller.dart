@@ -25,6 +25,7 @@ class ChatScreenController extends GetxController {
   final ImagePicker _imagePicker = ImagePicker();
   final Rxn<MessageModel> replyingTo = Rxn<MessageModel>();
   final Rxn<MessageModel> editingMessage = Rxn<MessageModel>();
+  final Rxn<File> pendingImage = Rxn<File>();
   final RxString highlightedMessageId = ''.obs;
 
   String? patientId;
@@ -132,6 +133,7 @@ class ChatScreenController extends GetxController {
     chatController.stopTyping();
     _highlightTimer?.cancel();
     _messageKeys.clear();
+    clearPendingImage();
     messageController.dispose();
     scrollController.dispose();
     chatController.disconnect();
@@ -235,20 +237,38 @@ class ChatScreenController extends GetxController {
   }
 
   Future<void> sendMessage() async {
-    final raw = messageController.text.trim();
-    if (raw.isEmpty || patientId == null) return;
+    if (patientId == null) return;
 
+    final raw = messageController.text.trim();
     final editing = editingMessage.value;
+    final image = pendingImage.value;
+
     if (editing != null) {
+      if (raw.isEmpty) return;
       await chatController.editMessage(
         messageId: editing.id,
-        newContent: raw,
+        newContent: buildEditedText(editing, raw),
       );
       messageController.clear();
       cancelEditing();
       scrollToBottom();
       return;
     }
+
+    if (image != null) {
+      final payload = raw.isNotEmpty ? buildOutgoingText(raw) : null;
+      await chatController.sendMessageWithImage(
+        image: image,
+        content: payload,
+      );
+      messageController.clear();
+      clearPendingImage();
+      clearReply();
+      scrollToBottom();
+      return;
+    }
+
+    if (raw.isEmpty) return;
 
     final payload = buildOutgoingText(raw);
     await chatController.sendMessage(payload);
@@ -262,23 +282,20 @@ class ChatScreenController extends GetxController {
       final XFile? image = await _imagePicker.pickImage(
         source: ImageSource.gallery,
         imageQuality: 85,
+        maxWidth: 1920,
+        maxHeight: 1920,
       );
 
-      if (image != null && patientId != null) {
-        final payload = messageController.text.trim().isNotEmpty
-            ? buildOutgoingText(messageController.text.trim())
-            : null;
-        await chatController.sendMessageWithImage(
-          image: File(image.path),
-          content: payload,
-        );
-        messageController.clear();
-        clearReply();
-        scrollToBottom();
+      if (image != null) {
+        pendingImage.value = File(image.path);
       }
     } catch (e) {
       Get.snackbar('خطأ', 'فشل اختيار الصورة');
     }
+  }
+
+  void clearPendingImage() {
+    pendingImage.value = null;
   }
 
   String formatMessageTime(DateTime localTime) {
@@ -320,6 +337,7 @@ class ChatScreenController extends GetxController {
 
   void startEditing(MessageModel message) {
     replyingTo.value = null;
+    clearPendingImage();
     editingMessage.value = message;
     messageController.text = extractForwardText(message);
     messageController.selection = TextSelection.fromPosition(
@@ -478,6 +496,20 @@ class ChatScreenController extends GetxController {
         ? ''
         : '[reply_image:${Uri.encodeComponent(imagePath)}]\n';
     return '[reply:${reply.id}::$safeSnippet]\n$imageMeta$base';
+  }
+
+  String buildEditedText(MessageModel original, String newContent) {
+    final base = newContent.trim();
+    final parsed = parseMessage(original.message);
+    final replyId = parsed.replyMessageId;
+    if (replyId == null || replyId.isEmpty) return base;
+
+    final snippet = (parsed.replySnippet ?? '').replaceAll(']', ')').replaceAll('\n', ' ');
+    final imagePath = (parsed.replyImageUrl ?? '').trim();
+    final imageMeta = imagePath.isEmpty
+        ? ''
+        : '[reply_image:${Uri.encodeComponent(imagePath)}]\n';
+    return '[reply:$replyId::$snippet]\n$imageMeta$base';
   }
 
   ParsedChatMessage parseMessage(String raw) {
