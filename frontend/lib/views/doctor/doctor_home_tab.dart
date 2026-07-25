@@ -383,7 +383,7 @@ class DoctorHomeTab extends GetView<DoctorHomeController> {
       {
         'label': 'الإحصائيات',
         'icon': Icons.bar_chart_rounded,
-        // 'route': AppRoutes.stats,
+        'route': AppRoutes.doctorStats,
         'color': const Color(0xFFE74C3C) // أحمر
       },
       {

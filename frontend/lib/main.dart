@@ -23,6 +23,7 @@ import 'package:farah_sys_final/views/edit_patient_profile_screen.dart';
 import 'package:farah_sys_final/views/qr_code_screen.dart';
 import 'package:farah_sys_final/views/doctor_patients_list_screen.dart';
 import 'package:farah_sys_final/views/doctor_home_screen.dart';
+import 'package:farah_sys_final/views/doctor/doctor_stats_screen.dart';
 import 'package:farah_sys_final/views/patient_details_screen.dart';
 import 'package:farah_sys_final/views/medical_records_screen.dart';
 import 'package:farah_sys_final/views/doctor_chats_screen.dart';
@@ -84,6 +85,9 @@ import 'package:farah_sys_final/controllers/medical_records_screen_controller.da
 import 'package:farah_sys_final/controllers/dental_implant_timeline_controller.dart';
 import 'package:farah_sys_final/controllers/chat_screen_controller.dart';
 import 'package:farah_sys_final/controllers/patient_details_controller.dart';
+import 'package:farah_sys_final/controllers/gallery_controller.dart';
+import 'package:farah_sys_final/controllers/medical_record_controller.dart';
+import 'package:farah_sys_final/controllers/dental_chart_controller.dart';
 import 'package:farah_sys_final/services/fcm_service.dart';
 import 'package:farah_sys_final/services/api_service.dart';
 import 'package:farah_sys_final/services/token_storage.dart';
@@ -153,10 +157,6 @@ void main() async {
   );
   Get.lazyPut<DoctorShellController>(
     () => DoctorShellController(),
-    fenix: true,
-  );
-  Get.lazyPut<DoctorStatsController>(
-    () => DoctorStatsController(),
     fenix: true,
   );
   Get.lazyPut<DoctorChatsScreenController>(
@@ -299,6 +299,20 @@ class MyApp extends StatelessWidget {
             GetPage(
               name: AppRoutes.doctorHome,
               page: () => const DoctorHomeScreen(),
+              binding: BindingsBuilder(() {
+                if (!Get.isRegistered<DoctorHomeController>()) {
+                  Get.put<DoctorHomeController>(DoctorHomeController());
+                }
+              }),
+            ),
+            GetPage(
+              name: AppRoutes.doctorStats,
+              page: () => const DoctorStatsScreen(),
+              binding: BindingsBuilder(() {
+                if (!Get.isRegistered<DoctorStatsController>()) {
+                  Get.put<DoctorStatsController>(DoctorStatsController());
+                }
+              }),
             ),
             GetPage(
               name: AppRoutes.doctorPatientsList,
@@ -317,6 +331,15 @@ class MyApp extends StatelessWidget {
               transition: Transition.noTransition,
               transitionDuration: Duration.zero,
               binding: BindingsBuilder(() {
+                if (Get.isRegistered<GalleryController>()) {
+                  Get.delete<GalleryController>(force: true);
+                }
+                if (Get.isRegistered<MedicalRecordController>()) {
+                  Get.delete<MedicalRecordController>(force: true);
+                }
+                if (Get.isRegistered<DentalChartController>()) {
+                  Get.delete<DentalChartController>(force: true);
+                }
                 if (Get.isRegistered<PatientDetailsController>()) {
                   Get.delete<PatientDetailsController>(force: true);
                 }

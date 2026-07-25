@@ -35,4 +35,5 @@ class AppRoutes {
   static const String selectDoctor = '/select-doctor';
   static const String editImplantStageDate = '/edit-implant-stage-date';
   static const String patientBrowse = '/patient-browse';
+  static const String doctorStats = '/doctor-stats';
 }

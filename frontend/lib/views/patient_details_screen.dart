@@ -1207,10 +1207,13 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                 : -1); // Upcoming: oldest first, Past: newest first
       });
 
-      // Auto-scroll to the tapped appointment card (no new UI).
-      if (!controller.didAutoScrollToSelected && controller.selectedAppointmentId != null) {
+      // Auto-scroll to the tapped appointment card (one attempt only).
+      if (!controller.didAutoScrollToSelected &&
+          controller.selectedAppointmentId != null) {
+        controller.didAutoScrollToSelected = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          final key = controller.appointmentItemKeys[controller.selectedAppointmentId!];
+          final key = controller
+              .appointmentItemKeys[controller.selectedAppointmentId!];
           final ctx = key?.currentContext;
           if (ctx != null) {
             Scrollable.ensureVisible(
@@ -1219,7 +1222,6 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
               duration: const Duration(milliseconds: 350),
               curve: Curves.easeInOut,
             );
-            controller.didAutoScrollToSelected = true;
           }
         });
       }
@@ -1855,16 +1857,9 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
     final userType = controller.authController.currentUser.value?.userType;
     final isDoctor = userType != null && userType.toLowerCase() == 'doctor';
 
-    // الحصول على ImplantStageController (إنشاءه إذا لم يكن موجوداً)
-    final implantStageController = Get.put(ImplantStageController());
-
-    // تحميل المراحل إذا لم تكن محملة بعد
-    if (controller.patientId != null &&
-        !implantStageController.isLoading.value) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        implantStageController.ensureStagesLoaded(controller.patientId!);
-      });
-    }
+    final implantStageController = Get.isRegistered<ImplantStageController>()
+        ? Get.find<ImplantStageController>()
+        : Get.put(ImplantStageController());
 
     return Obx(() {
       if (implantStageController.isLoading.value) {
@@ -1883,12 +1878,15 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
       final patientStages =
           pid.isEmpty ? <ImplantStageModel>[] : implantStageController.stagesForPatient(pid);
 
-      // Auto-scroll to the tapped implant-stage "appointment" (no new UI).
+      // Auto-scroll to the tapped implant stage (one attempt only).
       if (!controller.didAutoScrollToSelectedImplantStage &&
           controller.selectedAppointmentId != null &&
           patientStages.any((s) => s.id == controller.selectedAppointmentId)) {
+        controller.didAutoScrollToSelectedImplantStage = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          final ctx = controller.implantStageItemKeys[controller.selectedAppointmentId!]?.currentContext;
+          final ctx = controller
+              .implantStageItemKeys[controller.selectedAppointmentId!]
+              ?.currentContext;
           if (ctx != null) {
             Scrollable.ensureVisible(
               ctx,
@@ -1896,7 +1894,6 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
               duration: const Duration(milliseconds: 350),
               curve: Curves.easeInOut,
             );
-            controller.didAutoScrollToSelectedImplantStage = true;
           }
         });
       }
@@ -2057,8 +2054,12 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
             // التحقق من أن المرحلة موجودة (تم إنشاؤها) - id غير فارغ
             final stageExists = existingStage.id.isNotEmpty;
 
+            // Never reuse empty ids — multiple placeholder stages share id ''.
+            final stageKeyId = existingStage.id.isNotEmpty
+                ? existingStage.id
+                : 'placeholder_$stageName';
             final stageKey = controller.implantStageItemKeys.putIfAbsent(
-              existingStage.id,
+              stageKeyId,
               () => GlobalKey(),
             );
 

@@ -1,9 +1,10 @@
-﻿import 'dart:ui' as ui;
+﻿import 'package:intl/intl.dart';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
 import 'package:farah_sys_final/core/routes/app_routes.dart';
@@ -13,38 +14,15 @@ import 'package:farah_sys_final/models/appointment_model.dart';
 import 'package:farah_sys_final/core/widgets/loading_widget.dart';
 import 'package:farah_sys_final/core/widgets/empty_state_widget.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
-import 'package:farah_sys_final/core/utils/image_utils.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-
-// Delegate for sticky TabBar
-class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
-  final Widget child;
-
-  _SliverTabBarDelegate({required this.child});
-
-  @override
-  double get minExtent => 48.0;
-
-  @override
-  double get maxExtent => 48.0;
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    return child;
-  }
-
-  @override
-  bool shouldRebuild(_SliverTabBarDelegate oldDelegate) {
-    return false;
-  }
-}
+import 'package:farah_sys_final/widgets/appointment_list_card.dart';
 
 class AppointmentsScreen extends GetView<AppointmentsScreenController> {
   const AppointmentsScreen({super.key});
+
+  static const Color _bg = Color(0xFFF8FAFF);
+  static const Color _navy = Color(0xFF1A3158);
+  static const Color _grayText = Color(0xFF788FA5);
+  static const Color _accentBlue = Color(0xFF5A9BD5);
 
   @override
   Widget build(BuildContext context) {
@@ -57,508 +35,22 @@ class AppointmentsScreen extends GetView<AppointmentsScreenController> {
     return Theme(
       data: cairoTheme,
       child: Scaffold(
-        backgroundColor: const Color(0xFFF4FEFF),
+        backgroundColor: _bg,
         body: SafeArea(
           child: Column(
             children: [
+              _buildHeader(context),
+              _buildTabBar(),
               Expanded(
-                child: NestedScrollView(
-                  headerSliverBuilder:
-                      (BuildContext context, bool innerBoxIsScrolled) {
-                        return <Widget>[
-                        // Header
-                        SliverAppBar(
-                          backgroundColor: const Color(0xFFF4FEFF),
-                          pinned: false,
-                          floating: false,
-                          expandedHeight: 0,
-                          toolbarHeight: 80.h,
-                          automaticallyImplyLeading: false,
-                          flexibleSpace: Container(
-                            color: const Color(0xFFF4FEFF),
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 24.w,
-                              vertical: 16.h,
-                            ),
-                            child: Row(
-                              textDirection: ui.TextDirection.ltr,
-                              children: [
-                                // Back button always on the LEFT
-                                const BackButtonWidget(),
-                                Expanded(
-                                  child: Center(
-                                    child: Text(
-                                      AppStrings.appointments,
-                                      style: TextStyle(
-                                        fontSize: 20.sp,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppColors.textPrimary,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                // Filter button on the RIGHT
-                                GestureDetector(
-                                  onTap: () => _showDateFilterDialog(context),
-                                  child: Container(
-                                    // padding: EdgeInsets.all(8.w),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.primary.withValues(
-                                        alpha: 0.1,
-                                      ),
-                                      borderRadius: BorderRadius.circular(12.r),
-                                    ),
-                                    child: Image.asset(
-                                      'assets/images/filtter_bottun_icon.png',
-                                      width: 40.w,
-                                      height: 40.w,
-                                      fit: BoxFit.contain,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-
-                        // Tabs - Sticky Header
-                        SliverPersistentHeader(
-                          pinned: true,
-                          delegate: _SliverTabBarDelegate(
-                            child: Container(
-                              height: 48.0,
-                              margin: EdgeInsets.symmetric(horizontal: 24.w),
-                              decoration: BoxDecoration(
-                                color: AppColors.white,
-                                borderRadius: BorderRadius.circular(16.r),
-                                border: Border.all(
-                                  color: Colors.grey.withOpacity(0.2),
-                                  width: 1,
-                                ),
-                              ),
-                              child: TabBar(
-                                controller: controller.tabController,
-                                indicator: BoxDecoration(
-                                  color: AppColors.primary,
-                                  borderRadius: BorderRadius.circular(16.r),
-                                  border: Border.all(
-                                    color: AppColors.white,
-                                    width: 2,
-                                  ),
-                                ),
-                                indicatorSize: TabBarIndicatorSize.tab,
-                                dividerColor: Colors.transparent,
-                                labelColor: AppColors.white,
-                                unselectedLabelColor: AppColors.textSecondary,
-                                labelStyle: TextStyle(
-                                  fontSize: 14.sp,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                unselectedLabelStyle: TextStyle(
-                                  fontSize: 14.sp,
-                                  fontWeight: FontWeight.normal,
-                                ),
-                                tabs: const [
-                                  Tab(text: 'المتأخرون'),
-                                  Tab(text: 'هذا الشهر'),
-                                  Tab(text: 'اليوم'),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ];
-                    },
-                  body: TabBarView(
-                    controller: controller.tabController,
-                    children: [
-                      _buildAppointmentsList('المتأخرون'),
-                      _buildAppointmentsList('هذا الشهر'),
-                      _buildAppointmentsList('اليوم'),
-                    ],
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    ),
-  );
-  }
-
-  Widget _buildAppointmentsList(String filter) {
-    return Obx(() {
-      if (controller.appointmentController.isLoading.value) {
-        return const LoadingWidget(message: 'جاري تحميل المواعيد...');
-      }
-
-      List<AppointmentModel> filteredAppointments = [];
-      String emptyMessage = '';
-
-      switch (filter) {
-        case 'اليوم':
-          filteredAppointments =
-              controller.appointmentController.getTodayAppointments();
-          emptyMessage = 'لا توجد مواعيد اليوم';
-          break;
-        case 'المتأخرون':
-          filteredAppointments =
-              controller.appointmentController.getLateAppointments();
-          emptyMessage = 'لا توجد مواعيد متأخرة';
-          break;
-        case 'هذا الشهر':
-          filteredAppointments =
-              controller.appointmentController.getThisMonthAppointments();
-          emptyMessage = 'لا توجد مواعيد هذا الشهر';
-          break;
-      }
-
-      // إضافة مراحل الزراعة كمواعيد (من cache بدل حسابها كل rebuild)
-      filteredAppointments = [
-        ...filteredAppointments,
-        ...controller.filterImplantAppointments(filter),
-      ];
-
-      // ترتيب المواعيد حسب التاريخ
-      filteredAppointments.sort((a, b) => a.date.compareTo(b.date));
-
-      if (filteredAppointments.isEmpty) {
-        return EmptyStateWidget(
-          icon: Icons.calendar_today_outlined,
-          title: emptyMessage,
-          subtitle: 'لم يتم العثور على مواعيد',
-        );
-      }
-
-      return ListView.builder(
-        padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h),
-        itemCount: filteredAppointments.length,
-        itemBuilder: (context, index) {
-          final appointment = filteredAppointments[index];
-          final now = DateTime.now();
-          final status = appointment.status.toLowerCase();
-          final isPast =
-              appointment.date.isBefore(now) ||
-              status == 'completed' ||
-              status == 'cancelled' ||
-              status == 'no_show';
-
-          // late يُحسب في backend، ونعتمد عليه مباشرة لتوحيد المنطق.
-          final isLate = appointment.isLate || filter == 'المتأخرون';
-
-          return Padding(
-            padding: EdgeInsets.only(bottom: 16.h),
-            child: _buildAppointmentCard(
-              appointment: appointment,
-              isPast: isPast,
-              isLate: isLate,
-            ),
-          );
-        },
-      );
-    });
-  }
-
-  Widget _buildAppointmentCard({
-    required AppointmentModel appointment,
-    required bool isPast,
-    bool isLate = false,
-  }) {
-    final authController = Get.find<AuthController>();
-    final userType = authController.currentUser.value?.userType;
-    final isReceptionist = userType == 'receptionist';
-
-    final patient =
-        controller.patientController.getPatientById(appointment.patientId);
-    final patientName = patient?.name ?? appointment.patientName;
-    final patientImageUrl = patient?.imageUrl;
-    final String? patientPhone = patient?.phoneNumber;
-    final doctorName = appointment.doctorName;
-    final strokeColor =
-        isLate ? Colors.red : AppColors.primary.withValues(alpha: 0.3);
-
-    // تنسيق التاريخ
-    final dateFormat = DateFormat('dd-MM-yyyy', 'ar');
-    final formattedDate = dateFormat.format(appointment.date);
-
-    // أسماء الأيام بالعربية
-    final weekDays = [
-      'الأحد',
-      'الاثنين',
-      'الثلاثاء',
-      'الأربعاء',
-      'الخميس',
-      'الجمعة',
-      'السبت',
-    ];
-    final dayName = weekDays[appointment.date.weekday % 7];
-
-    // تنسيق الوقت
-    final timeParts = appointment.time.split(':');
-    final hour = int.tryParse(timeParts[0]) ?? 0;
-    final minute = timeParts.length > 1 ? timeParts[1] : '00';
-    final isPM = hour >= 12;
-    final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
-    final timeText = '$displayHour:$minute';
-    final periodText = isPM ? 'مساءاً' : 'صباحاً';
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12.r),
-        onTap: isReceptionist
-            ? null
-            : () {
-                if (appointment.patientId.trim().isEmpty) return;
-                Get.toNamed(
-                  AppRoutes.patientDetails,
-                  arguments: {
-                    'patientId': appointment.patientId,
-                    // Pass both, so patient file can still show it even if list isn't loaded yet.
-                    'appointmentId': appointment.id,
-                    'appointment': appointment,
-                  },
-                );
-              },
-        child: Container(
-          width: double.infinity,
-          padding: EdgeInsets.all(5.w),
-          decoration: BoxDecoration(
-            color: AppColors.white,
-            borderRadius: BorderRadius.circular(12.r),
-            border: Border.all(
-              color: strokeColor,
-              width: 1,
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-          Row(
-            children: [
-              // Patient Image (on the right in RTL)
-              Builder(
-                builder: (context) {
-                  final validImageUrl = ImageUtils.convertToValidUrl(patientImageUrl);
-                  final hasImage = validImageUrl != null && ImageUtils.isValidImageUrl(validImageUrl);
-                  
-                  return Container(
-                    width: 40.w,
-                    height: 40.w,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: strokeColor,
-                        width: 1, // stroke 1
-                      ),
-                    ),
-                    child: ClipOval(
-                      child: hasImage
-                          ? CachedNetworkImage(
-                              imageUrl: validImageUrl,
-                              fit: BoxFit.cover,
-                              width: 40.w,
-                              height: 40.w,
-                              fadeInDuration: Duration.zero,
-                              fadeOutDuration: Duration.zero,
-                              memCacheWidth: 60,
-                              memCacheHeight: 80,
-                              placeholder: (context, url) => Container(
-                                color: const Color.fromARGB(255, 255, 255, 255),
-                                child: Center(
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      AppColors.primary,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              errorWidget: (context, url, error) => Container(
-                                color: AppColors.divider,
-                                child: Icon(
-                                  Icons.person,
-                                  color: AppColors.textSecondary,
-                                  size: 20.sp,
-                                ),
-                              ),
-                            )
-                          : Container(
-                              color: AppColors.divider,
-                              child: Icon(
-                                Icons.person,
-                                color: AppColors.textSecondary,
-                                size: 20.sp,
-                              ),
-                            ),
-                    ),
-                  );
-                },
-              ),
-              SizedBox(width: 4.w),
-
-              // Line 1: Patient name text (different for receptionist)
-              Expanded(
-                child: RichText(
-                  text: TextSpan(
-                    style: AppFonts.lamaSans(
-                      fontSize: 16.sp,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
-                      height: 1.5,
-                    ),
-                    children: isReceptionist
-                        ? [
-                            TextSpan(text: 'موعد المريض "'),
-                            TextSpan(
-                              text: patientName,
-                              style: AppFonts.lamaSans(
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.primary.withValues(alpha: 0.8),
-                              ),
-                            ),
-                            TextSpan(text: '" مع الطبيب "'),
-                            TextSpan(
-                              text: doctorName,
-                              style: AppFonts.lamaSans(
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.primary.withValues(alpha: 0.8),
-                              ),
-                            ),
-                            TextSpan(text: '"'),
-                          ]
-                        : [
-                            TextSpan(text: 'موعد مريضك "'),
-                            TextSpan(
-                              text: patientName,
-                              style: AppFonts.lamaSans(
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.primary.withValues(alpha: 0.8),
-                              ),
-                            ),
-                            TextSpan(text: isPast ? '" السابق هو' : '" القادم هو'),
-                          ],
-                  ),
-                  textAlign: TextAlign.right,
-                ),
-              ),
-            ],
-          ),
-          if (patientPhone != null && patientPhone.trim().isNotEmpty)
-            Padding(
-              padding: EdgeInsets.only(right: 10.w),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(height: 4.h),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    children: [
-                      Icon(
-                        Icons.phone,
-                        size: 14.sp,
-                        color: AppColors.primary.withValues(alpha: 0.7),
-                      ),
-                      SizedBox(width: 4.w),
-                      Expanded(
-                        child: Text(
-                          patientPhone,
-                          style: AppFonts.lamaSans(
-                            fontSize: 13.sp,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.primary.withValues(alpha: 0.8),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.right,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          Padding(
-            padding: EdgeInsets.only(right: 10.w),
-            // Appointment Details
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(height: 4.h),
-                // Line 2: Date row - "يوم الثلاثاء المصادف" + icon + date
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.start,
+                child: TabBarView(
+                  controller: controller.tabController,
                   children: [
-                    Text(
-                      'يوم $dayName المصادف',
-                      style: TextStyle(
-                        fontSize: 14.sp,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-
-                    SizedBox(width: 4.w),
-                    Text(
-                      formattedDate,
-                      style: TextStyle(
-                        fontSize: 14.sp,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.primary.withValues(alpha: 0.7),
-                      ),
-                    ),
-                    SizedBox(width: 4.w),
-                    Icon(
-                      Icons.calendar_today,
-                      size: 14.sp,
-                      color: AppColors.primary.withValues(alpha: 0.7),
-                    ),
+                    _buildAppointmentsList('اليوم'),
+                    _buildAppointmentsList('هذا الشهر'),
+                    _buildAppointmentsList('المتأخرون'),
                   ],
                 ),
-                SizedBox(height: 4.h),
-                // Line 3: Time row - "في تمام الساعة" + blue button with time + period
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  children: [
-                    Text(
-                      'في تمام الساعة',
-                      style: TextStyle(
-                        fontSize: 14.sp,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-
-                    SizedBox(width: 4.w),
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 16.w,
-                        vertical: 4.h,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary,
-                        borderRadius: BorderRadius.circular(8.r),
-                      ),
-                      child: Text(
-                        timeText,
-                        style: TextStyle(
-                          fontSize: 14.sp,
-                          color: AppColors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 4.w),
-                    Text(
-                      periodText,
-                      style: TextStyle(
-                        fontSize: 14.sp,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+              ),
             ],
           ),
         ),
@@ -566,93 +58,413 @@ class AppointmentsScreen extends GetView<AppointmentsScreenController> {
     );
   }
 
-  void _showDateFilterDialog(BuildContext context) {
-    DateTime? selectedDate;
+  Widget _buildHeader(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
+      child: Row(
+        textDirection: ui.TextDirection.ltr,
+        children: [
+          const BackButtonWidget(),
+          Expanded(
+            child: Column(
+              children: [
+                Text(
+                  AppStrings.appointments,
+                  style: AppFonts.lamaSans(
+                    fontSize: 22.sp,
+                    fontWeight: FontWeight.w800,
+                    color: _navy,
+                  ),
+                ),
+                SizedBox(height: 4.h),
+                Text(
+                  'تابع مواعيد مرضاك بسهولة ودقة',
+                  style: AppFonts.lamaSans(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w500,
+                    color: _grayText,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          GestureDetector(
+            onTap: () => _showDateRangeFilterDialog(context),
+            child: Container(
+              width: 44.w,
+              height: 44.w,
+              decoration: BoxDecoration(
+                color: AppColors.white,
+                borderRadius: BorderRadius.circular(14.r),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.06),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Icon(
+                Icons.tune_rounded,
+                color: _accentBlue,
+                size: 22.sp,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabBar() {
+    return Container(
+      margin: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 12.h),
+      padding: EdgeInsets.all(4.w),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(16.r),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: TabBar(
+        controller: controller.tabController,
+        indicator: BoxDecoration(
+          color: _accentBlue,
+          borderRadius: BorderRadius.circular(12.r),
+        ),
+        indicatorSize: TabBarIndicatorSize.tab,
+        dividerColor: Colors.transparent,
+        labelColor: AppColors.white,
+        unselectedLabelColor: _grayText,
+        labelStyle: AppFonts.lamaSans(
+          fontSize: 13.sp,
+          fontWeight: FontWeight.w700,
+        ),
+        unselectedLabelStyle: AppFonts.lamaSans(
+          fontSize: 13.sp,
+          fontWeight: FontWeight.w500,
+        ),
+        labelPadding: EdgeInsets.symmetric(horizontal: 4.w),
+        tabs: const [
+          Tab(text: 'اليوم'),
+          Tab(text: 'هذا الشهر'),
+          Tab(text: 'المتأخرون'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAppointmentsList(String filter) {
+    return Obx(() {
+      final appointmentController = controller.appointmentController;
+      final filteredAppointments = appointmentController.appointments;
+
+      if (appointmentController.isLoading.value &&
+          filteredAppointments.isEmpty) {
+        return const LoadingWidget(message: 'جاري تحميل المواعيد...');
+      }
+
+      final activeFilter = controller.currentFilter.value;
+
+      if (filteredAppointments.isEmpty) {
+        return EmptyStateWidget(
+          icon: Icons.calendar_today_outlined,
+          title: _emptyMessage(activeFilter),
+          subtitle: 'لم يتم العثور على مواعيد',
+        );
+      }
+
+      return RefreshIndicator(
+        color: AppColors.primary,
+        onRefresh: controller.refreshAppointments,
+        child: NotificationListener<ScrollNotification>(
+          onNotification: (scrollInfo) {
+            if (scrollInfo.metrics.pixels >=
+                    scrollInfo.metrics.maxScrollExtent - 200 &&
+                !appointmentController.isLoadingMoreAppointments.value &&
+                appointmentController.hasMoreAppointments.value) {
+              controller.loadMore();
+            }
+            return false;
+          },
+          child: ListView.separated(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 24.h),
+            itemCount: filteredAppointments.length +
+                (appointmentController.isLoadingMoreAppointments.value
+                    ? 1
+                    : 0),
+            separatorBuilder: (_, index) {
+              if (index >= filteredAppointments.length - 1) {
+                return const SizedBox.shrink();
+              }
+              return SizedBox(height: 12.h);
+            },
+            itemBuilder: (context, index) {
+              if (index == filteredAppointments.length) {
+                return Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16.h),
+                  child: const Center(
+                    child: CircularProgressIndicator(color: AppColors.primary),
+                  ),
+                );
+              }
+
+              final appointment = filteredAppointments[index];
+              final now = DateTime.now();
+              final status = appointment.status.toLowerCase();
+              final isPast = appointment.date.isBefore(now) ||
+                  status == 'completed' ||
+                  status == 'cancelled' ||
+                  status == 'no_show';
+              final isLate =
+                  appointment.isLate || activeFilter == 'المتأخرون';
+
+              final authController = Get.find<AuthController>();
+              final isReceptionist =
+                  authController.currentUser.value?.userType ==
+                      'receptionist';
+              final patient = controller.patientController
+                  .getPatientById(appointment.patientId);
+              final patientName = patient?.name ?? appointment.patientName;
+              final doctorName = appointment.doctorName;
+
+              return AppointmentListCard(
+                title: _cardTitle(
+                  patientName: patientName,
+                  doctorName: doctorName,
+                  isReceptionist: isReceptionist,
+                ),
+                subtitle: _serviceText(appointment),
+                date: appointment.date,
+                time: appointment.time,
+                avatarImageUrl: patient?.imageUrl,
+                preferAvatar: true,
+                tone: isLate
+                    ? AppointmentCardTone.late
+                    : isPast
+                        ? AppointmentCardTone.past
+                        : AppointmentCardTone.upcoming,
+                footerText: isLate
+                    ? 'موعد متأخر — يُنصح بالتواصل مع المريض'
+                    : isPast
+                        ? 'موعد سابق'
+                        : 'الرجاء الحضور قبل الموعد ب نصف ساعة',
+                onTap: _cardTapHandler(appointment),
+              );
+            },
+          ),
+        ),
+      );
+    });
+  }
+
+  String _emptyMessage(String filter) {
+    switch (filter) {
+      case 'اليوم':
+        return 'لا توجد مواعيد اليوم';
+      case 'هذا الشهر':
+        return 'لا توجد مواعيد هذا الشهر';
+      case 'المتأخرون':
+        return 'لا توجد مواعيد متأخرة';
+      default:
+        return 'لا توجد مواعيد';
+    }
+  }
+
+  VoidCallback? _cardTapHandler(AppointmentModel appointment) {
+    final authController = Get.find<AuthController>();
+    final isReceptionist =
+        authController.currentUser.value?.userType == 'receptionist';
+    if (isReceptionist || appointment.patientId.trim().isEmpty) return null;
+
+    return () {
+      final patient =
+          controller.patientController.getPatientById(appointment.patientId);
+      if (patient != null) {
+        controller.patientController.selectPatient(patient);
+      }
+      Get.toNamed(
+        AppRoutes.patientDetails,
+        arguments: {
+          'patientId': appointment.patientId,
+          'appointmentId': appointment.id,
+          'appointment': appointment,
+        },
+      );
+    };
+  }
+
+  String _cardTitle({
+    required String patientName,
+    required String doctorName,
+    required bool isReceptionist,
+  }) {
+    if (isReceptionist && doctorName.isNotEmpty) {
+      return '$patientName • د. $doctorName';
+    }
+    return patientName;
+  }
+
+  String _serviceText(AppointmentModel appointment) {
+    if (appointment.notes?.trim().isNotEmpty == true) {
+      return appointment.notes!.trim();
+    }
+    if (appointment.stageName?.trim().isNotEmpty == true) {
+      return appointment.stageName!.trim();
+    }
+    return 'حشوات قلع تنظيف';
+  }
+
+  void _showDateRangeFilterDialog(BuildContext screenContext) {
+    DateTime? startDate = controller.customFilterStart;
+    DateTime? endDate = controller.customFilterEnd;
 
     showDialog(
-      context: context,
+      context: screenContext,
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            Future<void> pickDate({
+              required DateTime? current,
+              required DateTime firstDate,
+              required DateTime lastDate,
+              required ValueChanged<DateTime> onPicked,
+            }) async {
+              final picked = await _showCalendarBottomSheet(
+                screenContext,
+                initialDate: current ?? DateTime.now(),
+                firstDate: firstDate,
+                lastDate: lastDate,
+              );
+              if (picked != null) {
+                setDialogState(() => onPicked(picked));
+              }
+            }
+
             return Dialog(
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16.r),
+                borderRadius: BorderRadius.circular(20.r),
               ),
               child: Container(
-                width: MediaQuery.of(context).size.width * 0.9,
+                width: MediaQuery.of(context).size.width * 0.92,
                 padding: EdgeInsets.all(16.w),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      'اختر التاريخ',
-                      style: TextStyle(
-                        fontSize: 18.sp,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
+                      'تصفية حسب التاريخ (من - إلى)',
+                      style: AppFonts.lamaSans(
+                        fontSize: 17.sp,
+                        fontWeight: FontWeight.w800,
+                        color: _navy,
                       ),
                       textAlign: TextAlign.center,
                     ),
-                    SizedBox(height: 16.h),
-                    SizedBox(
-                      height: 300.h,
-                      width: double.infinity,
-                      child: CalendarDatePicker(
-                        initialDate: selectedDate ?? DateTime.now(),
+                    SizedBox(height: 12.h),
+                    _buildDatePickerField(
+                      label: 'من تاريخ:',
+                      date: startDate,
+                      onTap: () => pickDate(
+                        current: startDate,
                         firstDate: DateTime(2020),
-                        lastDate: DateTime(2030),
-                        onDateChanged: (date) {
-                          setDialogState(() {
-                            selectedDate = date;
-                          });
-                        },
+                        lastDate: endDate ?? DateTime(2030),
+                        onPicked: (date) => startDate = date,
                       ),
                     ),
-                    SizedBox(height: 16.h),
+                    SizedBox(height: 12.h),
+                    _buildDatePickerField(
+                      label: 'إلى تاريخ:',
+                      date: endDate,
+                      onTap: () => pickDate(
+                        current: endDate,
+                        firstDate: startDate ?? DateTime(2020),
+                        lastDate: DateTime(2030),
+                        onPicked: (date) => endDate = date,
+                      ),
+                    ),
+                    SizedBox(height: 12.h),
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          child: Text(
-                            'إلغاء',
-                            style: TextStyle(color: AppColors.textSecondary),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: _grayText,
+                              side: const BorderSide(color: Color(0xFFE4E7EC)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12.r),
+                              ),
+                            ),
+                            child: const Text('إلغاء'),
                           ),
                         ),
-                        ElevatedButton(
-                          onPressed: () async {
-                            if (selectedDate != null) {
+                        SizedBox(width: 12.w),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              if (startDate == null || endDate == null) {
+                                Get.snackbar(
+                                  'تنبيه',
+                                  'يرجى اختيار تاريخ البداية والنهاية',
+                                  snackPosition: SnackPosition.BOTTOM,
+                                );
+                                return;
+                              }
+                              if (endDate!.isBefore(startDate!)) {
+                                Get.snackbar(
+                                  'تنبيه',
+                                  'تاريخ النهاية يجب أن يكون بعد تاريخ البداية',
+                                  snackPosition: SnackPosition.BOTTOM,
+                                );
+                                return;
+                              }
                               Navigator.of(context).pop();
-                              // Normalize date to local date (remove time component)
-                              final normalizedDate = DateTime(
-                                selectedDate!.year,
-                                selectedDate!.month,
-                                selectedDate!.day,
+                              controller.rememberCustomRange(
+                                startDate!,
+                                endDate!,
                               );
-                              // Navigate to appointments by date screen
-                              await Get.toNamed(
+                              Get.toNamed(
                                 AppRoutes.appointmentsByDate,
-                                arguments: {'date': normalizedDate},
-                              );
-                              // Reload appointments when returning from filter screen
-                              controller.appointmentController
-                                  .loadDoctorAppointments();
-                            } else {
-                              Get.snackbar(
-                                'تنبيه',
-                                'يرجى اختيار تاريخ',
-                                snackPosition: SnackPosition.BOTTOM,
-                                backgroundColor: Colors.orange,
-                                colorText: AppColors.white,
-                              );
-                            }
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary,
-                          ),
-                          child: Text(
-                            'عرض المواعيد',
-                            style: TextStyle(color: AppColors.white),
+                                arguments: {
+                                  'startDate': startDate,
+                                  'endDate': endDate,
+                                },
+                              )?.then((_) {
+                                controller.loadForFilter(
+                                  controller.currentFilter.value,
+                                  isRefresh: true,
+                                );
+                              });
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _accentBlue,
+                              foregroundColor: AppColors.white,
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 8.w,
+                                vertical: 12.h,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12.r),
+                              ),
+                            ),
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                'عرض المواعيد',
+                                maxLines: 1,
+                                style: AppFonts.lamaSans(
+                                  fontSize: 12.sp,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.white,
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ],
@@ -664,6 +476,131 @@ class AppointmentsScreen extends GetView<AppointmentsScreenController> {
           },
         );
       },
+    );
+  }
+
+  Future<DateTime?> _showCalendarBottomSheet(
+    BuildContext context, {
+    required DateTime initialDate,
+    required DateTime firstDate,
+    required DateTime lastDate,
+  }) {
+    var selectedDate = initialDate;
+
+    return showModalBottomSheet<DateTime>(
+      context: context,
+      isScrollControlled: true,
+      useRootNavigator: true,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20.r)),
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 16.h),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40.w,
+                  height: 4.h,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE4E7EC),
+                    borderRadius: BorderRadius.circular(2.r),
+                  ),
+                ),
+                SizedBox(height: 12.h),
+                SizedBox(
+                  height: 320.h,
+                  width: double.infinity,
+                  child: CalendarDatePicker(
+                    initialDate: initialDate,
+                    firstDate: firstDate,
+                    lastDate: lastDate,
+                    onDateChanged: (date) => selectedDate = date,
+                  ),
+                ),
+                SizedBox(height: 12.h),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(sheetContext).pop(selectedDate),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _accentBlue,
+                      foregroundColor: AppColors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12.r),
+                      ),
+                      padding: EdgeInsets.symmetric(vertical: 14.h),
+                    ),
+                    child: const Text('تأكيد'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDatePickerField({
+    required String label,
+    required DateTime? date,
+    required VoidCallback onTap,
+  }) {
+    final dateFmt = DateFormat('d/M/yyyy', 'ar');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: AppFonts.lamaSans(
+            fontSize: 13.sp,
+            fontWeight: FontWeight.w600,
+            color: _navy,
+          ),
+        ),
+        SizedBox(height: 6.h),
+        InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12.r),
+          child: Container(
+            width: double.infinity,
+            padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 14.h),
+            decoration: BoxDecoration(
+              border: Border.all(color: const Color(0xFFE4E7EC)),
+              borderRadius: BorderRadius.circular(12.r),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.calendar_today_rounded,
+                  color: _accentBlue,
+                  size: 20.sp,
+                ),
+                SizedBox(width: 10.w),
+                Expanded(
+                  child: Text(
+                    date != null ? dateFmt.format(date) : 'اختر التاريخ',
+                    style: AppFonts.lamaSans(
+                      fontSize: 14.sp,
+                      fontWeight: FontWeight.w600,
+                      color: date != null ? _navy : _grayText,
+                    ),
+                  ),
+                ),
+                Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  color: _grayText,
+                  size: 22.sp,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

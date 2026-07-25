@@ -1,33 +1,43 @@
 ﻿import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
+import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/controllers/appointments_by_date_controller.dart';
-import 'package:farah_sys_final/controllers/patient_controller.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/models/appointment_model.dart';
 import 'package:farah_sys_final/core/widgets/loading_widget.dart';
 import 'package:farah_sys_final/core/widgets/empty_state_widget.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
-import 'package:farah_sys_final/core/utils/image_utils.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:farah_sys_final/widgets/appointment_list_card.dart';
 
-/// شاشة مواعيد تاريخ محدد — GetView؛ المنطق في AppointmentsByDateController.
 class AppointmentsByDateScreen extends GetView<AppointmentsByDateController> {
   const AppointmentsByDateScreen({super.key});
 
+  static const Color _bg = Color(0xFFF8FAFF);
+  static const Color _navy = Color(0xFF1A3158);
+  static const Color _grayText = Color(0xFF788FA5);
+
+  String _screenTitle() {
+    final start = controller.startDate;
+    final end = controller.endDate;
+    if (start == null || end == null) return 'المواعيد';
+
+    final dateFmt = DateFormat('d/M/yyyy', 'ar');
+    final sameDay =
+        start.year == end.year && start.month == end.month && start.day == end.day;
+    if (sameDay) {
+      return 'مواعيد ${dateFmt.format(start)}';
+    }
+    return 'من ${dateFmt.format(start)} إلى ${dateFmt.format(end)}';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final selectedDate = controller.selectedDate;
-    final appointmentController = controller.appointmentController;
-    final dateFormat = DateFormat('yyyy-MM-dd', 'ar');
-    final formattedDate = selectedDate != null
-        ? dateFormat.format(selectedDate)
-        : '';
-
     final baseTheme = Theme.of(context);
     final cairoTheme = baseTheme.copyWith(
       textTheme: AppFonts.textTheme(baseTheme.textTheme),
@@ -37,132 +47,163 @@ class AppointmentsByDateScreen extends GetView<AppointmentsByDateController> {
     return Theme(
       data: cairoTheme,
       child: Scaffold(
-        backgroundColor: AppColors.background,
+        backgroundColor: _bg,
         body: SafeArea(
           child: Column(
             children: [
-            // Header
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h),
-              child: Row(
-                textDirection: ui.TextDirection.ltr,
-                children: [
-                  const BackButtonWidget(),
-                  Expanded(
-                    child: Center(
-                      child: Text(
-                        'مواعيد $formattedDate',
-                        style: AppFonts.lamaSans(
-                          fontSize: 20.sp,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
-                        ),
+              Padding(
+                padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
+                child: Row(
+                  textDirection: ui.TextDirection.ltr,
+                  children: [
+                    const BackButtonWidget(),
+                    Expanded(
+                      child: Column(
+                        children: [
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              _screenTitle(),
+                              style: AppFonts.lamaSans(
+                                fontSize: 15.sp,
+                                fontWeight: FontWeight.w800,
+                                color: _navy,
+                              ),
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                            ),
+                          ),
+                          SizedBox(height: 4.h),
+                          Text(
+                            'نتائج التصفية حسب التاريخ',
+                            style: AppFonts.lamaSans(
+                              fontSize: 12.sp,
+                              fontWeight: FontWeight.w500,
+                              color: _grayText,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                  SizedBox(width: 48.w),
-                ],
+                    SizedBox(width: 48.w),
+                  ],
+                ),
               ),
-            ),
-            SizedBox(height: 24.h),
-            // Appointments List
-            Expanded(
-              child: Obx(() {
-                if (appointmentController.isLoading.value) {
-                  return const LoadingWidget(message: 'جاري تحميل المواعيد...');
-                }
+              Expanded(
+                child: Obx(() {
+                  final appointmentController = controller.appointmentController;
+                  final appointments = appointmentController.appointments;
 
-                if (selectedDate == null) {
-                  return EmptyStateWidget(
-                    icon: Icons.calendar_today_outlined,
-                    title: 'لم يتم اختيار تاريخ',
-                    subtitle: 'يرجى اختيار تاريخ',
-                  );
-                }
-
-                // Normalize selected date (remove time component)
-                final normalizedSelectedDate = DateTime(
-                  selectedDate.year,
-                  selectedDate.month,
-                  selectedDate.day,
-                );
-
-                // Debug: Print all appointments and selected date
-                print(
-                  '🔍 [AppointmentsByDate] Selected date: $normalizedSelectedDate',
-                );
-                print(
-                  '🔍 [AppointmentsByDate] Total appointments loaded: ${appointmentController.appointments.length}',
-                );
-
-                final appointments = appointmentController.appointments.where((
-                  apt,
-                ) {
-                  // Normalize appointment date (remove time component)
-                  final aptDate = DateTime(
-                    apt.date.year,
-                    apt.date.month,
-                    apt.date.day,
-                  );
-
-                  // Debug: Print each appointment date
-                  final matches =
-                      aptDate.year == normalizedSelectedDate.year &&
-                      aptDate.month == normalizedSelectedDate.month &&
-                      aptDate.day == normalizedSelectedDate.day;
-
-                  if (matches) {
-                    print(
-                      '✅ [AppointmentsByDate] Found matching appointment: ${apt.date}',
+                  if (controller.startDate == null || controller.endDate == null) {
+                    return const EmptyStateWidget(
+                      icon: Icons.calendar_today_outlined,
+                      title: 'لم يتم اختيار فترة',
+                      subtitle: 'يرجى اختيار تاريخ البداية والنهاية',
                     );
                   }
 
-                  return matches;
-                }).toList()..sort((a, b) => a.date.compareTo(b.date));
+                  if (appointmentController.isLoading.value &&
+                      appointments.isEmpty) {
+                    return const LoadingWidget(message: 'جاري تحميل المواعيد...');
+                  }
 
-                print(
-                  '🔍 [AppointmentsByDate] Filtered appointments count: ${appointments.length}',
-                );
-
-                if (appointments.isEmpty) {
-                  return EmptyStateWidget(
-                    icon: Icons.calendar_today_outlined,
-                    title: 'لا توجد مواعيد في هذا التاريخ',
-                    subtitle: 'لم يتم العثور على مواعيد',
-                  );
-                }
-
-                return ListView.builder(
-                  padding: EdgeInsets.symmetric(horizontal: 24.w),
-                  itemCount: appointments.length,
-                  itemBuilder: (context, index) {
-                    final appointment = appointments[index];
-                    final now = DateTime.now();
-                    final status = appointment.status.toLowerCase();
-                    final isPast =
-                        appointment.date.isBefore(now) ||
-                        status == 'completed' ||
-                        status == 'cancelled' ||
-                        status == 'no_show';
-
-                    final isLate = appointment.date.isBefore(now) &&
-                        (status == 'scheduled' || status == 'pending');
-
-                    return Padding(
-                      padding: EdgeInsets.only(bottom: 16.h),
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: _buildAppointmentCard(
-                          appointment: appointment,
-                          isPast: isPast,
-                          isLate: isLate,
-                        ),
-                      ),
+                  if (appointments.isEmpty) {
+                    return const EmptyStateWidget(
+                      icon: Icons.calendar_today_outlined,
+                      title: 'لا توجد مواعيد في هذه الفترة',
+                      subtitle: 'لم يتم العثور على مواعيد',
                     );
-                  },
-                );
-              }),
-            ),
+                  }
+
+                  return RefreshIndicator(
+                    color: AppColors.primary,
+                    onRefresh: controller.refreshAppointments,
+                    child: NotificationListener<ScrollNotification>(
+                      onNotification: (scrollInfo) {
+                        if (scrollInfo.metrics.pixels >=
+                                scrollInfo.metrics.maxScrollExtent - 200 &&
+                            !appointmentController
+                                .isLoadingMoreAppointments.value &&
+                            appointmentController.hasMoreAppointments.value) {
+                          controller.loadMore();
+                        }
+                        return false;
+                      },
+                      child: ListView.separated(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 24.h),
+                        itemCount: appointments.length +
+                            (appointmentController
+                                    .isLoadingMoreAppointments.value
+                                ? 1
+                                : 0),
+                        separatorBuilder: (_, index) {
+                          if (index >= appointments.length - 1) {
+                            return const SizedBox.shrink();
+                          }
+                          return SizedBox(height: 12.h);
+                        },
+                        itemBuilder: (context, index) {
+                          if (index == appointments.length) {
+                            return Padding(
+                              padding: EdgeInsets.symmetric(vertical: 16.h),
+                              child: const Center(
+                                child: CircularProgressIndicator(
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                            );
+                          }
+
+                          final appointment = appointments[index];
+                          final now = DateTime.now();
+                          final status = appointment.status.toLowerCase();
+                          final isPast = appointment.date.isBefore(now) ||
+                              status == 'completed' ||
+                              status == 'cancelled' ||
+                              status == 'no_show';
+                          final isLate = appointment.isLate;
+
+                          final authController = Get.find<AuthController>();
+                          final isReceptionist =
+                              authController.currentUser.value?.userType ==
+                                  'receptionist';
+                          final patient = controller.patientController
+                              .getPatientById(appointment.patientId);
+                          final patientName =
+                              patient?.name ?? appointment.patientName;
+                          final doctorName = appointment.doctorName;
+
+                          return AppointmentListCard(
+                            title: _cardTitle(
+                              patientName: patientName,
+                              doctorName: doctorName,
+                              isReceptionist: isReceptionist,
+                            ),
+                            subtitle: _serviceText(appointment),
+                            date: appointment.date,
+                            time: appointment.time,
+                            avatarImageUrl: patient?.imageUrl,
+                            preferAvatar: true,
+                            tone: isLate
+                                ? AppointmentCardTone.late
+                                : isPast
+                                    ? AppointmentCardTone.past
+                                    : AppointmentCardTone.upcoming,
+                            footerText: isLate
+                                ? 'موعد متأخر — يُنصح بالتواصل مع المريض'
+                                : isPast
+                                    ? 'موعد سابق'
+                                    : 'الرجاء الحضور قبل الموعد ب نصف ساعة',
+                            onTap: _cardTapHandler(appointment),
+                          );
+                        },
+                      ),
+                    ),
+                  );
+                }),
+              ),
             ],
           ),
         ),
@@ -170,295 +211,47 @@ class AppointmentsByDateScreen extends GetView<AppointmentsByDateController> {
     );
   }
 
-  Widget _buildAppointmentCard({
-    required AppointmentModel appointment,
-    required bool isPast,
-    bool isLate = false,
-  }) {
-    final patientController = Get.find<PatientController>();
+  VoidCallback? _cardTapHandler(AppointmentModel appointment) {
     final authController = Get.find<AuthController>();
-    final userType = authController.currentUser.value?.userType;
-    final isReceptionist = userType == 'receptionist';
+    final isReceptionist =
+        authController.currentUser.value?.userType == 'receptionist';
+    if (isReceptionist || appointment.patientId.trim().isEmpty) return null;
 
-    final patient = patientController.getPatientById(appointment.patientId);
-    final patientName = patient?.name ?? appointment.patientName;
-    final patientImageUrl = patient?.imageUrl;
-    final String? patientPhone = patient?.phoneNumber;
-    final doctorName = appointment.doctorName;
-    final strokeColor =
-        isLate ? Colors.red : AppColors.primary.withValues(alpha: 0.3);
+    return () {
+      final patient =
+          controller.patientController.getPatientById(appointment.patientId);
+      if (patient != null) {
+        controller.patientController.selectPatient(patient);
+      }
+      Get.toNamed(
+        AppRoutes.patientDetails,
+        arguments: {
+          'patientId': appointment.patientId,
+          'appointmentId': appointment.id,
+          'appointment': appointment,
+        },
+      );
+    };
+  }
 
-    // تنسيق التاريخ
-    final dateFormat = DateFormat('dd-MM-yyyy', 'ar');
-    final formattedDate = dateFormat.format(appointment.date);
+  String _cardTitle({
+    required String patientName,
+    required String doctorName,
+    required bool isReceptionist,
+  }) {
+    if (isReceptionist && doctorName.isNotEmpty) {
+      return '$patientName • د. $doctorName';
+    }
+    return patientName;
+  }
 
-    // أسماء الأيام بالعربية
-    final weekDays = [
-      'الأحد',
-      'الاثنين',
-      'الثلاثاء',
-      'الأربعاء',
-      'الخميس',
-      'الجمعة',
-      'السبت',
-    ];
-    final dayName = weekDays[appointment.date.weekday % 7];
-
-    // تنسيق الوقت
-    final timeParts = appointment.time.split(':');
-    final hour = int.tryParse(timeParts[0]) ?? 0;
-    final minute = timeParts.length > 1 ? timeParts[1] : '00';
-    final isPM = hour >= 12;
-    final displayHour = hour > 12 ? hour - 12 : (hour == 0 ? 12 : hour);
-    final timeText = '$displayHour:$minute';
-    final periodText = isPM ? 'مساءاً' : 'صباحاً';
-
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(5.w),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(12.r),
-        border: Border.all(
-          color: strokeColor,
-          width: 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              // Patient Image (on the right in RTL)
-              Builder(
-                builder: (context) {
-                  final validImageUrl =
-                      ImageUtils.convertToValidUrl(patientImageUrl);
-                  final hasImage = validImageUrl != null &&
-                      ImageUtils.isValidImageUrl(validImageUrl);
-                  
-                  return Container(
-                    width: 40.w,
-                    height: 40.w,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: strokeColor,
-                        width: 1, // stroke 1
-                      ),
-                    ),
-                    child: ClipOval(
-                      child: hasImage
-                          ? CachedNetworkImage(
-                              imageUrl: validImageUrl,
-                              fit: BoxFit.cover,
-                              width: 40.w,
-                              height: 40.w,
-                              fadeInDuration: Duration.zero,
-                              fadeOutDuration: Duration.zero,
-                              memCacheWidth: 60,
-                              memCacheHeight: 80,
-                              placeholder: (context, url) => Container(
-                                color: const Color.fromARGB(255, 255, 255, 255),
-                                child: Center(
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      AppColors.primary,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              errorWidget: (context, url, error) => Container(
-                                color: AppColors.divider,
-                                child: Icon(
-                                  Icons.person,
-                                  color: AppColors.textSecondary,
-                                  size: 20.sp,
-                                ),
-                              ),
-                            )
-                          : Container(
-                              color: AppColors.divider,
-                              child: Icon(
-                                Icons.person,
-                                color: AppColors.textSecondary,
-                                size: 20.sp,
-                              ),
-                            ),
-                    ),
-                  );
-                },
-              ),
-              SizedBox(width: 4.w),
-
-              // Line 1: Patient name text (same as appointments screen)
-              Expanded(
-                child: RichText(
-                  text: TextSpan(
-                    style: AppFonts.lamaSans(
-                      fontSize: 16.sp,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
-                      height: 1.5,
-                    ),
-                    children: isReceptionist
-                        ? [
-                            const TextSpan(text: 'موعد المريض "'),
-                            TextSpan(
-                              text: patientName,
-                              style: AppFonts.lamaSans(
-                                fontWeight: FontWeight.w600,
-                                color:
-                                    AppColors.primary.withValues(alpha: 0.8),
-                              ),
-                            ),
-                            const TextSpan(text: '" مع الطبيب "'),
-                            TextSpan(
-                              text: doctorName,
-                              style: AppFonts.lamaSans(
-                                fontWeight: FontWeight.w600,
-                                color:
-                                    AppColors.primary.withValues(alpha: 0.8),
-                              ),
-                            ),
-                            const TextSpan(text: '"'),
-                          ]
-                        : [
-                            const TextSpan(text: 'موعد مريضك "'),
-                            TextSpan(
-                              text: patientName,
-                              style: AppFonts.lamaSans(
-                                fontWeight: FontWeight.w600,
-                                color:
-                                    AppColors.primary.withValues(alpha: 0.8),
-                              ),
-                            ),
-                            TextSpan(text: isPast ? '" السابق هو' : '" القادم هو'),
-                          ],
-                  ),
-                  textAlign: TextAlign.right,
-                ),
-              ),
-            ],
-          ),
-          if (patientPhone != null && patientPhone.trim().isNotEmpty)
-            Padding(
-              padding: EdgeInsets.only(right: 10.w),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(height: 4.h),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    children: [
-                      Icon(
-                        Icons.phone,
-                        size: 14.sp,
-                        color: AppColors.primary.withValues(alpha: 0.7),
-                      ),
-                      SizedBox(width: 4.w),
-                      Expanded(
-                        child: Text(
-                          patientPhone,
-                          style: AppFonts.lamaSans(
-                            fontSize: 13.sp,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.primary.withValues(alpha: 0.8),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.right,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          Padding(
-            padding: EdgeInsets.only(right: 10.w),
-            // Appointment Details
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(height: 4.h),
-                // Line 2: Date row - "يوم الثلاثاء المصادف" + icon + date
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  children: [
-                    Text(
-                      'يوم $dayName المصادف',
-                      style: TextStyle(
-                        fontSize: 14.sp,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-
-                    SizedBox(width: 4.w),
-                    Text(
-                      formattedDate,
-                      style: TextStyle(
-                        fontSize: 14.sp,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.primary.withValues(alpha: 0.7),
-                      ),
-                    ),
-                    SizedBox(width: 4.w),
-                    Icon(
-                      Icons.calendar_today,
-                      size: 14.sp,
-                      color: AppColors.primary.withValues(alpha: 0.7),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 4.h),
-                // Line 3: Time row - "في تمام الساعة" + blue button with time + period
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  children: [
-                    Text(
-                      'في تمام الساعة',
-                      style: TextStyle(
-                        fontSize: 14.sp,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-
-                    SizedBox(width: 4.w),
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 16.w,
-                        vertical: 4.h,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary,
-                        borderRadius: BorderRadius.circular(8.r),
-                      ),
-                      child: Text(
-                        timeText,
-                        style: TextStyle(
-                          fontSize: 14.sp,
-                          color: AppColors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 4.w),
-                    Text(
-                      periodText,
-                      style: TextStyle(
-                        fontSize: 14.sp,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+  String _serviceText(AppointmentModel appointment) {
+    if (appointment.notes?.trim().isNotEmpty == true) {
+      return appointment.notes!.trim();
+    }
+    if (appointment.stageName?.trim().isNotEmpty == true) {
+      return appointment.stageName!.trim();
+    }
+    return 'حشوات قلع تنظيف';
   }
 }

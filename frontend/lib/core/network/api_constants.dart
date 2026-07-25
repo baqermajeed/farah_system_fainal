@@ -104,6 +104,13 @@ class ApiConstants {
   static String doctorUploadPatientImage(String patientId) =>
       '/doctor/patients/$patientId/upload-image';
   static const String doctorAppointments = '/doctor/appointments';
+  static const String doctorMe = '/doctor/me';
+
+  // Stats Endpoints
+  static String statsDoctorDetailsCards(String doctorId) =>
+      '/stats/doctors/$doctorId/doctor-details-cards';
+  static String statsDoctorAppointmentsBreakdown(String doctorId) =>
+      '/stats/doctors/$doctorId/appointments-breakdown';
 
   // Dental Chart (FDI)
   static String patientDentalChart(String patientId) =>

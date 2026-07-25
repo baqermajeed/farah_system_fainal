@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:farah_sys_final/models/appointment_model.dart';
 import 'package:farah_sys_final/services/patient_service.dart';
@@ -17,6 +18,18 @@ class AppointmentController extends GetxController {
   final RxList<AppointmentModel> secondaryAppointments =
       <AppointmentModel>[].obs;
   final RxBool isLoading = false.obs;
+
+  // Pagination — نفس frontend_desktop
+  int currentPage = 1;
+  final RxBool isLoadingMoreAppointments = false.obs;
+  final RxBool hasMoreAppointments = true.obs;
+  final int pageLimit = 25;
+
+  String? _currentFilter;
+  DateTime? _customFilterStart;
+  DateTime? _customFilterEnd;
+
+  String? get currentFilter => _currentFilter;
 
   // جلب مواعيد المريض أو جميع المواعيد للاستقبال
   Future<void> loadPatientAppointments() async {
@@ -110,56 +123,134 @@ class AppointmentController extends GetxController {
     }
   }
 
-  // جلب مواعيد الطبيب أو جميع المواعيد للاستقبال
+  // جلب مواعيد الطبيب أو جميع المواعيد للاستقبال — تصفية من السيرفر + pagination
   Future<void> loadDoctorAppointments({
     String? day,
     String? dateFrom,
     String? dateTo,
     String? status,
-    int skip = 0,
-    int limit = 50,
+    bool isInitial = false,
+    bool isRefresh = false,
+    String? filter,
+    DateTime? customFilterStart,
+    DateTime? customFilterEnd,
   }) async {
     try {
-      isLoading.value = true;
-      
+      if (filter != null) {
+        _currentFilter = filter;
+        _customFilterStart = customFilterStart;
+        _customFilterEnd = customFilterEnd;
+      }
+
+      String? calculatedDay;
+      String? calculatedStatus;
+      String? calculatedDateFrom = dateFrom;
+      String? calculatedDateTo = dateTo;
+
+      if (_currentFilter != null) {
+        switch (_currentFilter) {
+          case 'اليوم':
+            calculatedDay = 'today';
+            break;
+          case 'هذا الشهر':
+            calculatedDay = 'month';
+            break;
+          case 'المتأخرون':
+            calculatedStatus = 'late';
+            break;
+          case 'تصفية مخصصة':
+            if (_customFilterStart != null && _customFilterEnd != null) {
+              calculatedDateFrom =
+                  DateFormat('yyyy-MM-dd').format(_customFilterStart!);
+              final endDate = _customFilterEnd!.add(const Duration(days: 1));
+              calculatedDateTo = DateFormat('yyyy-MM-dd').format(endDate);
+            }
+            break;
+        }
+      }
+
+      if (isRefresh || isInitial) {
+        currentPage = 1;
+        hasMoreAppointments.value = true;
+        if (appointments.isEmpty) {
+          isLoading.value = true;
+        }
+      } else {
+        if (!hasMoreAppointments.value || isLoadingMoreAppointments.value) {
+          return;
+        }
+        isLoadingMoreAppointments.value = true;
+      }
+
       final authController = Get.find<AuthController>();
       final userType = authController.currentUser.value?.userType;
-      
+      final skip = (currentPage - 1) * pageLimit;
+
       List<AppointmentModel> appointmentsList;
-      
       if (userType == 'receptionist') {
-        // موظف الاستقبال: يجلب جميع المواعيد من جميع الأطباء
-        print('📅 [AppointmentController] Loading all appointments for receptionist');
         appointmentsList = await _doctorService.getAllAppointmentsForReception(
-          day: day,
-          dateFrom: dateFrom,
-          dateTo: dateTo,
-          status: status,
+          day: calculatedDay ?? day,
+          dateFrom: calculatedDateFrom,
+          dateTo: calculatedDateTo,
+          status: calculatedStatus ?? status,
           skip: skip,
-          limit: limit,
+          limit: pageLimit,
         );
       } else {
-        // الطبيب: يجلب مواعيده الخاصة
-        print('📅 [AppointmentController] Loading appointments for doctor');
         appointmentsList = await _doctorService.getMyAppointments(
-          day: day,
-          dateFrom: dateFrom,
-          dateTo: dateTo,
-          status: status,
+          day: calculatedDay ?? day,
+          dateFrom: calculatedDateFrom,
+          dateTo: calculatedDateTo,
+          status: calculatedStatus ?? status,
           skip: skip,
-          limit: limit,
+          limit: pageLimit,
         );
       }
-      
-      appointments.value = appointmentsList;
-      print('📅 [AppointmentController] Loaded ${appointmentsList.length} appointments');
+
+      if (isRefresh || isInitial) {
+        appointments.assignAll(appointmentsList);
+      } else {
+        appointments.addAll(appointmentsList);
+      }
+
+      hasMoreAppointments.value = appointmentsList.length >= pageLimit;
+      if (hasMoreAppointments.value) {
+        currentPage++;
+      }
     } on ApiException catch (e) {
       await NetworkUtils.showError(e);
     } catch (e) {
-      await NetworkUtils.showError(e, fallbackMessage: 'حدث خطأ أثناء تحميل المواعيد');
+      await NetworkUtils.showError(
+        e,
+        fallbackMessage: 'حدث خطأ أثناء تحميل المواعيد',
+      );
     } finally {
       isLoading.value = false;
+      isLoadingMoreAppointments.value = false;
     }
+  }
+
+  Future<void> loadMoreAppointments({
+    String? day,
+    String? dateFrom,
+    String? dateTo,
+    String? status,
+    String? filter,
+    DateTime? customFilterStart,
+    DateTime? customFilterEnd,
+  }) async {
+    if (!hasMoreAppointments.value || isLoadingMoreAppointments.value) return;
+    await loadDoctorAppointments(
+      day: day,
+      dateFrom: dateFrom,
+      dateTo: dateTo,
+      status: status,
+      isInitial: false,
+      isRefresh: false,
+      filter: filter ?? _currentFilter,
+      customFilterStart: customFilterStart ?? _customFilterStart,
+      customFilterEnd: customFilterEnd ?? _customFilterEnd,
+    );
   }
 
   // جلب مواعيد مريض محدد (للطبيب)

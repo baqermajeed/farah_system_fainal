@@ -58,6 +58,9 @@ class PatientDetailsController extends GetxController
   final RxSet<String> selectedAppointmentIds = <String>{}.obs;
   final RxBool isSelectionMode = false.obs;
 
+  bool _dentalChartBound = false;
+  bool _implantStagesRequested = false;
+
   @override
   void onInit() {
     super.onInit();
@@ -93,6 +96,10 @@ class PatientDetailsController extends GetxController
     if (currentTabIndex.value != index) {
       currentTabIndex.value = index;
     }
+    if (index == 3 && patientId != null && !_dentalChartBound) {
+      _dentalChartBound = true;
+      dentalChartController.bindPatient(patientId!);
+    }
   }
 
   @override
@@ -113,30 +120,62 @@ class PatientDetailsController extends GetxController
         }
         loadPatientDoctors(patientId!);
       } else {
-        // Only load appointments, gallery, and records for non-receptionists (doctors)
+        await _ensurePatientLoaded(patientId!);
+
         appointmentController.loadPatientAppointmentsById(patientId!);
         galleryController.loadGallery(patientId!);
         medicalRecordController.loadPatientRecords(patientId!);
-        dentalChartController.bindPatient(patientId!);
         loadUnreadCount();
+        _loadImplantStagesIfNeeded(patientId!);
 
-        // Load implant stages if treatment type is زراعة
-        final patient = patientController.getPatientById(patientId!);
-        if (patient != null &&
-            patient.treatmentHistory != null &&
-            patient.treatmentHistory!.isNotEmpty &&
-            patient.treatmentHistory!.first == 'زراعة') {
-          final implantStageController = Get.put(ImplantStageController());
-          implantStageController.ensureStagesLoaded(patientId!);
+        if (tabController.index == 3) {
+          _dentalChartBound = true;
+          dentalChartController.bindPatient(patientId!);
         }
       }
     });
+  }
+
+  Future<void> _ensurePatientLoaded(String id) async {
+    var patient = patientController.getPatientById(id);
+    if (patient == null) {
+      await patientController.reloadPatientsList();
+      patient = patientController.getPatientById(id);
+    }
+    if (patient != null) {
+      patientController.selectPatient(patient);
+    }
+  }
+
+  void _loadImplantStagesIfNeeded(String id) {
+    if (_implantStagesRequested) return;
+    final patient = patientController.getPatientById(id);
+    if (patient == null ||
+        patient.treatmentHistory == null ||
+        patient.treatmentHistory!.isEmpty ||
+        patient.treatmentHistory!.first != 'زراعة') {
+      return;
+    }
+    _implantStagesRequested = true;
+    if (!Get.isRegistered<ImplantStageController>()) {
+      Get.put(ImplantStageController());
+    }
+    Get.find<ImplantStageController>().ensureStagesLoaded(id);
   }
 
   @override
   void onClose() {
     tabController.removeListener(_onTabChanged);
     tabController.dispose();
+    if (Get.isRegistered<GalleryController>()) {
+      Get.delete<GalleryController>(force: true);
+    }
+    if (Get.isRegistered<MedicalRecordController>()) {
+      Get.delete<MedicalRecordController>(force: true);
+    }
+    if (Get.isRegistered<DentalChartController>()) {
+      Get.delete<DentalChartController>(force: true);
+    }
     super.onClose();
   }
 

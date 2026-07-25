@@ -89,17 +89,11 @@ class DoctorHomeController extends GetxController {
     try {
       isLoadingAppointments.value = true;
       await _appointmentController.loadDoctorAppointments(
-        day: 'today',
-        limit: 50,
+        isInitial: true,
+        isRefresh: true,
+        filter: 'اليوم',
       );
-      final now = DateTime.now();
-      todayAppointments.assignAll(
-        _appointmentController.appointments.where((a) {
-          return a.date.year == now.year &&
-              a.date.month == now.month &&
-              a.date.day == now.day;
-        }).toList(),
-      );
+      todayAppointments.assignAll(_appointmentController.appointments);
       todayAppointments.sort((a, b) => a.time.compareTo(b.time));
     } catch (e) {
       print('❌ [DoctorHomeController] Error loading today appointments: $e');

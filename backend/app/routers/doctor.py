@@ -395,6 +395,19 @@ async def upload_patient_profile_image(
 
     return _build_doctor_patient_out(p, u, doctor_id)
 
+@router.get("/me")
+async def get_current_doctor_me(current=Depends(get_current_user)):
+    """معرّف الطبيب الحالي لاستخدامه في واجهات الإحصائيات وغيرها."""
+    doctor_id = await _get_current_doctor_id(current)
+    doctor = await Doctor.get(OID(doctor_id))
+    user = await User.get(doctor.user_id) if doctor else None
+    return {
+        "doctor_id": doctor_id,
+        "user_id": str(doctor.user_id) if doctor else str(current.id),
+        "name": user.name if user else current.name,
+        "is_manager": bool(getattr(doctor, "is_manager", False)) if doctor else False,
+    }
+
 @router.get("/patients", response_model=List[PatientOut])
 async def my_patients(
     skip: int = Query(0, ge=0),
