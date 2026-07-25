@@ -11,6 +11,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
+import 'package:farah_sys_final/core/constants/iraq_governorates.dart';
 import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
 import 'package:farah_sys_final/core/utils/network_utils.dart';
@@ -26,6 +27,7 @@ import 'package:farah_sys_final/models/patient_model.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:farah_sys_final/widgets/portrait_network_image.dart';
+import 'package:farah_sys_final/widgets/dental_chart/patient_dental_chart_tab.dart';
 
 // Shared shadow used in patient UI cards.
 const List<BoxShadow> kPatientFileShadow = [
@@ -36,6 +38,35 @@ const List<BoxShadow> kPatientFileShadow = [
   ),
 ];
 
+const Color _kPatientProfileNavy = Color(0xFF1E3A5F);
+const Color _kPatientProfileGray = Color(0xFF8A97A8);
+const Color _kPatientProfileBg = Color(0xFFF8FAFC);
+const Color _kPatientProfileBlue = Color(0xFF4A88B8);
+const Color _kPatientProfileNavyDark = Color(0xFF162D4A);
+const Color _kPatientProfileDivider = Color(0xFFE8ECF0);
+
+const LinearGradient _kPatientProfileGradient = LinearGradient(
+  colors: [_kPatientProfileNavyDark, _kPatientProfileBlue],
+  begin: Alignment.topRight,
+  end: Alignment.bottomLeft,
+);
+
+class _PatientDetailsAssets {
+  static const back = 'assets/icon/backblack.png';
+  static const chat = 'assets/icon/chatddd.png';
+}
+
+const double _kPatientHeaderButtonSize = 50;
+const double _kPatientHeaderButtonRadius = 16;
+
+const List<BoxShadow> _kPatientHeaderButtonShadow = [
+  BoxShadow(
+    color: Color(0x1F000000),
+    blurRadius: 8,
+    offset: Offset.zero,
+  ),
+];
+
 // Delegate for sticky TabBar
 class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
   final Widget child;
@@ -43,10 +74,10 @@ class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
   _SliverTabBarDelegate({required this.child});
 
   @override
-  double get minExtent => 48.0;
+  double get minExtent => 56.0;
 
   @override
-  double get maxExtent => 48.0;
+  double get maxExtent => 56.0;
 
   @override
   Widget build(
@@ -76,21 +107,25 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
 
     return Theme(
       data: cairoTheme,
-      child: Obx(() => Scaffold(
-        backgroundColor: const Color(0xFFF4FEFF),
-        floatingActionButton: controller.currentTabIndex.value == 1 &&
-                controller.isSelectionMode.value &&
-                controller.selectedAppointmentIds.isNotEmpty
-            ? FloatingActionButton.extended(
-                onPressed: () => _showDeleteConfirmDialog(context),
-                backgroundColor: Colors.red,
-                icon: Icon(Icons.delete, color: AppColors.white),
-                label: Text(
-                  'حذف (${controller.selectedAppointmentIds.length})',
-                  style: AppFonts.lamaSans(color: AppColors.white),
-                ),
-              )
-            : null,
+      child: Scaffold(
+        backgroundColor: _kPatientProfileBg,
+        floatingActionButton: Obx(() {
+          final showFab = controller.currentTabIndex.value == 1 &&
+              controller.isSelectionMode.value &&
+              controller.selectedAppointmentIds.isNotEmpty;
+          if (!showFab) {
+            return const SizedBox.shrink();
+          }
+          return FloatingActionButton.extended(
+            onPressed: () => _showDeleteConfirmDialog(context),
+            backgroundColor: Colors.red,
+            icon: Icon(Icons.delete, color: AppColors.white),
+            label: Text(
+              'حذف (${controller.selectedAppointmentIds.length})',
+              style: AppFonts.lamaSans(color: AppColors.white),
+            ),
+          );
+        }),
         body: SafeArea(
           child: Obx(() {
           final userType = controller.authController.currentUser.value?.userType;
@@ -105,109 +140,107 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                     return <Widget>[
                       // Header with light blue background
                       SliverAppBar(
-                        backgroundColor: const Color(0xFFF4FEFF),
+                        backgroundColor: _kPatientProfileBg,
                         pinned: false,
                         floating: false,
                         expandedHeight: 0,
-                        toolbarHeight: 80.h,
+                        toolbarHeight: 64.h,
                         automaticallyImplyLeading: false,
                         flexibleSpace: Container(
-                          color: const Color(0xFFF4FEFF),
+                          color: _kPatientProfileBg,
                           padding: EdgeInsets.symmetric(
-                            horizontal: 24.w,
-                            vertical: 16.h,
+                            horizontal: 16.w,
+                            vertical: 8.h,
                           ),
                           child: Row(
                             textDirection: ui.TextDirection.ltr,
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              // Back button always on the LEFT
-                              const BackButtonWidget(),
+                              const BackButtonWidget(
+                                assetPath: _PatientDetailsAssets.back,
+                                size: _kPatientHeaderButtonSize,
+                              ),
                               Expanded(
-                                child: Center(
-                                  child: Text(
-                                    'ملف المريض',
-                                    style: TextStyle(
-                                      fontSize: 20.sp,
-                                      fontWeight: FontWeight.bold,
-                                      color: AppColors.textPrimary,
-                                    ),
+                                child: Text(
+                                  'ملف المريض',
+                                  textAlign: TextAlign.center,
+                                  style: AppFonts.lamaSans(
+                                    fontSize: 18.sp,
+                                    fontWeight: FontWeight.w800,
+                                    color: _kPatientProfileNavy,
                                   ),
                                 ),
                               ),
-                              // Cancel selection button when in selection mode
                               if (controller.isSelectionMode.value)
                                 GestureDetector(
-                                  onTap: () {
-                                    controller.exitSelectionMode();
-                                  },
-                                  child: Container(
-                                    padding: EdgeInsets.all(8.w),
+                                  onTap: controller.exitSelectionMode,
+                                  child: Padding(
+                                    padding:
+                                        EdgeInsets.symmetric(horizontal: 8.w),
                                     child: Text(
                                       'إلغاء',
-                                      style: TextStyle(
-                                        fontSize: 16.sp,
+                                      style: AppFonts.lamaSans(
+                                        fontSize: 14.sp,
                                         color: AppColors.primary,
-                                        fontWeight: FontWeight.w600,
+                                        fontWeight: FontWeight.w700,
                                       ),
                                     ),
                                   ),
-                                ),
-                              // Chat icon on the RIGHT (only for doctor, not receptionist)
-                              Builder(
-                                builder: (context) {
-                                  if (isReceptionist) {
-                                    return SizedBox(width: 24.sp);
-                                  }
-
-                                  return GestureDetector(
-                                    onTap: () async {
-                                      if (controller.patientId != null) {
-                                        await Get.toNamed(
-                                          AppRoutes.chat,
-                                          arguments: {'patientId': controller.patientId},
-                                        );
-                                        // Reload unread count when returning from chat
-                                        await Future.delayed(
-                                          const Duration(milliseconds: 300),
-                                        );
-                                        controller.loadUnreadCount();
-                                      }
-                                    },
-                                    child: Obx(() {
-                                      final hasUnread = controller.unreadCount.value > 0;
-                                      return Stack(
-                                        children: [
-                                          Center(
-                                            child: Image.asset(
-                                              'assets/images/message.png',
-                                              width: 35.sp,
-                                              height: 35.sp,
-                                            fit: BoxFit.contain,
-                                            ),
+                                )
+                              else if (!isReceptionist)
+                                GestureDetector(
+                                  onTap: () async {
+                                    if (controller.patientId != null) {
+                                      await Get.toNamed(
+                                        AppRoutes.chat,
+                                        arguments: {
+                                          'patientId': controller.patientId,
+                                        },
+                                      );
+                                      await Future.delayed(
+                                        const Duration(milliseconds: 300),
+                                      );
+                                      controller.loadUnreadCount();
+                                    }
+                                  },
+                                  child: Obx(() {
+                                    final hasUnread =
+                                        controller.unreadCount.value > 0;
+                                    return Stack(
+                                      clipBehavior: Clip.none,
+                                      children: [
+                                        _buildHeaderIconButton(
+                                          child: Image.asset(
+                                            _PatientDetailsAssets.chat,
+                                            width: 30.w,
+                                            height: 30.w,
                                           ),
-                                          if (hasUnread)
-                                            Positioned(
-                                              right: 0,
-                                              top: 0,
-                                              child: Container(
-                                                width: 10.w,
-                                                height: 10.h,
-                                                decoration: BoxDecoration(
-                                                  color: Colors.pink,
-                                                  shape: BoxShape.circle,
-                                                  border: Border.all(
-                                                    color: Colors.white,
-                                                    width: 1.5,
-                                                  ),
+                                        ),
+                                        if (hasUnread)
+                                          Positioned(
+                                            top: 2.h,
+                                            right: 2.w,
+                                            child: Container(
+                                              width: 10.w,
+                                              height: 10.w,
+                                              decoration: BoxDecoration(
+                                                color: AppColors.error,
+                                                shape: BoxShape.circle,
+                                                border: Border.all(
+                                                  color: Colors.white,
+                                                  width: 2,
                                                 ),
                                               ),
                                             ),
-                                        ],
-                                      );
-                                    }),
-                                  );
-                                },
-                              ),
+                                          ),
+                                      ],
+                                    );
+                                  }),
+                                )
+                              else
+                                SizedBox(
+                                  width: _kPatientHeaderButtonSize.w,
+                                ),
                             ],
                           ),
                         ),
@@ -216,8 +249,13 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                       // Patient Information Card
                       SliverToBoxAdapter(
                         child: Obx(() {
+                          // تتبع selectedPatient ونتائج البحث لعرض الكارت عند الفتح من البحث
+                          controller.patientController.selectedPatient.value;
+                          controller.patientController.searchResults.length;
+
                           final patient = controller.patientId != null
-                              ? controller.patientController.getPatientById(controller.patientId!)
+                              ? controller.patientController
+                                  .getPatientById(controller.patientId!)
                               : null;
 
                           if (patient == null) {
@@ -232,269 +270,10 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
 
                           return Column(
                             children: [
-                              Builder(
-                                builder: (context) {
-                                  final baseTheme = Theme.of(context);
-                                  final cairoTheme = baseTheme.copyWith(
-                                    textTheme:
-                                        AppFonts.textTheme(baseTheme.textTheme),
-                                    primaryTextTheme: AppFonts.textTheme(
-                                      baseTheme.primaryTextTheme,
-                                    ),
-                                  );
-
-                                  return Theme(
-                                    data: cairoTheme,
-                                    child: Container(
-                                      height: 156.h,
-                                      padding: EdgeInsets.zero,
-                                      margin: EdgeInsets.symmetric(
-                                        horizontal: 16.w,
-                                        vertical: 10.h,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.white,
-                                        borderRadius: BorderRadius.circular(8.r),
-                                        boxShadow: kPatientFileShadow,
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          // Patient Image on the right (in RTL) - first element (no margin/padding on right)
-                                          PortraitNetworkImage(
-                                            imageUrl: patient.imageUrl,
-                                            borderRadius:
-                                                BorderRadius.circular(8.r),
-                                            aspectRatio: 110 / 156,
-                                            width: 110.w,
-                                            height: 156.h,
-                                            showSkeleton: true,
-                                          ),
-                                          SizedBox(width: 12.w),
-                                          // Container that includes Name at top and Row with details + QR code below
-                                          Expanded(
-                                            child: Padding(
-                                              padding: EdgeInsets.only(
-                                                left: 0.w,
-                                                top: 6.h,
-                                                bottom: 6.h,
-                                              ),
-                                              child: Column(
-                                                // crossAxisAlignment: CrossAxisAlignment.end,
-                                                children: [
-                                                  // Name at the top
-                                                  Align(
-                                                    alignment: Alignment.centerRight,
-                                                    child: Text(
-                                                      'الاسم : ${patient.name}',
-                                                      style: AppFonts.lamaSans(
-                                                        fontSize: 14.sp,
-                                                        fontWeight: FontWeight.w700,
-                                                        color: const Color(0xFF649FCC),
-                                                      ),
-                                                      textAlign: TextAlign.right,
-                                                      maxLines: 1,
-                                                      overflow: TextOverflow.ellipsis,
-                                                    ),
-                                                  ),
-                                                  // اجعل المسافة بين الاسم وباقي البيانات مساوية لباقي المسافات
-                                                  SizedBox(height: 4.h),
-
-                                                  // Row containing details column and QR code column
-                                                  Row(
-                                                    children: [
-                                                      // Patient Details column
-                                                      Expanded(
-                                                        child: Column(
-                                                          crossAxisAlignment:
-                                                              CrossAxisAlignment
-                                                                  .end,
-                                                          children: [
-                                                            Align(
-                                                              alignment: Alignment
-                                                                  .centerRight,
-                                                              child: Text(
-                                                                'العمر : ${patient.age} سنة',
-                                                                style: AppFonts.lamaSans(
-                                                                  fontSize: 12.sp,
-                                                                  fontWeight: FontWeight.w600,
-                                                                  color: const Color(
-                                                                    0xFF505558,
-                                                                  ),
-                                                                ),
-                                                                textAlign: TextAlign
-                                                                    .right,
-                                                                maxLines: 1,
-                                                                overflow:
-                                                                    TextOverflow
-                                                                        .ellipsis,
-                                                              ),
-                                                            ),
-                                                            SizedBox(height: 4.h),
-                                                            Align(
-                                                              alignment: Alignment
-                                                                  .centerRight,
-                                                              child: Text(
-                                                                'الجنس: ${patient.gender == 'male' ? 'ذكر' : patient.gender == 'female' ? 'أنثى' : patient.gender}',
-                                                                style: AppFonts.lamaSans(
-                                                                  fontSize: 12.sp,
-                                                                  fontWeight: FontWeight.w600,
-                                                                  color: const Color(
-                                                                    0xFF505558,
-                                                                  ),
-                                                                ),
-                                                                textAlign: TextAlign
-                                                                    .right,
-                                                                maxLines: 1,
-                                                                overflow:
-                                                                    TextOverflow
-                                                                        .ellipsis,
-                                                              ),
-                                                            ),
-                                                            SizedBox(height: 4.h),
-                                                            Align(
-                                                              alignment: Alignment
-                                                                  .centerRight,
-                                                              child: Text(
-                                                                'رقم الهاتف : ${patient.phoneNumber}',
-                                                                style: AppFonts.lamaSans(
-                                                                  fontSize: 12.sp,
-                                                                  fontWeight: FontWeight.w600,
-                                                                  color: const Color(
-                                                                    0xFF505558,
-                                                                  ),
-                                                                ),
-                                                                textAlign: TextAlign
-                                                                    .right,
-                                                                maxLines: 1,
-                                                                overflow:
-                                                                    TextOverflow
-                                                                        .ellipsis,
-                                                              ),
-                                                            ),
-                                                            SizedBox(height: 4.h),
-                                                            Align(
-                                                              alignment: Alignment
-                                                                  .centerRight,
-                                                              child: Text(
-                                                                'المدينة : ${patient.city}',
-                                                                style: AppFonts.lamaSans(
-                                                                  fontSize: 12.sp,
-                                                                  fontWeight: FontWeight.w600,
-                                                                  color: const Color(
-                                                                    0xFF505558,
-                                                                  ),
-                                                                ),
-                                                                textAlign: TextAlign
-                                                                    .right,
-                                                                maxLines: 1,
-                                                                overflow:
-                                                                    TextOverflow
-                                                                        .ellipsis,
-                                                              ),
-                                                            ),
-                                                            SizedBox(height: 4.h),
-                                                            Align(
-                                                              alignment: Alignment
-                                                                  .centerRight,
-                                                              child: Text(
-                                                                'نوع العلاج : ${patient.treatmentHistory != null && patient.treatmentHistory!.isNotEmpty ? patient.treatmentHistory!.last : 'لا يوجد'}',
-                                                                style: AppFonts.lamaSans(
-                                                                  fontSize: 12.sp,
-                                                                  fontWeight: FontWeight.w600,
-                                                                  color: const Color(
-                                                                    0xFF505558,
-                                                                  ),
-                                                                ),
-                                                                textAlign: TextAlign
-                                                                    .right,
-                                                                maxLines: 1,
-                                                                overflow:
-                                                                    TextOverflow
-                                                                        .ellipsis,
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                      SizedBox(width: 0.w),
-
-                                                // QR Code column on the left (in RTL)
-                                                Column(
-                                                  children: [
-                                                    GestureDetector(
-                                                      onTap: () {
-                                                        _showQrCodeDialog(
-                                                          context,
-                                                          patient.id,
-                                                        );
-                                                      },
-                                                      child: Container(
-                                                        width: 70.w,
-                                                        height: 70.w,
-                                                        padding: EdgeInsets.all(
-                                                          0.w,
-                                                        ),
-                                                        decoration: BoxDecoration(
-                                                          color:
-                                                              AppColors.white,
-                                                          borderRadius:
-                                                              BorderRadius.circular(
-                                                                8.r,
-                                                              ),
-                                                        ),
-                                                        child: QrImageView(
-                                                          data: patient.id,
-                                                          version:
-                                                              QrVersions.auto,
-                                                          size: 54.w,
-                                                          backgroundColor:
-                                                              Colors.white,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    // Edit treatment type button (only for doctor, not receptionist)
-                                                    if (!isReceptionist) ...[
-                                                      SizedBox(height: 8.h),
-                                                      GestureDetector(
-                                                        onTap: () {
-                                                          _showTreatmentTypeDialog(
-                                                            context,
-                                                            patient,
-                                                          );
-                                                        },
-                                                        child: Container(
-                                                          width: 40.w,
-                                                          height: 40.w,
-                                                          decoration: BoxDecoration(
-                                                            color: AppColors
-                                                                .primaryLight,
-                                                            borderRadius:
-                                                                BorderRadius.circular(
-                                                                  8.r,
-                                                                ),
-                                                          ),
-                                                          child: Icon(
-                                                            Icons.edit,
-                                                            color: AppColors
-                                                                .primary,
-                                                            size: 20.sp,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ],
-                                                ),
-                                                    ],
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                },
+                              _buildRefinedPatientInfoCard(
+                                context,
+                                patient,
+                                isReceptionist,
                               ),
 
                               // Doctors Section (only for receptionist)
@@ -513,43 +292,46 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                           pinned: true,
                           delegate: _SliverTabBarDelegate(
                             child: Container(
-                              height: 48.0,
+                              height: 56.0,
                               margin: EdgeInsets.symmetric(horizontal: 16.w),
+                              padding: EdgeInsets.all(4.w),
                               decoration: BoxDecoration(
-                                color: AppColors.white,
-                                borderRadius: BorderRadius.circular(16.r),
-                                border: Border.all(
-                                  color: Colors.grey.withOpacity(0.2),
-                                  width: 1,
-                                ),
-                                boxShadow: kPatientFileShadow,
+                                color: const Color(0xFFF1F5F9),
+                                borderRadius: BorderRadius.circular(20.r),
                               ),
                               child: TabBar(
                                 controller: controller.tabController,
+                                isScrollable: true,
+                                tabAlignment: TabAlignment.start,
                                 indicator: BoxDecoration(
-                                  color: const Color(0xB3649FCC), // 70% of #649FCC
+                                  color: _kPatientProfileNavy,
                                   borderRadius: BorderRadius.circular(16.r),
-                                  border: Border.all(
-                                    color: AppColors.white,
-                                    width: 0,
-                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: _kPatientProfileNavy
+                                          .withValues(alpha: 0.22),
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
                                 ),
                                 indicatorSize: TabBarIndicatorSize.tab,
                                 dividerColor: Colors.transparent,
-                                labelColor: const Color.fromARGB(255, 255, 255, 255),
-                                unselectedLabelColor: const Color(0xFF505558),
+                                labelColor: Colors.white,
+                                unselectedLabelColor: _kPatientProfileGray,
                                 labelStyle: AppFonts.lamaSans(
-                                  fontSize: 16.sp,
-                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13.sp,
+                                  fontWeight: FontWeight.w800,
                                 ),
                                 unselectedLabelStyle: AppFonts.lamaSans(
-                                  fontSize: 16.sp,
+                                  fontSize: 13.sp,
                                   fontWeight: FontWeight.w600,
                                 ),
                                 tabs: const [
                                   Tab(text: 'السجلات'),
                                   Tab(text: 'المواعيد'),
                                   Tab(text: 'المعرض'),
+                                  Tab(text: 'Dental Chart'),
                                 ],
                               ),
                             ),
@@ -558,13 +340,14 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                     ];
                   },
                   body: isReceptionist
-                      ? Container(color: const Color(0xFFF4FEFF))
+                      ? Container(color: _kPatientProfileBg)
                       : TabBarView(
                           controller: controller.tabController,
                           children: [
                             _buildRecordsTab(),
                             _buildAppointmentsTab(),
                             _buildGalleryTab(),
+                            _buildDentalChartTab(),
                           ],
                         ),
                 ),
@@ -572,7 +355,7 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
 
               // Button at the bottom
               Padding(
-                padding: EdgeInsets.all(24.w),
+                padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 16.h),
                 child: Obx(() {
                   final patient = controller.patientId != null
                       ? controller.patientController.getPatientById(controller.patientId!)
@@ -588,10 +371,21 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                     // For receptionist: show "تحويل" button
                     return Container(
                       width: double.infinity,
-                      height: 56.h,
+                      height: 52.h,
                       decoration: BoxDecoration(
-                        color: AppColors.primary,
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF162D4A), Color(0xFF4A88B8)],
+                          begin: Alignment.centerRight,
+                          end: Alignment.centerLeft,
+                        ),
                         borderRadius: BorderRadius.circular(16.r),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF4A88B8).withValues(alpha: 0.3),
+                            blurRadius: 14,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
                       ),
                       child: ElevatedButton(
                         onPressed: () {
@@ -604,9 +398,7 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                               },
                             )?.then((result) async {
                               if (result == true && controller.patientId != null) {
-                                // Reload patient doctors
                                 await controller.loadPatientDoctors(controller.patientId!);
-                                // Reload patients list in PatientController to update the patient data
                                 await controller.patientController.loadPatients();
                               }
                             });
@@ -621,9 +413,9 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                         ),
                         child: Text(
                           'تحويل',
-                          style: TextStyle(
-                            fontSize: 16.sp,
-                            fontWeight: FontWeight.bold,
+                          style: AppFonts.lamaSans(
+                            fontSize: 15.sp,
+                            fontWeight: FontWeight.w800,
                             color: AppColors.white,
                           ),
                         ),
@@ -640,6 +432,11 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                         patient.treatmentHistory!.isNotEmpty &&
                         patient.treatmentHistory!.first == 'زراعة';
 
+                    // إخفاء الزر في تبويب Dental Chart أو tab المواعيد مع زراعة
+                    if (tabIndex == 3) {
+                      return SizedBox.shrink();
+                    }
+
                     // إخفاء الزر إذا كان tab المواعيد ونوع العلاج "زراعة"
                     if (tabIndex == 1 && isImplantTreatment) {
                       return SizedBox.shrink();
@@ -647,10 +444,21 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
 
                     return Container(
                       width: double.infinity,
-                      height: 56.h,
+                      height: 52.h,
                       decoration: BoxDecoration(
-                        color: AppColors.primary,
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF162D4A), Color(0xFF4A88B8)],
+                          begin: Alignment.centerRight,
+                          end: Alignment.centerLeft,
+                        ),
                         borderRadius: BorderRadius.circular(16.r),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF4A88B8).withValues(alpha: 0.3),
+                            blurRadius: 14,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
                       ),
                       child: ElevatedButton(
                         onPressed: () {
@@ -665,9 +473,9 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                         ),
                         child: Text(
                           _getButtonText(tabIndex),
-                          style: TextStyle(
-                            fontSize: 16.sp,
-                            fontWeight: FontWeight.bold,
+                          style: AppFonts.lamaSans(
+                            fontSize: 15.sp,
+                            fontWeight: FontWeight.w800,
                             color: AppColors.white,
                           ),
                         ),
@@ -680,17 +488,336 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
           );
           }),
         ),
-      )),
+      ),
+    );
+  }
+
+  /// Scrollable wrapper required for TabBarView inside NestedScrollView.
+  Widget _tabFillScroll(Widget child) {
+    return CustomScrollView(
+      slivers: [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: child,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHeaderIconButton({required Widget child}) {
+    return Container(
+      width: _kPatientHeaderButtonSize.w,
+      height: _kPatientHeaderButtonSize.w,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(_kPatientHeaderButtonRadius.r),
+        boxShadow: _kPatientHeaderButtonShadow,
+      ),
+      alignment: Alignment.center,
+      child: child,
+    );
+  }
+
+  Widget _buildRefinedPatientInfoCard(
+    BuildContext context,
+    PatientModel patient,
+    bool isReceptionist,
+  ) {
+    final gender = patient.gender == 'male'
+        ? 'ذكر'
+        : patient.gender == 'female'
+            ? 'أنثى'
+            : patient.gender;
+    final treatment = patient.treatmentHistory != null &&
+            patient.treatmentHistory!.isNotEmpty
+        ? patient.treatmentHistory!.last
+        : 'لا يوجد';
+
+    return Container(
+      margin: EdgeInsets.fromLTRB(16.w, 6.h, 16.w, 10.h),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20.r),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF162D4A).withValues(alpha: 0.1),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20.r),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              height: 4.h,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF162D4A), Color(0xFF4A88B8)],
+                  begin: Alignment.centerRight,
+                  end: Alignment.centerLeft,
+                ),
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.fromLTRB(12.w, 10.h, 12.w, 10.h),
+              child: Directionality(
+                textDirection: ui.TextDirection.rtl,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        GestureDetector(
+                          onTap: () =>
+                              _showPatientImageDialog(context, patient),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12.r),
+                            child: SizedBox(
+                              width: 56.w,
+                              height: 56.w,
+                              child: PortraitNetworkImage(
+                                imageUrl: patient.imageUrl,
+                                borderRadius: BorderRadius.zero,
+                                showSkeleton: true,
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 10.w),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _patientInfoLabelChip('الاسم'),
+                              SizedBox(height: 4.h),
+                              Text(
+                                patient.name,
+                                style: AppFonts.lamaSans(
+                                  fontSize: 15.sp,
+                                  fontWeight: FontWeight.w800,
+                                  color: _kPatientProfileNavy,
+                                  height: 1.2,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(width: 8.w),
+                        _patientInfoActionButton(
+                          size: 36.w,
+                          onTap: () => _showEditPatientProfileDialog(
+                            context,
+                            patient,
+                            isReceptionist,
+                          ),
+                          child: Icon(
+                            Icons.edit_outlined,
+                            color: Colors.white,
+                            size: 20.sp,
+                          ),
+                        ),
+                      ],
+                    ),
+                    Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8.h),
+                      child: Divider(
+                        color: const Color(0xFFE8ECF0),
+                        height: 1,
+                      ),
+                    ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _patientDetailLine(
+                                      'العمر',
+                                      '${patient.age} سنة',
+                                    ),
+                                  ),
+                                  SizedBox(width: 8.w),
+                                  Expanded(
+                                    child: _patientDetailLine(
+                                      'الجنس',
+                                      gender,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              SizedBox(height: 4.h),
+                              _patientDetailLine('الهاتف', patient.phoneNumber),
+                              SizedBox(height: 4.h),
+                              _patientDetailLine('المدينة', patient.city),
+                              SizedBox(height: 4.h),
+                              _patientDetailLine('العلاج', treatment),
+                            ],
+                          ),
+                        ),
+                        SizedBox(width: 12.w),
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _patientInfoQrButton(
+                              patientId: patient.id,
+                              onTap: () =>
+                                  _showQrCodeDialog(context, patient.id),
+                            ),
+                            if (!isReceptionist) ...[
+                              SizedBox(height: 8.h),
+                              _patientInfoActionButton(
+                                size: 36.w,
+                                onTap: () => _showTreatmentTypeDialog(
+                                  context,
+                                  patient,
+                                ),
+                                child: Image.asset(
+                                  'assets/icon/implanticon.png',
+                                  width: 20.w,
+                                  height: 20.w,
+                                  color: Colors.white,
+                                  colorBlendMode: BlendMode.srcIn,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _patientInfoLabelChip(String label) {
+    return Container(
+      width: 52.w,
+      alignment: Alignment.center,
+      padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+      decoration: BoxDecoration(
+        color: const Color(0xFF162D4A).withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(5.r),
+      ),
+      child: Text(
+        label,
+        style: AppFonts.lamaSans(
+          fontSize: 9.sp,
+          fontWeight: FontWeight.w700,
+          color: const Color(0xFF4A88B8),
+        ),
+      ),
+    );
+  }
+
+  Widget _patientInfoActionButton({
+    required double size,
+    required VoidCallback onTap,
+    required Widget child,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: size,
+        height: size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF162D4A), Color(0xFF4A88B8)],
+            begin: Alignment.topRight,
+            end: Alignment.bottomLeft,
+          ),
+          borderRadius: BorderRadius.circular(12.r),
+        ),
+        child: child,
+      ),
+    );
+  }
+
+  Widget _patientInfoQrButton({
+    required String patientId,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 48.w,
+        height: 48.w,
+        padding: EdgeInsets.all(4.w),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12.r),
+          border: Border.all(
+            color: const Color(0xFF4A88B8),
+            width: 1.5,
+          ),
+        ),
+        child: RepaintBoundary(
+          child: QrImageView(
+            data: patientId,
+            version: QrVersions.auto,
+            size: 36.w,
+            gapless: false,
+            backgroundColor: Colors.white,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _patientDetailLine(String label, String value) {
+    return SizedBox(
+      height: 22.h,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          _patientInfoLabelChip(label),
+          SizedBox(width: 8.w),
+          Expanded(
+            child: Text(
+              value,
+              style: AppFonts.lamaSans(
+                fontSize: 12.sp,
+                fontWeight: FontWeight.w700,
+                color: _kPatientProfileNavy,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildRecordsTab() {
     return Obx(() {
       if (controller.medicalRecordController.isLoading.value) {
-        return Container(
-          color: const Color(0xFFF4FEFF),
-          child: Center(
-            child: CircularProgressIndicator(color: AppColors.primary),
+        return _tabFillScroll(
+          Container(
+            color: _kPatientProfileBg,
+            child: Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
+            ),
           ),
         );
       }
@@ -700,199 +827,263 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
           .toList();
 
       if (records.isEmpty) {
-        return Container(
-          color: const Color(0xFFF4FEFF),
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
+        return _tabFillScroll(
+          Container(
+            color: _kPatientProfileBg,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
                 Container(
-                  width: 100.w,
-                  height: 100.w,
+                  width: 88.w,
+                  height: 88.w,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: AppColors.divider,
+                    color: Colors.white,
+                    boxShadow: [
+                      BoxShadow(
+                        color: _kPatientProfileNavy.withValues(alpha: 0.06),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
                   ),
                   child: Icon(
-                    Icons.block,
-                    size: 50.sp,
-                    color: AppColors.textHint,
+                    Icons.description_outlined,
+                    size: 40.sp,
+                    color: _kPatientProfileGray.withValues(alpha: 0.45),
                   ),
                 ),
                 SizedBox(height: 16.h),
                 Text(
                   'لا يوجد سجلات',
-                  style: TextStyle(fontSize: 16.sp, color: AppColors.textHint),
+                  style: AppFonts.lamaSans(
+                    fontSize: 15.sp,
+                    fontWeight: FontWeight.w700,
+                    color: _kPatientProfileGray,
+                  ),
                 ),
               ],
             ),
           ),
+        ),
         );
       }
 
- return Container(
-        color: const Color(0xFFF4FEFF),
+      return Container(
+        color: _kPatientProfileBg,
         child: ListView.builder(
           padding: EdgeInsets.all(16.w),
           itemCount: records.length,
           itemBuilder: (context, index) {
             final record = records[index];
-            return GestureDetector(
-              onLongPress: () {
-                _showRecordOptionsDialog(context, record);
-              },
-              child: Container(
-                margin: EdgeInsets.only(bottom: 16.h),
-                // ✅ المسافة بين الكونتينر ومحتواه
-                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-                decoration: BoxDecoration(
-                  color: AppColors.white,
-                  borderRadius: BorderRadius.circular(12.r),
-                  boxShadow: kPatientFileShadow,
-                  border: Border.all(
-                    color: const Color(0xFF649FCC),
-                    width: 1,
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // النص (الملاحظات/التشخيص)
-                    if (record.notes != null && record.notes!.isNotEmpty)
-                      Padding(
-                        padding: EdgeInsets.only(bottom: 2.h), // vertical 2
-                        child: Text(
-                          record.notes!,
-                          style: AppFonts.lamaSans(
-                            fontSize: 14.sp,
-                            fontWeight: FontWeight.w500,
-                            color: AppColors.textPrimary,
-                            height: 1.5,
-                          ),
-                          textAlign: TextAlign.right,
-                        ),
-                      ),
-                    // الصور
-                    if (record.images != null && record.images!.isNotEmpty)
-                      Padding(
-                        padding: EdgeInsets.only(bottom: 2.h), // vertical 2
-                        child: GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate:
-                              SliverGridDelegateWithMaxCrossAxisExtent(
-                                maxCrossAxisExtent: 60.w, // image width
-                                mainAxisExtent: 70.h, // image height
-                                crossAxisSpacing: 8.w,
-                                mainAxisSpacing: 8.h,
-                              ),
-                          itemCount: record.images!.length,
-                          itemBuilder: (context, imgIndex) {
-                            final imageUrl = ImageUtils.convertToValidUrl(
-                              record.images![imgIndex],
-                            );
-                            return GestureDetector(
-                              onTap: () {
-                                if (imageUrl != null &&
-                                    ImageUtils.isValidImageUrl(imageUrl)) {
-                                  _showRecordImageDialog(context, imageUrl);
-                                }
-                              },
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(8.r),
-                                child:
-                                    imageUrl != null &&
-                                        ImageUtils.isValidImageUrl(imageUrl)
-                                    ? CachedNetworkImage(
-                                        imageUrl: imageUrl,
-                                        fit: BoxFit.cover,
-                                        width: 60.w,
-                                        height: 70.h,
-                                        progressIndicatorBuilder:
-                                            (
-                                              context,
-                                              url,
-                                              progress,
-                                            ) => Container(
-                                              color: AppColors.divider,
-                                              child: Center(
-                                                child: CircularProgressIndicator(
-                                                  value: progress.progress,
-                                                  strokeWidth: 2,
-                                                  valueColor:
-                                                      AlwaysStoppedAnimation<
-                                                        Color
-                                                      >(AppColors.primary),
-                                                ),
-                                              ),
-                                            ),
-                                        errorWidget: (context, url, error) =>
-                                            Container(
-                                              color: AppColors.divider,
-                                              child: Icon(
-                                                Icons.broken_image,
-                                                color: AppColors.textHint,
-                                                size: 30.sp,
-                                              ),
-                                            ),
-                                      )
-                                    : Container(
-                                        color: AppColors.divider,
-                                        child: Icon(
-                                          Icons.broken_image,
-                                          color: AppColors.textHint,
-                                          size: 30.sp,
-                                        ),
-                                      ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    // التاريخ
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Icon(
-                          Icons.calendar_today,
-                          size: 14.sp,
-                          color: AppColors.textSecondary,
-                        ),
-                        SizedBox(width: 4.w),
-                        Text(
-                          DateFormat('dd/MM/yyyy', 'ar').format(record.date),
-                          style: AppFonts.lamaSans(
-                            fontSize: 14.sp,
-                            fontWeight: FontWeight.w500,
-                            color: const Color(0xFF505558),
-                          ),
-                          textAlign: TextAlign.right,
-                        ),
-                        SizedBox(width: 10.w),
-                        IconButton(
-                          onPressed: () =>
-                              _showDeleteRecordConfirmDialog(context, record),
-                          icon: Icon(
-                            Icons.delete_outline,
-                            color: Colors.red,
-                            size: 20.sp,
-                          ),
-                          tooltip: 'حذف السجل',
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            );
+            return _buildRecordCard(context, record);
           },
         ),
       );
     });
   }
+
+  Widget _buildRecordCard(BuildContext context, MedicalRecordModel record) {
+    final hasNote = record.notes != null && record.notes!.isNotEmpty;
+    final hasImages = record.images != null && record.images!.isNotEmpty;
+    final formattedDate = DateFormat('dd/MM/yyyy', 'ar').format(record.date);
+
+    return GestureDetector(
+      onLongPress: () => _showRecordOptionsDialog(context, record),
+      child: Container(
+        margin: EdgeInsets.only(bottom: 8.h),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20.r),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF64748B).withValues(alpha: 0.07),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            textDirection: ui.TextDirection.rtl,
+            children: [
+              Container(
+                width: 4.w,
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF4A88B8), Color(0xFF162D4A)],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 8.h),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (hasNote)
+                        Text(
+                          record.notes!,
+                          style: AppFonts.lamaSans(
+                            fontSize: 15.sp,
+                            fontWeight: FontWeight.w600,
+                            color: _kPatientProfileNavy,
+                            height: 1.35,
+                          ),
+                          textAlign: TextAlign.right,
+                        )
+                      else
+                        Text(
+                          'سجل طبي',
+                          style: AppFonts.lamaSans(
+                            fontSize: 14.sp,
+                            fontWeight: FontWeight.w500,
+                            color: _kPatientProfileGray,
+                            height: 1.3,
+                          ),
+                          textAlign: TextAlign.right,
+                        ),
+                      if (hasImages) ...[
+                        SizedBox(height: 6.h),
+                        SizedBox(
+                          height: 60.h,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: record.images!.length,
+                            separatorBuilder: (_, __) => SizedBox(width: 8.w),
+                            itemBuilder: (context, imgIndex) {
+                              return _buildRecordImageThumb(
+                                context,
+                                record.images![imgIndex],
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                      SizedBox(height: 6.h),
+                      Row(
+                        children: [
+                          Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 8.w,
+                              vertical: 3.h,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEEF4F9),
+                              borderRadius: BorderRadius.circular(20.r),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.event_rounded,
+                                  size: 13.sp,
+                                  color: const Color(0xFF4A88B8),
+                                ),
+                                SizedBox(width: 5.w),
+                                Text(
+                                  formattedDate,
+                                  style: AppFonts.lamaSans(
+                                    fontSize: 11.sp,
+                                    fontWeight: FontWeight.w700,
+                                    color: _kPatientProfileNavy,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Spacer(),
+                          Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: () => _showDeleteRecordConfirmDialog(
+                                context,
+                                record,
+                              ),
+                              borderRadius: BorderRadius.circular(8.r),
+                              child: Padding(
+                                padding: EdgeInsets.all(4.w),
+                                child: Icon(
+                                  Icons.delete_outline_rounded,
+                                  size: 20.sp,
+                                  color: const Color(0xFFEF4444),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRecordImageThumb(BuildContext context, String imagePath) {
+    final imageUrl = ImageUtils.convertToValidUrl(imagePath);
+    final isValid =
+        imageUrl != null && ImageUtils.isValidImageUrl(imageUrl);
+
+    return GestureDetector(
+      onTap: () {
+        if (isValid) {
+          _showRecordImageDialog(context, imageUrl);
+        }
+      },
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12.r),
+        child: SizedBox(
+          width: 60.w,
+          height: 60.h,
+          child: isValid
+              ? CachedNetworkImage(
+                  imageUrl: imageUrl,
+                  fit: BoxFit.cover,
+                  placeholder: (_, __) => Container(
+                    color: const Color(0xFFF1F5F9),
+                    child: Center(
+                      child: SizedBox(
+                        width: 18.w,
+                        height: 18.w,
+                        child: const CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFF4A88B8),
+                        ),
+                      ),
+                    ),
+                  ),
+                  errorWidget: (_, __, ___) => Container(
+                    color: const Color(0xFFF1F5F9),
+                    child: Icon(
+                      Icons.image_not_supported_outlined,
+                      color: _kPatientProfileGray,
+                      size: 22.sp,
+                    ),
+                  ),
+                )
+              : Container(
+                  color: const Color(0xFFF1F5F9),
+                  child: Icon(
+                    Icons.image_not_supported_outlined,
+                    color: _kPatientProfileGray,
+                    size: 22.sp,
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildAppointmentsTab() {
     // التحقق من نوع العلاج
     final patient = controller.patientId != null
@@ -916,12 +1107,13 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
         .toList();
 
     if (appointments.isEmpty) {
-      return Container(
-        color: const Color(0xFFF4FEFF),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
+      return _tabFillScroll(
+        Container(
+          color: _kPatientProfileBg,
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
               Container(
                 width: 100.w,
                 height: 100.w,
@@ -943,6 +1135,7 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
             ],
           ),
         ),
+      ),
       );
     }
 
@@ -952,12 +1145,13 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
           .toList();
 
       if (updatedAppointments.isEmpty) {
-        return Container(
-          color: const Color(0xFFF4FEFF),
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
+        return _tabFillScroll(
+          Container(
+            color: _kPatientProfileBg,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
                 Container(
                   width: 100.w,
                   height: 100.w,
@@ -979,6 +1173,7 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
               ],
             ),
           ),
+        ),
         );
       }
 
@@ -1030,9 +1225,9 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
       }
 
       return Container(
-        color: const Color(0xFFF4FEFF),
+        color: _kPatientProfileBg,
         child: ListView.builder(
-          padding: EdgeInsets.all(24.w),
+          padding: EdgeInsets.all(16.w),
           itemCount: sortedAppointments.length,
           itemBuilder: (context, index) {
             final appointment = sortedAppointments[index];
@@ -1096,487 +1291,362 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
               () => GlobalKey(),
             );
 
-            return KeyedSubtree(
-              key: itemKey,
-              child: GestureDetector(
-                onLongPress: () {
-                  controller.startSelectionWith(appointment.id);
-                },
-                child: Container(
-                margin: EdgeInsets.only(bottom: 16.h),
-                padding: EdgeInsets.all(16.w),
-                decoration: BoxDecoration(
-                  color: AppColors.white,
-                  borderRadius: BorderRadius.circular(12.r),
-                  border: Border.all(
-                    color: controller.isSelectionMode.value && isSelected
-                        ? AppColors.primary
-                        : (isCompleted
-                              ? AppColors
-                                    .success // أخضر للمكتمل
-                              : (isCancelled
-                                    ? AppColors
-                                          .error // أحمر للملغي
-                                    : AppColors
-                                          .warning)), // برتقالي لقيد الانتظار
-                    width: controller.isSelectionMode.value && isSelected
-                        ? 2
-                        : (isPending || isCompleted || isCancelled ? 2 : 1),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        // Checkbox on the left - يعرض الحالة بناءً على status
-                        GestureDetector(
-                          onTap: controller.isSelectionMode.value
-                              ? () {
-                                  controller.toggleAppointmentSelected(
-                                    appointment.id,
-                                  );
-                                }
-                              : null,
-                          child: Container(
-                            width: 24.w,
-                            height: 24.w,
-                            margin: EdgeInsets.only(top: 2.h, left: 8.w),
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: controller.isSelectionMode.value && isSelected
-                                    ? AppColors.primary
-                                    : (isCompleted
-                                          ? AppColors.primary
-                                          : (isCancelled
-                                                ? AppColors.error
-                                                : AppColors.divider)),
-                                width: 2,
-                              ),
-                              borderRadius: BorderRadius.circular(4.r),
-                              color: controller.isSelectionMode.value && isSelected
-                                  ? AppColors.primary
-                                  : (isCompleted
-                                        ? AppColors.primary
-                                        : (isCancelled
-                                              ? AppColors.error
-                                              : Colors.transparent)),
-                            ),
-                            child: controller.isSelectionMode.value && isSelected
-                                ? Icon(
-                                    Icons.check,
-                                    color: AppColors.white,
-                                    size: 14.sp,
-                                  )
-                                : (isCompleted
-                                      ? Icon(
-                                          Icons.check,
-                                          color: AppColors.white,
-                                          size: 14.sp,
-                                        )
-                                      : (isCancelled
-                                            ? Icon(
-                                                Icons.close,
-                                                color: AppColors.white,
-                                                size: 14.sp,
-                                              )
-                                            : null)),
-                          ),
-                        ),
-                        // Title
-                        Text(
-                          isPending && isUpcoming
-                              ? 'موعد مريضك "${patient?.name ?? ''}" القادم هو'
-                              : 'موعد مريضك "${patient?.name ?? ''}" السابق هو',
-                          style: TextStyle(
-                          
-                            fontSize: 13.sp,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.textPrimary,
-                          ),
-                          textAlign: TextAlign.right,
-                        ),
-                      ],
-                    ),
-                    SizedBox(width: 2.w),
-
-                    // Content
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        SizedBox(height: 8.h),
-                        // Date with Status
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            // التاريخ في أقصى اليمين
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  formattedDate,
-                                  style: TextStyle(
-                                    fontSize: 13.sp,
-                                    color: const Color.fromARGB(255, 54, 147, 190),
-                                  ),
-                                  textAlign: TextAlign.right,
-                                ),
-                                SizedBox(width: 6.w),
-                                Icon(
-                                  Icons.calendar_today,
-                                  size: 14.sp,
-                                  color: const Color.fromARGB(255, 54, 147, 190),
-                                ),
-                              ],
-                            ),
-
-                            Spacer(),
-                            // Status Badge - في أقصى اليسار
-                            Container(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 8.w,
-                                vertical: 4.h,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isCompleted
-                                    ? AppColors.success.withOpacity(0.1)
-                                    : (isCancelled
-                                          ? AppColors.error.withOpacity(0.1)
-                                          : AppColors.warning.withOpacity(
-                                              0.1,
-                                            )), // برتقالي لقيد الانتظار
-                                borderRadius: BorderRadius.circular(6.r),
-                                border: Border.all(
-                                  color: isCompleted
-                                      ? AppColors.success
-                                      : (isCancelled
-                                            ? AppColors.error
-                                            : AppColors
-                                                  .warning), // برتقالي لقيد الانتظار
-                                  width: 1,
-                                ),
-                              ),
-                              child: Text(
-                                isCompleted
-                                    ? 'مكتمل'
-                                    : (isCancelled
-                                          ? (appointmentStatus == 'no_show'
-                                                ? 'لم يحضر'
-                                                : 'ملغي')
-                                          : 'قيد الانتظار'),
-                                style: TextStyle(
-                                  fontSize: 11.sp,
-                                  fontWeight: FontWeight.w600,
-                                  color: isCompleted
-                                      ? AppColors.success
-                                      : (isCancelled
-                                            ? AppColors.error
-                                            : AppColors
-                                                  .warning), // برتقالي لقيد الانتظار
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        SizedBox(height: 8.h),
-                        // Time
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.start,
-                          children: [
-                            Container(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 8.w,
-                                vertical: 4.h,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isPending && isUpcoming
-                                    ? AppColors.primary.withOpacity(0.1)
-                                    : AppColors.divider.withOpacity(0.5),
-                                borderRadius: BorderRadius.circular(6.r),
-                              ),
-                              child: Text(
-                                'في تمام الساعة $formattedTime',
-                                style: TextStyle(
-                                  fontSize: 12.sp,
-                                  color: isPending && isUpcoming
-                                      ? AppColors.primary
-                                      : AppColors.textSecondary,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        // Notes (if exists) with Change Status button beside it
-                        if (appointment.notes != null &&
-                            appointment.notes!.isNotEmpty) ...[
-                          SizedBox(height: 12.h),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Container للملاحظة
-                              Expanded(
-                                child: Container(
-                                  padding: EdgeInsets.all(12.w),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.divider.withOpacity(0.3),
-                                    borderRadius: BorderRadius.circular(8.r),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'ملاحظة :',
-                                        style: TextStyle(
-                                          fontSize: 12.sp,
-                                          fontWeight: FontWeight.bold,
-                                          color: AppColors.textPrimary,
-                                        ),
-                                        textAlign: TextAlign.right,
-                                      ),
-                                      SizedBox(height: 4.h),
-                                      Text(
-                                        appointment.notes!,
-                                        style: TextStyle(
-                                          fontSize: 12.sp,
-                                          color: AppColors.textSecondary,
-                                        ),
-                                        textAlign: TextAlign.right,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-
-                              if (!controller.isSelectionMode.value) SizedBox(width: 8.w),
-
-                              // زر تغيير الحالة (للطبيب فقط) - بجانب الكونتينر
-                              if (!controller.isSelectionMode.value)
-                                Padding(
-                                  padding: EdgeInsets.only(top: 4.h),
-                                  child: TextButton.icon(
-                                    onPressed: () {
-                                      _showChangeStatusDialog(
-                                        context,
-                                        appointment,
-                                        controller.patientId!,
-                                      );
-                                    },
-                                    icon: Icon(
-                                      Icons.edit,
-                                      size: 16.sp,
-                                      color: AppColors.primary,
-                                    ),
-                                    label: Text(
-                                      'تغيير الحالة',
-                                      style: TextStyle(
-                                        fontSize: 12.sp,
-                                        color: AppColors.primary,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    style: TextButton.styleFrom(
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: 8.w,
-                                        vertical: 4.h,
-                                      ),
-                                      backgroundColor: AppColors.primary
-                                          .withOpacity(0.1),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(
-                                          8.r,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ] else if (!controller.isSelectionMode.value) ...[
-                          // إذا لم تكن هناك ملاحظة، نعرض زر تغيير الحالة فقط
-                          SizedBox(height: 12.h),
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: TextButton.icon(
-                              onPressed: () {
-                                _showChangeStatusDialog(
-                                  context,
-                                  appointment,
-                                  controller.patientId!,
-                                );
-                              },
-                              icon: Icon(
-                                Icons.edit,
-                                size: 16.sp,
-                                color: AppColors.primary,
-                              ),
-                              label: Text(
-                                'تغيير الحالة',
-                                style: TextStyle(
-                                  fontSize: 12.sp,
-                                  color: AppColors.primary,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              style: TextButton.styleFrom(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: 12.w,
-                                  vertical: 6.h,
-                                ),
-                                backgroundColor: AppColors.primary.withOpacity(
-                                  0.1,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8.r),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                        // Images (if exists)
-                        // عرض الصور: استخدم imagePaths إذا كانت متوفرة، وإلا استخدم imagePath
-                        Builder(
-                          builder: (context) {
-                            final imagesToShow =
-                                appointment.imagePaths.isNotEmpty
-                                ? appointment.imagePaths
-                                : (appointment.imagePath != null &&
-                                          appointment.imagePath!.isNotEmpty
-                                      ? [appointment.imagePath!]
-                                      : []);
-
-                            if (imagesToShow.isEmpty) {
-                              return const SizedBox.shrink();
-                            }
-
-                            return Column(
-                              children: [
-                                SizedBox(height: 12.h),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'صور :',
-                                      style: TextStyle(
-                                        fontSize: 12.sp,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppColors.textPrimary,
-                                      ),
-                                      textAlign: TextAlign.right,
-                                    ),
-                                    SizedBox(height: 8.h),
-                                    SizedBox(
-                                      height: 60.h,
-                                      child: ListView.separated(
-                                        scrollDirection: Axis.horizontal,
-                                        reverse: true,
-                                        itemCount: imagesToShow.length,
-                                        separatorBuilder: (context, index) =>
-                                            SizedBox(width: 8.w),
-                                        itemBuilder: (context, index) {
-                                          final imageUrl =
-                                              ImageUtils.convertToValidUrl(
-                                                imagesToShow[index],
-                                              );
-                                          return GestureDetector(
-                                            onTap: () {
-                                              _showAppointmentImageDialog(
-                                                context,
-                                                imageUrl ?? imagesToShow[index],
-                                              );
-                                            },
-                                            child: ClipRRect(
-                                              borderRadius:
-                                                  BorderRadius.circular(8.r),
-                                              child:
-                                                  imageUrl != null &&
-                                                      ImageUtils.isValidImageUrl(
-                                                        imageUrl,
-                                                      )
-                                                  ? CachedNetworkImage(
-                                                      imageUrl: imageUrl,
-                                                      width: 60.w,
-                                                      height: 60.h,
-                                                      fit: BoxFit.cover,
-                                                      progressIndicatorBuilder:
-                                                          (
-                                                            context,
-                                                            url,
-                                                            progress,
-                                                          ) => Container(
-                                                            width: 60.w,
-                                                            height: 60.h,
-                                                            color: AppColors
-                                                                .divider,
-                                                            child: Center(
-                                                              child: CircularProgressIndicator(
-                                                                value: progress
-                                                                    .progress,
-                                                                strokeWidth: 2,
-                                                                valueColor:
-                                                                    AlwaysStoppedAnimation<
-                                                                      Color
-                                                                    >(
-                                                                      AppColors
-                                                                          .primary,
-                                                                    ),
-                                                              ),
-                                                            ),
-                                                          ),
-                                                      errorWidget:
-                                                          (
-                                                            context,
-                                                            url,
-                                                            error,
-                                                          ) => Container(
-                                                            width: 60.w,
-                                                            height: 60.h,
-                                                            color: AppColors
-                                                                .divider,
-                                                            child: Icon(
-                                                              Icons
-                                                                  .broken_image,
-                                                              size: 24.sp,
-                                                              color: AppColors
-                                                                  .textHint,
-                                                            ),
-                                                          ),
-                                                    )
-                                                  : Container(
-                                                      width: 60.w,
-                                                      height: 60.h,
-                                                      color: AppColors.divider,
-                                                      child: Icon(
-                                                        Icons.broken_image,
-                                                        size: 24.sp,
-                                                        color:
-                                                            AppColors.textHint,
-                                                      ),
-                                                    ),
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                ),
-              ),
+            return _buildAppointmentCard(
+              context,
+              appointment: appointment,
+              itemKey: itemKey,
+              patient: patient,
+              isUpcoming: isUpcoming,
+              isSelected: isSelected,
+              isCompleted: isCompleted,
+              isCancelled: isCancelled,
+              isPending: isPending,
+              appointmentStatus: appointmentStatus,
+              formattedDate: formattedDate,
+              formattedTime: formattedTime,
             );
           },
         ),
       );
     });
+  }
+
+  Color _appointmentAccentColor({
+    required bool isCompleted,
+    required bool isCancelled,
+  }) {
+    if (isCompleted) return AppColors.success;
+    if (isCancelled) return AppColors.error;
+    return AppColors.warning;
+  }
+
+  Widget _buildAppointmentCard(
+    BuildContext context, {
+    required AppointmentModel appointment,
+    required GlobalKey itemKey,
+    required PatientModel? patient,
+    required bool isUpcoming,
+    required bool isSelected,
+    required bool isCompleted,
+    required bool isCancelled,
+    required bool isPending,
+    required String appointmentStatus,
+    required String formattedDate,
+    required String formattedTime,
+  }) {
+    final accentColor = _appointmentAccentColor(
+      isCompleted: isCompleted,
+      isCancelled: isCancelled,
+    );
+    final hasNote =
+        appointment.notes != null && appointment.notes!.isNotEmpty;
+    final imagesToShow = appointment.imagePaths.isNotEmpty
+        ? appointment.imagePaths
+        : (appointment.imagePath != null && appointment.imagePath!.isNotEmpty
+            ? [appointment.imagePath!]
+            : <String>[]);
+    final statusLabel = isCompleted
+        ? 'مكتمل'
+        : (isCancelled
+            ? (appointmentStatus == 'no_show' ? 'لم يحضر' : 'ملغي')
+            : 'قيد الانتظار');
+    final title = isPending && isUpcoming
+        ? 'موعد مريضك "${patient?.name ?? ''}" القادم هو'
+        : 'موعد مريضك "${patient?.name ?? ''}" السابق هو';
+
+    return KeyedSubtree(
+      key: itemKey,
+      child: GestureDetector(
+        onLongPress: () {
+          controller.startSelectionWith(appointment.id);
+        },
+        child: Container(
+          margin: EdgeInsets.only(bottom: 8.h),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20.r),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF64748B).withValues(alpha: 0.07),
+                blurRadius: 14,
+                offset: const Offset(0, 4),
+              ),
+            ],
+            border: controller.isSelectionMode.value && isSelected
+                ? Border.all(color: AppColors.primary, width: 2)
+                : null,
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              textDirection: ui.TextDirection.rtl,
+              children: [
+                Container(
+                  width: 4.w,
+                  color: accentColor,
+                ),
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 8.h),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            GestureDetector(
+                              onTap: controller.isSelectionMode.value
+                                  ? () => controller.toggleAppointmentSelected(
+                                        appointment.id,
+                                      )
+                                  : null,
+                              child: Container(
+                                width: 22.w,
+                                height: 22.w,
+                                margin: EdgeInsets.only(left: 8.w, top: 1.h),
+                                decoration: BoxDecoration(
+                                  border: Border.all(
+                                    color: controller.isSelectionMode.value &&
+                                            isSelected
+                                        ? AppColors.primary
+                                        : (isCompleted
+                                            ? AppColors.primary
+                                            : (isCancelled
+                                                ? AppColors.error
+                                                : AppColors.divider)),
+                                    width: 2,
+                                  ),
+                                  borderRadius: BorderRadius.circular(5.r),
+                                  color: controller.isSelectionMode.value &&
+                                          isSelected
+                                      ? AppColors.primary
+                                      : (isCompleted
+                                          ? AppColors.primary
+                                          : (isCancelled
+                                              ? AppColors.error
+                                              : Colors.transparent)),
+                                ),
+                                child: controller.isSelectionMode.value &&
+                                        isSelected
+                                    ? Icon(
+                                        Icons.check,
+                                        color: Colors.white,
+                                        size: 13.sp,
+                                      )
+                                    : (isCompleted
+                                        ? Icon(
+                                            Icons.check,
+                                            color: Colors.white,
+                                            size: 13.sp,
+                                          )
+                                        : (isCancelled
+                                            ? Icon(
+                                                Icons.close,
+                                                color: Colors.white,
+                                                size: 13.sp,
+                                              )
+                                            : null)),
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                title,
+                                style: AppFonts.lamaSans(
+                                  fontSize: 13.sp,
+                                  fontWeight: FontWeight.w800,
+                                  color: _kPatientProfileNavy,
+                                  height: 1.35,
+                                ),
+                                textAlign: TextAlign.right,
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 6.h),
+                        Text(
+                          formattedDate,
+                          style: AppFonts.lamaSans(
+                            fontSize: 12.sp,
+                            fontWeight: FontWeight.w600,
+                            color: const Color(0xFF4A88B8),
+                            height: 1.3,
+                          ),
+                          textAlign: TextAlign.right,
+                        ),
+                        SizedBox(height: 4.h),
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 8.w,
+                            vertical: 3.h,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isPending && isUpcoming
+                                ? const Color(0xFFEEF4F9)
+                                : const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(8.r),
+                          ),
+                          child: Text(
+                            'في تمام الساعة $formattedTime',
+                            style: AppFonts.lamaSans(
+                              fontSize: 11.sp,
+                              fontWeight: FontWeight.w700,
+                              color: isPending && isUpcoming
+                                  ? _kPatientProfileNavy
+                                  : _kPatientProfileGray,
+                            ),
+                            textAlign: TextAlign.right,
+                          ),
+                        ),
+                        if (hasNote) ...[
+                          SizedBox(height: 6.h),
+                          Text(
+                            appointment.notes!,
+                            style: AppFonts.lamaSans(
+                              fontSize: 12.sp,
+                              fontWeight: FontWeight.w500,
+                              color: _kPatientProfileGray,
+                              height: 1.35,
+                            ),
+                            textAlign: TextAlign.right,
+                          ),
+                        ],
+                        if (imagesToShow.isNotEmpty) ...[
+                          SizedBox(height: 6.h),
+                          SizedBox(
+                            height: 60.h,
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: imagesToShow.length,
+                              separatorBuilder: (_, __) => SizedBox(width: 8.w),
+                              itemBuilder: (context, index) {
+                                final imageUrl = ImageUtils.convertToValidUrl(
+                                  imagesToShow[index],
+                                );
+                                return GestureDetector(
+                                  onTap: () {
+                                    _showAppointmentImageDialog(
+                                      context,
+                                      imageUrl ?? imagesToShow[index],
+                                    );
+                                  },
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(12.r),
+                                    child: SizedBox(
+                                      width: 60.w,
+                                      height: 60.h,
+                                      child: imageUrl != null &&
+                                              ImageUtils.isValidImageUrl(
+                                                imageUrl,
+                                              )
+                                          ? CachedNetworkImage(
+                                              imageUrl: imageUrl,
+                                              fit: BoxFit.cover,
+                                              errorWidget: (_, __, ___) =>
+                                                  Container(
+                                                color: const Color(0xFFF1F5F9),
+                                                child: Icon(
+                                                  Icons
+                                                      .image_not_supported_outlined,
+                                                  color: _kPatientProfileGray,
+                                                  size: 22.sp,
+                                                ),
+                                              ),
+                                            )
+                                          : Container(
+                                              color: const Color(0xFFF1F5F9),
+                                              child: Icon(
+                                                Icons
+                                                    .image_not_supported_outlined,
+                                                color: _kPatientProfileGray,
+                                                size: 22.sp,
+                                              ),
+                                            ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                        SizedBox(height: 6.h),
+                        Row(
+                          children: [
+                            Container(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 8.w,
+                                vertical: 3.h,
+                              ),
+                              decoration: BoxDecoration(
+                                color: accentColor.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(20.r),
+                                border: Border.all(
+                                  color: accentColor.withValues(alpha: 0.35),
+                                ),
+                              ),
+                              child: Text(
+                                statusLabel,
+                                style: AppFonts.lamaSans(
+                                  fontSize: 10.sp,
+                                  fontWeight: FontWeight.w700,
+                                  color: accentColor,
+                                ),
+                              ),
+                            ),
+                            const Spacer(),
+                            if (!controller.isSelectionMode.value)
+                              Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: () => _showChangeStatusDialog(
+                                    context,
+                                    appointment,
+                                    controller.patientId!,
+                                  ),
+                                  borderRadius: BorderRadius.circular(8.r),
+                                  child: Container(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 8.w,
+                                      vertical: 4.h,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFEEF4F9),
+                                      borderRadius: BorderRadius.circular(8.r),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.edit_outlined,
+                                          size: 14.sp,
+                                          color: const Color(0xFF4A88B8),
+                                        ),
+                                        SizedBox(width: 4.w),
+                                        Text(
+                                          'تغيير الحالة',
+                                          style: AppFonts.lamaSans(
+                                            fontSize: 10.sp,
+                                            fontWeight: FontWeight.w700,
+                                            color: const Color(0xFF4A88B8),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   void _showChangeStatusDialog(
@@ -1585,78 +1655,200 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
     String appointmentPatientId,
   ) {
     final statusOptions = [
-      {'value': 'scheduled', 'label': 'قيد الانتظار', 'icon': Icons.schedule},
-      {'value': 'completed', 'label': 'مكتمل', 'icon': Icons.check_circle},
-      {'value': 'cancelled', 'label': 'ملغي', 'icon': Icons.cancel},
-      {'value': 'no_show', 'label': 'لم يحضر', 'icon': Icons.person_off},
+      {'value': 'scheduled', 'label': 'قيد الانتظار', 'icon': Icons.schedule_rounded},
+      {'value': 'completed', 'label': 'مكتمل', 'icon': Icons.check_circle_rounded},
+      {'value': 'cancelled', 'label': 'ملغي', 'icon': Icons.cancel_rounded},
     ];
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          'تغيير حالة الموعد',
-          style: TextStyle(
-            fontSize: 18.sp,
-            fontWeight: FontWeight.bold,
-            color: AppColors.textPrimary,
-          ),
-          textAlign: TextAlign.right,
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: statusOptions.map((option) {
-            final isSelected =
-                appointment.status.toLowerCase() ==
-                option['value'].toString().toLowerCase();
-            return ListTile(
-              leading: Icon(
-                option['icon'] as IconData,
-                color: isSelected ? AppColors.primary : AppColors.textSecondary,
-              ),
-              title: Text(
-                option['label'] as String,
-                style: TextStyle(
-                  fontSize: 14.sp,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  color: isSelected ? AppColors.primary : AppColors.textPrimary,
+      barrierColor: Colors.black.withValues(alpha: 0.45),
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: EdgeInsets.symmetric(horizontal: 48.w),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: 300.w),
+            child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20.r),
+              boxShadow: [
+                BoxShadow(
+                  color: _kPatientProfileNavy.withValues(alpha: 0.12),
+                  blurRadius: 24,
+                  offset: const Offset(0, 10),
                 ),
-                textAlign: TextAlign.right,
-              ),
-              trailing: isSelected
-                  ? Icon(Icons.check, color: AppColors.primary, size: 20.sp)
-                  : null,
-              onTap: () async {
-                Navigator.of(context).pop();
-                try {
-                  await controller.appointmentController.updateAppointmentStatus(
-                    appointmentPatientId,
-                    appointment.id,
-                    option['value'] as String,
-                  );
-                  // إعادة تحميل المواعيد
-                  await controller.appointmentController.loadPatientAppointmentsById(
-                    appointmentPatientId,
-                  );
-                } catch (e) {
-                  // الخطأ معالج في Controller
-                }
-              },
-            );
-          }).toList(),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(
-              'إلغاء',
-              style: TextStyle(fontSize: 14.sp, color: AppColors.textSecondary),
+              ],
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  height: 4.h,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFF162D4A), Color(0xFF4A88B8)],
+                      begin: Alignment.centerRight,
+                      end: Alignment.centerLeft,
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 16.h),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'تغيير حالة الموعد',
+                        style: AppFonts.lamaSans(
+                          fontSize: 16.sp,
+                          fontWeight: FontWeight.w800,
+                          color: _kPatientProfileNavy,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      SizedBox(height: 12.h),
+                      ...statusOptions.map((option) {
+                        final value = option['value'] as String;
+                        final isSelected = appointment.status.toLowerCase() ==
+                            value.toLowerCase();
+                        final accentColor = _statusOptionColor(value);
+
+                        return Padding(
+                          padding: EdgeInsets.only(bottom: 6.h),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: () async {
+                                Navigator.of(dialogContext).pop();
+                                try {
+                                  await controller.appointmentController
+                                      .updateAppointmentStatus(
+                                    appointmentPatientId,
+                                    appointment.id,
+                                    value,
+                                  );
+                                  await controller.appointmentController
+                                      .loadPatientAppointmentsById(
+                                    appointmentPatientId,
+                                  );
+                                } catch (_) {
+                                  // الخطأ معالج في Controller
+                                }
+                              },
+                              borderRadius: BorderRadius.circular(12.r),
+                              child: Ink(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 12.w,
+                                  vertical: 10.h,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? accentColor.withValues(alpha: 0.1)
+                                      : const Color(0xFFF8FAFC),
+                                  borderRadius: BorderRadius.circular(12.r),
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? accentColor.withValues(alpha: 0.45)
+                                        : const Color(0xFFE8ECF0),
+                                    width: isSelected ? 1.5 : 1,
+                                  ),
+                                ),
+                                child: Directionality(
+                                  textDirection: ui.TextDirection.rtl,
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 34.w,
+                                        height: 34.w,
+                                        decoration: BoxDecoration(
+                                          color: accentColor.withValues(
+                                            alpha: 0.12,
+                                          ),
+                                          borderRadius:
+                                              BorderRadius.circular(10.r),
+                                        ),
+                                        child: Icon(
+                                          option['icon'] as IconData,
+                                          color: accentColor,
+                                          size: 18.sp,
+                                        ),
+                                      ),
+                                      SizedBox(width: 10.w),
+                                      Expanded(
+                                        child: Text(
+                                          option['label'] as String,
+                                          style: AppFonts.lamaSans(
+                                            fontSize: 13.sp,
+                                            fontWeight: isSelected
+                                                ? FontWeight.w800
+                                                : FontWeight.w600,
+                                            color: isSelected
+                                                ? _kPatientProfileNavy
+                                                : _kPatientProfileGray,
+                                          ),
+                                        ),
+                                      ),
+                                      if (isSelected)
+                                        Icon(
+                                          Icons.check_circle_rounded,
+                                          color: accentColor,
+                                          size: 20.sp,
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
+                      SizedBox(height: 8.h),
+                      GestureDetector(
+                        onTap: () => Navigator.of(dialogContext).pop(),
+                        child: Container(
+                          width: double.infinity,
+                          height: 42.h,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(12.r),
+                          ),
+                          child: Center(
+                            child: Text(
+                              'إلغاء',
+                              style: AppFonts.lamaSans(
+                                fontSize: 13.sp,
+                                fontWeight: FontWeight.w700,
+                                color: _kPatientProfileGray,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
-      ),
+        ),
+        );
+      },
     );
+  }
+
+  Color _statusOptionColor(String value) {
+    switch (value) {
+      case 'completed':
+        return AppColors.success;
+      case 'cancelled':
+      case 'no_show':
+        return AppColors.error;
+      default:
+        return AppColors.warning;
+    }
   }
 
   Widget _buildImplantStagesView() {
@@ -1676,10 +1868,12 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
 
     return Obx(() {
       if (implantStageController.isLoading.value) {
-        return Container(
-          color: const Color(0xFFF4FEFF),
-          child: Center(
-            child: CircularProgressIndicator(color: AppColors.primary),
+        return _tabFillScroll(
+          Container(
+            color: _kPatientProfileBg,
+            child: Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
+            ),
           ),
         );
       }
@@ -1708,12 +1902,13 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
       }
 
       if (patientStages.isEmpty) {
-        return Container(
-          color: const Color(0xFFF4FEFF),
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
+        return _tabFillScroll(
+          Container(
+            color: _kPatientProfileBg,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
                 Container(
                   width: 100.w,
                   height: 100.w,
@@ -1756,6 +1951,7 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
               ],
             ),
           ),
+        ),
         );
       }
 
@@ -1809,7 +2005,7 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
       }
 
       return Container(
-        color: const Color(0xFFF4FEFF),
+        color: _kPatientProfileBg,
         child: ListView.builder(
           padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h),
           itemCount: allStages.length,
@@ -2038,38 +2234,46 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
   Widget _buildGalleryTab() {
     return Obx(() {
       if (controller.galleryController.isLoading.value) {
-        return Container(
-          color: AppColors.white,
-          padding: EdgeInsets.all(16.w),
-          child: Skeletonizer(
-            enabled: true,
-            child: GridView.builder(
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
-                crossAxisSpacing: 8.w,
-                mainAxisSpacing: 8.h,
-                childAspectRatio: 1.0,
+        return CustomScrollView(
+          slivers: [
+            SliverPadding(
+              padding: EdgeInsets.all(16.w),
+              sliver: SliverToBoxAdapter(
+                child: Skeletonizer(
+                  enabled: true,
+                  child: GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      crossAxisSpacing: 8.w,
+                      mainAxisSpacing: 8.h,
+                      childAspectRatio: 1.0,
+                    ),
+                    itemCount: 6,
+                    itemBuilder: (context, index) {
+                      return ClipRRect(
+                        borderRadius: BorderRadius.circular(8.r),
+                        child: Container(color: AppColors.divider),
+                      );
+                    },
+                  ),
+                ),
               ),
-              itemCount: 6, // Show 6 skeleton items
-              itemBuilder: (context, index) {
-                return ClipRRect(
-                  borderRadius: BorderRadius.circular(8.r),
-                  child: Container(color: AppColors.divider),
-                );
-              },
             ),
-          ),
+          ],
         );
       }
 
       if (controller.galleryController.galleryImages.isEmpty) {
-        return Container(
-          color: const Color(0xFFF4FEFF),
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
+        return _tabFillScroll(
+          Container(
+            color: _kPatientProfileBg,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
                 Container(
                   width: 100.w,
                   height: 100.w,
@@ -2091,21 +2295,23 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
               ],
             ),
           ),
+        ),
         );
       }
 
-      return Container(
-        color: const Color(0xFFF4FEFF),
-        padding: EdgeInsets.all(16.w),
-        child: GridView.builder(
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 3,
-            crossAxisSpacing: 8.w,
-            mainAxisSpacing: 8.h,
-            childAspectRatio: 1.0,
-          ),
-          itemCount: controller.galleryController.galleryImages.length,
-          itemBuilder: (context, index) {
+      return CustomScrollView(
+        slivers: [
+          SliverPadding(
+            padding: EdgeInsets.all(16.w),
+            sliver: SliverGrid(
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: 8.w,
+                mainAxisSpacing: 8.h,
+                childAspectRatio: 1.0,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
             final image = controller.galleryController.galleryImages[index];
             return GestureDetector(
               onTap: () {
@@ -2159,8 +2365,12 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                 ),
               ),
             );
-          },
-        ),
+                },
+                childCount: controller.galleryController.galleryImages.length,
+              ),
+            ),
+          ),
+        ],
       );
     });
   }
@@ -2173,6 +2383,8 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
         return 'حجز موعد';
       case 2: // المعرض (Gallery)
         return 'اضافة صورة';
+      case 3: // Dental Chart
+        return '';
       default:
         return 'اضافة سجل';
     }
@@ -2195,7 +2407,30 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
           _showAddImageDialog(context);
         }
         break;
+      case 3: // Dental Chart
+        break;
     }
+  }
+
+  Widget _buildDentalChartTab() {
+    return Obx(() {
+      final patientId = controller.patientId;
+      if (patientId == null) {
+        return const SizedBox.shrink();
+      }
+
+      final patient = controller.patientController.getPatientById(patientId);
+      if (patient == null) {
+        return const Center(
+          child: CircularProgressIndicator(color: AppColors.primary),
+        );
+      }
+
+      return PatientDentalChartTab(
+        patient: patient,
+        controller: controller.dentalChartController,
+      );
+    });
   }
 
   /// Convert 24-hour time format to 12-hour format with ص/م
@@ -3172,6 +3407,8 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                             final XFile? image = await controller.imagePicker.pickImage(
                               source: ImageSource.gallery,
                               imageQuality: 85,
+                              maxWidth: 1920,
+                              maxHeight: 1920,
                             );
 
                             if (image != null) {
@@ -3398,6 +3635,97 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
         }
       });
     });
+  }
+
+  void _showPatientImageDialog(BuildContext context, PatientModel patient) {
+    final imageUrl = ImageUtils.convertToValidUrl(patient.imageUrl);
+    final hasImage =
+        imageUrl != null && ImageUtils.isValidImageUrl(imageUrl);
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (BuildContext dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: EdgeInsets.zero,
+          child: Container(
+            width: double.infinity,
+            height: double.infinity,
+            color: Colors.black87,
+            child: Stack(
+              children: [
+                InteractiveViewer(
+                  minScale: 0.5,
+                  maxScale: 4.0,
+                  child: Center(
+                    child: hasImage
+                        ? CachedNetworkImage(
+                            imageUrl: imageUrl,
+                            fit: BoxFit.contain,
+                            progressIndicatorBuilder:
+                                (context, url, progress) => Center(
+                              child: CircularProgressIndicator(
+                                value: progress.progress,
+                                strokeWidth: 3,
+                                valueColor:
+                                    const AlwaysStoppedAnimation<Color>(
+                                  Colors.white,
+                                ),
+                              ),
+                            ),
+                            errorWidget: (context, url, error) => Icon(
+                              Icons.broken_image,
+                              color: Colors.white,
+                              size: 64.sp,
+                            ),
+                          )
+                        : Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.person,
+                                color: Colors.white,
+                                size: 72.sp,
+                              ),
+                              SizedBox(height: 12.h),
+                              Text(
+                                'لا توجد صورة للمريض',
+                                style: AppFonts.lamaSans(
+                                  fontSize: 15.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
+                ),
+                Positioned(
+                  top: 40.h,
+                  right: 20.w,
+                  child: GestureDetector(
+                    onTap: () => Navigator.of(dialogContext).pop(),
+                    child: Container(
+                      padding: EdgeInsets.all(12.w),
+                      decoration: const BoxDecoration(
+                        color: Colors.black54,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.close,
+                        color: Colors.white,
+                        size: 28.sp,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _showAppointmentImageDialog(BuildContext context, String imageUrl) {
@@ -4300,6 +4628,561 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
     );
   }
 
+  String _genderDisplayLabel(String value) {
+    return value == 'female' ? 'أنثى' : 'ذكر';
+  }
+
+  void _showGenderPicker({
+    required BuildContext context,
+    required String selectedGender,
+    required ValueChanged<String> onSelected,
+  }) {
+    const options = [
+      {'value': 'male', 'label': 'ذكر', 'icon': Icons.male_rounded},
+      {'value': 'female', 'label': 'أنثى', 'icon': Icons.female_rounded},
+    ];
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24.r)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 24,
+                offset: const Offset(0, -4),
+              ),
+            ],
+          ),
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 16.h),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 42.w,
+                    height: 4.h,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFD8DEE8),
+                      borderRadius: BorderRadius.circular(99.r),
+                    ),
+                  ),
+                  SizedBox(height: 16.h),
+                  Text(
+                    'اختر الجنس',
+                    style: AppFonts.lamaSans(
+                      fontSize: 17.sp,
+                      fontWeight: FontWeight.w800,
+                      color: _kPatientProfileNavy,
+                    ),
+                  ),
+                  SizedBox(height: 14.h),
+                  ...options.map((option) {
+                    final value = option['value'] as String;
+                    final isSelected = selectedGender == value;
+                    return Padding(
+                      padding: EdgeInsets.only(bottom: 8.h),
+                      child: _buildGovernorateOption(
+                        city: option['label'] as String,
+                        isSelected: isSelected,
+                        icon: option['icon'] as IconData,
+                        onTap: () {
+                          onSelected(value);
+                          Navigator.pop(sheetContext);
+                        },
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showGovernoratePicker({
+    required BuildContext context,
+    required List<String> cities,
+    required String? selectedCity,
+    required ValueChanged<String> onSelected,
+  }) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return Container(
+          constraints: BoxConstraints(maxHeight: 0.72.sh),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24.r)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 24,
+                offset: const Offset(0, -4),
+              ),
+            ],
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(height: 12.h),
+                Container(
+                  width: 42.w,
+                  height: 4.h,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD8DEE8),
+                    borderRadius: BorderRadius.circular(99.r),
+                  ),
+                ),
+                SizedBox(height: 16.h),
+                Text(
+                  'اختر المحافظة',
+                  style: AppFonts.lamaSans(
+                    fontSize: 17.sp,
+                    fontWeight: FontWeight.w800,
+                    color: _kPatientProfileNavy,
+                  ),
+                ),
+                SizedBox(height: 4.h),
+                Text(
+                  'حدد محافظة المريض',
+                  style: AppFonts.lamaSans(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w500,
+                    color: _kPatientProfileGray,
+                  ),
+                ),
+                SizedBox(height: 14.h),
+                Flexible(
+                  child: ListView.separated(
+                    padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 16.h),
+                    itemCount: cities.length,
+                    separatorBuilder: (_, __) => SizedBox(height: 8.h),
+                    itemBuilder: (context, index) {
+                      final city = cities[index];
+                      final isSelected = selectedCity == city;
+                      return _buildGovernorateOption(
+                        city: city,
+                        isSelected: isSelected,
+                        onTap: () {
+                          onSelected(city);
+                          Navigator.pop(sheetContext);
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildGovernorateOption({
+    required String city,
+    required bool isSelected,
+    required VoidCallback onTap,
+    IconData icon = Icons.location_on_rounded,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14.r),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
+          decoration: BoxDecoration(
+            color: isSelected ? _kPatientProfileNavy : _kPatientProfileBg,
+            borderRadius: BorderRadius.circular(14.r),
+            border: Border.all(
+              color: isSelected
+                  ? _kPatientProfileNavy
+                  : const Color(0xFFE8ECF0),
+            ),
+          ),
+          child: Directionality(
+            textDirection: ui.TextDirection.rtl,
+            child: Row(
+              children: [
+                Container(
+                  width: 36.w,
+                  height: 36.w,
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? Colors.white.withValues(alpha: 0.15)
+                        : Colors.white,
+                    borderRadius: BorderRadius.circular(10.r),
+                  ),
+                  child: Icon(
+                    icon,
+                    color: isSelected
+                        ? Colors.white
+                        : const Color(0xFF4A88B8),
+                    size: 18.sp,
+                  ),
+                ),
+                SizedBox(width: 10.w),
+                Expanded(
+                  child: Text(
+                    city,
+                    style: AppFonts.lamaSans(
+                      fontSize: 14.sp,
+                      fontWeight: FontWeight.w700,
+                      color: isSelected ? Colors.white : _kPatientProfileNavy,
+                    ),
+                  ),
+                ),
+                if (isSelected)
+                  Icon(
+                    Icons.check_circle_rounded,
+                    color: Colors.white,
+                    size: 20.sp,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showEditPatientProfileDialog(
+    BuildContext context,
+    PatientModel patient,
+    bool isReceptionist,
+  ) {
+    final nameController = TextEditingController(text: patient.name);
+    final phoneController =
+        TextEditingController(text: patient.phoneNumber);
+    final ageController = TextEditingController(
+      text: patient.age > 0 ? patient.age.toString() : '',
+    );
+
+    final cities = IraqGovernorates.arabicNames;
+    final normalizedGender =
+        (patient.gender == 'female' || patient.gender == 'أنثى')
+            ? 'female'
+            : 'male';
+    String selectedGender = normalizedGender;
+    final currentCity = IraqGovernorates.toArabic(patient.city) ?? '';
+    String? selectedCity =
+        cities.contains(currentCity) ? currentCity : null;
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              child: Container(
+                width: 340.w,
+                padding: EdgeInsets.all(16.w),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20.r),
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'تعديل معلومات المريض',
+                        style: AppFonts.lamaSans(
+                          fontSize: 15.sp,
+                          fontWeight: FontWeight.w800,
+                          color: _kPatientProfileNavy,
+                        ),
+                      ),
+                      SizedBox(height: 12.h),
+                      TextField(
+                        controller: nameController,
+                        textAlign: TextAlign.right,
+                        style: AppFonts.lamaSans(fontSize: 14.sp),
+                        decoration: InputDecoration(
+                          labelText: 'الاسم',
+                          labelStyle: AppFonts.lamaSans(fontSize: 13.sp),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10.r),
+                          ),
+                        ),
+                      ),
+                      if (isReceptionist) ...[
+                        SizedBox(height: 10.h),
+                        TextField(
+                          controller: phoneController,
+                          textAlign: TextAlign.right,
+                          keyboardType: TextInputType.phone,
+                          style: AppFonts.lamaSans(fontSize: 14.sp),
+                          decoration: InputDecoration(
+                            labelText: 'الهاتف',
+                            labelStyle: AppFonts.lamaSans(fontSize: 13.sp),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10.r),
+                            ),
+                          ),
+                        ),
+                      ],
+                      SizedBox(height: 10.h),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: ageController,
+                              textAlign: TextAlign.right,
+                              keyboardType: TextInputType.number,
+                              style: AppFonts.lamaSans(fontSize: 14.sp),
+                              decoration: InputDecoration(
+                                labelText: 'العمر',
+                                labelStyle: AppFonts.lamaSans(fontSize: 13.sp),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(10.r),
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 10.w),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: isSaving
+                                  ? null
+                                  : () => _showGenderPicker(
+                                        context: dialogContext,
+                                        selectedGender: selectedGender,
+                                        onSelected: (value) {
+                                          setDialogState(
+                                            () => selectedGender = value,
+                                          );
+                                        },
+                                      ),
+                              child: InputDecorator(
+                                decoration: InputDecoration(
+                                  labelText: 'الجنس',
+                                  labelStyle:
+                                      AppFonts.lamaSans(fontSize: 13.sp),
+                                  suffixIcon: Icon(
+                                    Icons.keyboard_arrow_down_rounded,
+                                    color: _kPatientProfileGray,
+                                    size: 22.sp,
+                                  ),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10.r),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10.r),
+                                    borderSide: const BorderSide(
+                                      color: Color(0xFFE8ECF0),
+                                    ),
+                                  ),
+                                ),
+                                child: Text(
+                                  _genderDisplayLabel(selectedGender),
+                                  textAlign: TextAlign.right,
+                                  style: AppFonts.lamaSans(
+                                    fontSize: 14.sp,
+                                    fontWeight: FontWeight.w600,
+                                    color: _kPatientProfileNavy,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 10.h),
+                      GestureDetector(
+                        onTap: isSaving
+                            ? null
+                            : () => _showGovernoratePicker(
+                                  context: dialogContext,
+                                  cities: cities,
+                                  selectedCity: selectedCity,
+                                  onSelected: (city) {
+                                    setDialogState(() => selectedCity = city);
+                                  },
+                                ),
+                        child: InputDecorator(
+                          decoration: InputDecoration(
+                            labelText: 'المدينة',
+                            labelStyle: AppFonts.lamaSans(fontSize: 13.sp),
+                            suffixIcon: Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              color: _kPatientProfileGray,
+                              size: 22.sp,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10.r),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10.r),
+                              borderSide: const BorderSide(
+                                color: Color(0xFFE8ECF0),
+                              ),
+                            ),
+                          ),
+                          child: Text(
+                            selectedCity ?? 'اختر المحافظة',
+                            textAlign: TextAlign.right,
+                            style: AppFonts.lamaSans(
+                              fontSize: 14.sp,
+                              fontWeight: FontWeight.w600,
+                              color: selectedCity != null
+                                  ? _kPatientProfileNavy
+                                  : _kPatientProfileGray,
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: 14.h),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: isSaving
+                                  ? null
+                                  : () => Navigator.of(dialogContext).pop(),
+                              child: Container(
+                                height: 42.h,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(10.r),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    'إلغاء',
+                                    style: AppFonts.lamaSans(
+                                      fontSize: 13.sp,
+                                      fontWeight: FontWeight.w700,
+                                      color: _kPatientProfileGray,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 10.w),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: isSaving
+                                  ? null
+                                  : () async {
+                                      final name = nameController.text.trim();
+                                      final city = selectedCity?.trim() ?? '';
+                                      final age = int.tryParse(
+                                        ageController.text.trim(),
+                                      );
+                                      final phone = phoneController.text.trim();
+
+                                      if (name.isEmpty ||
+                                          city.isEmpty ||
+                                          age == null ||
+                                          age <= 0) {
+                                        Get.snackbar(
+                                          'تنبيه',
+                                          'يرجى إدخال معلومات صحيحة',
+                                        );
+                                        return;
+                                      }
+
+                                      if (isReceptionist &&
+                                          !RegExp(r'^07\d{9}$')
+                                              .hasMatch(phone)) {
+                                        Get.snackbar(
+                                          'تنبيه',
+                                          'رقم الهاتف غير صحيح',
+                                        );
+                                        return;
+                                      }
+
+                                      setDialogState(() => isSaving = true);
+                                      try {
+                                        await controller.patientController
+                                            .updatePatientProfile(
+                                          patientId: patient.id,
+                                          name: name,
+                                          phone: isReceptionist ? phone : null,
+                                          gender: selectedGender,
+                                          age: age,
+                                          city: city,
+                                        );
+                                        if (dialogContext.mounted) {
+                                          Navigator.of(dialogContext).pop();
+                                        }
+                                        Get.snackbar(
+                                          'نجح',
+                                          'تم تحديث معلومات المريض',
+                                        );
+                                      } catch (_) {
+                                        // الخطأ يُعرض من الـ controller
+                                      } finally {
+                                        if (dialogContext.mounted) {
+                                          setDialogState(() => isSaving = false);
+                                        }
+                                      }
+                                    },
+                              child: Container(
+                                height: 42.h,
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [
+                                      Color(0xFF162D4A),
+                                      Color(0xFF4A88B8),
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(10.r),
+                                ),
+                                child: Center(
+                                  child: isSaving
+                                      ? SizedBox(
+                                          width: 18.w,
+                                          height: 18.w,
+                                          child:
+                                              const CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : Text(
+                                          'حفظ',
+                                          style: AppFonts.lamaSans(
+                                            fontSize: 13.sp,
+                                            fontWeight: FontWeight.w800,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showTreatmentTypeDialog(BuildContext context, dynamic patient) {
     // Treatment types (ordered). Shown in a 2-column grid to avoid empty gaps.
     final List<String> treatmentTypes = [
@@ -4377,7 +5260,7 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                       style: TextStyle(
                         fontSize: 18.sp,
                         fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
+                        color: _kPatientProfileNavy,
                       ),
                       textAlign: TextAlign.center,
                     ),
@@ -4449,13 +5332,13 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                               Container(
                                 padding: EdgeInsets.all(12.w),
                                 decoration: BoxDecoration(
-                                  color: AppColors.primary.withValues(
-                                    alpha: 0.1,
+                                  color: _kPatientProfileNavyDark.withValues(
+                                    alpha: 0.08,
                                   ),
                                   borderRadius: BorderRadius.circular(8.r),
                                   border: Border.all(
-                                    color: AppColors.primary.withValues(
-                                      alpha: 0.3,
+                                    color: _kPatientProfileBlue.withValues(
+                                      alpha: 0.35,
                                     ),
                                     width: 1,
                                   ),
@@ -4464,7 +5347,7 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                                   children: [
                                     Icon(
                                       Icons.info_outline,
-                                      color: AppColors.primary,
+                                      color: _kPatientProfileBlue,
                                       size: 20.sp,
                                     ),
                                     SizedBox(width: 8.w),
@@ -4473,7 +5356,7 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                                         'نوع العلاج "زراعة" لا يمكن اختياره مع أنواع أخرى',
                                         style: TextStyle(
                                           fontSize: 12.sp,
-                                          color: AppColors.primary,
+                                          color: _kPatientProfileBlue,
                                         ),
                                         textAlign: TextAlign.right,
                                       ),
@@ -4500,8 +5383,12 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                             child: Container(
                               height: 48.h,
                               decoration: BoxDecoration(
-                                color: AppColors.divider,
+                                color: _kPatientProfileBg,
                                 borderRadius: BorderRadius.circular(12.r),
+                                border: Border.all(
+                                  color: _kPatientProfileDivider,
+                                  width: 1,
+                                ),
                               ),
                               child: Center(
                                 child: Text(
@@ -4509,7 +5396,7 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                                   style: TextStyle(
                                     fontSize: 16.sp,
                                     fontWeight: FontWeight.bold,
-                                    color: AppColors.textSecondary,
+                                    color: _kPatientProfileGray,
                                   ),
                                 ),
                               ),
@@ -4599,7 +5486,7 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                             child: Container(
                               height: 48.h,
                               decoration: BoxDecoration(
-                                color: AppColors.primary,
+                                gradient: _kPatientProfileGradient,
                                 borderRadius: BorderRadius.circular(12.r),
                               ),
                               child: Center(
@@ -4641,12 +5528,16 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
           padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
           decoration: BoxDecoration(
             color: isDisabled
-                ? AppColors.divider.withValues(alpha: 0.3)
-                : AppColors.white,
+                ? _kPatientProfileBg
+                : (isSelected
+                      ? _kPatientProfileNavyDark.withValues(alpha: 0.04)
+                      : AppColors.white),
             borderRadius: BorderRadius.circular(12.r),
             border: Border.all(
-              color: isSelected ? AppColors.primary : AppColors.divider,
-              width: 1.5,
+              color: isSelected
+                  ? _kPatientProfileBlue
+                  : _kPatientProfileDivider,
+              width: isSelected ? 1.5 : 1,
             ),
           ),
           child: Row(
@@ -4657,15 +5548,15 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                 height: 20.w,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(
-                    color: isSelected
-                        ? AppColors.primary
-                        : (isDisabled
-                              ? AppColors.divider
-                              : AppColors.textSecondary),
-                    width: 2,
-                  ),
-                  color: isSelected ? AppColors.primary : Colors.transparent,
+                  gradient: isSelected ? _kPatientProfileGradient : null,
+                  border: isSelected
+                      ? null
+                      : Border.all(
+                          color: isDisabled
+                              ? _kPatientProfileDivider
+                              : _kPatientProfileGray,
+                          width: 2,
+                        ),
                 ),
                 child: isSelected
                     ? Icon(Icons.check, size: 14.sp, color: AppColors.white)
@@ -4678,9 +5569,13 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                   treatment,
                   style: TextStyle(
                     fontSize: 14.sp,
+                    fontWeight:
+                        isSelected ? FontWeight.w700 : FontWeight.w500,
                     color: isDisabled
-                        ? AppColors.textHint
-                        : AppColors.textPrimary,
+                        ? _kPatientProfileGray.withValues(alpha: 0.6)
+                        : (isSelected
+                              ? _kPatientProfileNavy
+                              : _kPatientProfileGray),
                   ),
                   textAlign: TextAlign.right,
                 ),

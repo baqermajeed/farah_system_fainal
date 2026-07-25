@@ -65,6 +65,8 @@ import 'package:farah_sys_final/controllers/appointments_screen_controller.dart'
 import 'package:farah_sys_final/controllers/edit_patient_profile_controller.dart';
 import 'package:farah_sys_final/controllers/reception_home_controller.dart';
 import 'package:farah_sys_final/controllers/doctor_home_controller.dart';
+import 'package:farah_sys_final/controllers/doctor_shell_controller.dart';
+import 'package:farah_sys_final/controllers/doctor_stats_controller.dart';
 import 'package:farah_sys_final/controllers/patient_welcome_controller.dart';
 import 'package:farah_sys_final/controllers/edit_doctor_profile_controller.dart';
 import 'package:farah_sys_final/controllers/edit_reception_profile_controller.dart';
@@ -147,6 +149,18 @@ void main() async {
   );
   Get.lazyPut<DoctorHomeController>(
     () => DoctorHomeController(),
+    fenix: true,
+  );
+  Get.lazyPut<DoctorShellController>(
+    () => DoctorShellController(),
+    fenix: true,
+  );
+  Get.lazyPut<DoctorStatsController>(
+    () => DoctorStatsController(),
+    fenix: true,
+  );
+  Get.lazyPut<DoctorChatsScreenController>(
+    () => DoctorChatsScreenController(),
     fenix: true,
   );
   Get.lazyPut<PatientWelcomeController>(
@@ -289,6 +303,8 @@ class MyApp extends StatelessWidget {
             GetPage(
               name: AppRoutes.doctorPatientsList,
               page: () => const DoctorPatientsListScreen(),
+              transition: Transition.noTransition,
+              transitionDuration: Duration.zero,
               binding: BindingsBuilder(() {
                 Get.put<DoctorPatientsListController>(
                   DoctorPatientsListController(),
@@ -298,7 +314,12 @@ class MyApp extends StatelessWidget {
             GetPage(
               name: AppRoutes.patientDetails,
               page: () => const PatientDetailsScreen(),
+              transition: Transition.noTransition,
+              transitionDuration: Duration.zero,
               binding: BindingsBuilder(() {
+                if (Get.isRegistered<PatientDetailsController>()) {
+                  Get.delete<PatientDetailsController>(force: true);
+                }
                 Get.put<PatientDetailsController>(PatientDetailsController());
               }),
             ),

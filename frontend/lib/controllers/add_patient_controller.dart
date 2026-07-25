@@ -332,7 +332,7 @@ class AddPatientController extends GetxController {
         }
       }
 
-      await patientController.loadPatients();
+      await patientController.reloadPatientsList();
       if (!context.mounted) return;
       await showDialog(
         context: context,

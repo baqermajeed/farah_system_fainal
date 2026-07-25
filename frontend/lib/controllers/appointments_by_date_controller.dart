@@ -43,7 +43,7 @@ class AppointmentsByDateController extends GetxController {
 
     // Load patients to get their names and images
     if (patientController.patients.isEmpty) {
-      patientController.loadPatients();
+      patientController.reloadPatientsList();
     }
   }
 }

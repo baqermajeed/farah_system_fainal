@@ -1,15 +1,16 @@
 ﻿import 'package:flutter/material.dart';
-import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
+import 'package:farah_sys_final/core/routes/app_routes.dart';
+import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:farah_sys_final/core/widgets/empty_state_widget.dart';
 import 'package:farah_sys_final/core/widgets/loading_widget.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
 import 'package:farah_sys_final/controllers/doctor_patients_list_controller.dart';
-import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/models/patient_model.dart';
-import 'package:farah_sys_final/widgets/app_avatar.dart';
+import 'package:farah_sys_final/views/doctor/widgets/doctor_glass_card.dart';
+import 'package:farah_sys_final/views/doctor/widgets/doctor_patient_list_tile.dart';
 
 class DoctorPatientsListScreen extends GetView<DoctorPatientsListController> {
   const DoctorPatientsListScreen({super.key});
@@ -17,322 +18,160 @@ class DoctorPatientsListScreen extends GetView<DoctorPatientsListController> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: const Color(0xFFF4F8FF),
       body: SafeArea(
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Header
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 16.h),
-              child: Row(
-                textDirection: TextDirection.ltr,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Back button always on the LEFT
-                  BackButtonWidget(
-                    onTap: () {
-                      // If this screen is the root (e.g. navigated via offAll),
-                      // Get.back() won't do anything. Fallback to doctor home.
-                      final nav = Navigator.of(context);
-                      if (nav.canPop()) {
-                        nav.pop();
-                      } else {
-                        Get.offAllNamed(AppRoutes.doctorHome);
-                      }
-                    },
-                  ),
-                  // Title in center
-                  Expanded(
-                    child: Center(
-                      child: Text(
-                        'جميع المرضى',
-                        style: TextStyle(
-                          fontSize: 20.sp,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ),
-                  ),
-                  // Add patient button on the RIGHT
-                  GestureDetector(
-                    onTap: () async {
-                      final result = await controller.addPatientAndReload();
-                      // عرض dialog النجاح أو الفشل
-                      if (result != null && context.mounted) {
-                        _showResultDialog(context, result);
-                      }
-                    },
-                    child: Container(
-                      padding: EdgeInsets.all(12.w),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12.r),
-                      ),
-                      child: Icon(
-                        Icons.person_add,
-                        color: AppColors.primary,
-                        size: 24.sp,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // Search Bar
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 8.h),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: AppColors.white,
-                  borderRadius: BorderRadius.circular(12.r),
-                ),
-                child: TextField(
-                  controller: controller.searchController,
-                  textDirection: TextDirection.rtl,
-                  decoration: InputDecoration(
-                    hintText: 'ابحث عن مريض...',
-                    hintStyle: TextStyle(
-                      color: AppColors.textHint,
-                      fontSize: 14.sp,
-                    ),
-                    prefixIcon: Icon(
-                      Icons.search,
-                      color: AppColors.textSecondary,
-                      size: 24.sp,
-                    ),
-                    border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 16.w,
-                      vertical: 12.h,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            SizedBox(height: 8.h),
-            // Patients List
-            Expanded(
-              child: Obx(() {
-                if (controller.patientController.isLoading.value) {
-                  return const LoadingWidget(message: 'جاري تحميل المرضى...');
-                }
-
-                final filteredPatients = controller.filteredPatients;
-
-                if (filteredPatients.isEmpty) {
-                  return EmptyStateWidget(
-                    icon: Icons.people_outline,
-                    title: 'لا يوجد مرضى',
-                    subtitle: controller.searchQuery.value.isEmpty
-                        ? 'لم يتم إضافة أي مريض بعد'
-                        : 'لم يتم العثور على نتائج',
-                  );
-                }
-
-                return ListView.builder(
-                  padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 8.h),
-                  itemCount: filteredPatients.length,
-                  itemBuilder: (context, index) {
-                    final patient = filteredPatients[index];
-                    return _buildPatientCard(patient);
-                  },
-                );
-              }),
-            ),
+            _buildHeader(context),
+            _buildSearchBar(),
+            Expanded(child: _buildPatientsList()),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 8.h),
+      child: Row(
+        textDirection: TextDirection.ltr,
+        children: [
+          BackButtonWidget(
+            onTap: () {
+              final nav = Navigator.of(context);
+              if (nav.canPop()) {
+                nav.pop();
+              } else {
+                Get.offAllNamed(AppRoutes.doctorHome);
+              }
+            },
+          ),
+          Expanded(
+            child: Text(
+              'جميع المرضى',
+              style: AppFonts.lamaSans(
+                fontSize: 20.sp,
+                fontWeight: FontWeight.w800,
+                color: const Color(0xFF1F2A44),
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+            ),
+          ),
+          SizedBox(width: 44.w, height: 44.w),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 8.h),
+      child: DoctorGlassCard(
+        padding: EdgeInsets.symmetric(horizontal: 4.w),
+        borderRadius: 16.r,
+        child: TextField(
+          controller: controller.searchController,
+          textDirection: TextDirection.rtl,
+          decoration: InputDecoration(
+            hintText: 'ابحث عن مريض...',
+            hintStyle: AppFonts.lamaSans(
+              fontSize: 14.sp,
+              color: AppColors.textHint,
+            ),
+            prefixIcon: Icon(
+              Icons.search_rounded,
+              color: AppColors.primary,
+              size: 22.sp,
+            ),
+            border: InputBorder.none,
+            contentPadding: EdgeInsets.symmetric(vertical: 12.h),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPatientsList() {
+    return Obx(() {
+      final pc = controller.patientController;
+      // قراءة قيم Rx مباشرة داخل Obx
+      final isLoading = pc.isLoading.value;
+      final isSearching = pc.isSearching.value;
+      final searchText = controller.searchQuery.value;
+      final isLoadingMore = controller.isLoadingMore;
+      final hasMore = controller.hasMore;
+      final patients = controller.displayedPatients;
+      final isInitialLoading =
+          (isLoading || isSearching) && patients.isEmpty;
+
+      if (isInitialLoading) {
+        return const LoadingWidget(message: 'جاري تحميل المرضى...');
+      }
+
+      if (patients.isEmpty) {
+        return RefreshIndicator(
+          color: AppColors.primary,
+          onRefresh: controller.refreshList,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+              SizedBox(height: 80.h),
+              EmptyStateWidget(
+                icon: Icons.people_outline,
+                title: 'لا يوجد مرضى',
+                subtitle: searchText.isEmpty
+                    ? 'لم يتم إضافة أي مريض بعد'
+                    : 'لم يتم العثور على نتائج',
+              ),
+            ],
+          ),
+        );
+      }
+
+      final showFooter = hasMore || isLoadingMore;
+
+      return RefreshIndicator(
+        color: AppColors.primary,
+        onRefresh: controller.refreshList,
+        child: ListView.builder(
+          controller: controller.scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          cacheExtent: 400,
+          padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 24.h),
+          itemCount: patients.length + (showFooter ? 1 : 0),
+          itemBuilder: (_, index) {
+            if (index >= patients.length) {
+              return Padding(
+                padding: EdgeInsets.symmetric(vertical: 16.h),
+                child: Center(
+                  child: SizedBox(
+                    width: 24.w,
+                    height: 24.w,
+                    child: CircularProgressIndicator(
+                      color: AppColors.primary,
+                      strokeWidth: 2.5,
+                    ),
+                  ),
+                ),
+              );
+            }
+            return _buildPatientCard(patients[index]);
+          },
+        ),
+      );
+    });
   }
 
   Widget _buildPatientCard(PatientModel patient) {
-    return GestureDetector(
+    return DoctorPatientListTile(
+      patient: patient,
       onTap: () => controller.openPatientDetails(patient),
-      child: Container(
-        margin: EdgeInsets.only(bottom: 12.h),
-        padding: EdgeInsets.only(left: 20.w, right: 0.w, top: 2.h, bottom: 2.h),
-        constraints: BoxConstraints(minHeight: 72.h),
-        decoration: BoxDecoration(
-          color: AppColors.white,
-          borderRadius: BorderRadius.circular(10.r),
-        ),
-        child: Row(
-          children: [
-            // Patient Image (مطابق لتصميم الصفحة الرئيسية)
-            Transform.translate(
-              offset: Offset(-8.w, 0),
-            child: AppAvatar(
-              imageUrl: patient.imageUrl,
-              size: 55.w,
-              cornerRadius: 10.r,
-              backgroundColor: AppColors.white,
-              borderColor: AppColors.divider,
-              borderWidth: 1,
-            ),
-            ),
-            SizedBox(width: 16.w),
-            // Patient Details + chat icon (مطابق لتصميم الصفحة الرئيسية)
-            Expanded(
-              child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 2.h),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        textDirection: TextDirection.rtl,
-                        children: [
-                          // الاسم مع تلوين مختلف
-                          RichText(
-                            textAlign: TextAlign.right,
-                            textDirection: TextDirection.rtl,
-                            text: TextSpan(
-                              style: TextStyle(
-                                fontSize: 14.sp,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              children: [
-                                TextSpan(
-                                  text: 'الاسم : ',
-                                  style: AppFonts.lamaSans(
-                                    fontSize: 13.sp,
-                                    fontWeight: FontWeight.w600,
-                                    color: const Color(0xFF505558),
-                                  ),
-                                ),
-                                TextSpan(
-                                  text: patient.name,
-                                  style: AppFonts.lamaSans(
-                                    color: AppColors.primary,
-                                    fontSize: 14.sp,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          SizedBox(height: 2.h),
-                          Text(
-                            'العمر : ${patient.age} سنة',
-                            style: AppFonts.lamaSans(
-                              fontSize: 13.sp,
-                              fontWeight: FontWeight.w600,
-                              color: const Color(0xFF505558),
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.right,
-                            textDirection: TextDirection.rtl,
-                          ),
-                          SizedBox(height: 2.h),
-                          Text(
-                            'نوع العلاج : ${patient.treatmentHistory != null && patient.treatmentHistory!.isNotEmpty ? patient.treatmentHistory!.last : 'لا يوجد'}',
-                            style: AppFonts.lamaSans(
-                              fontSize: 13.sp,
-                              fontWeight: FontWeight.w600,
-                              color: const Color(0xFF505558),
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.right,
-                            textDirection: TextDirection.rtl,
-                          ),
-                        ],
-                      ),
-                    ),
-                    SizedBox(width: 16.w),
-                    GestureDetector(
-                      onTap: () => controller.openChat(patient.id),
-                      child: Image.asset(
-                        'assets/images/message.png',
-                        width: 25.sp,
-                        height: 25.sp,
-                      fit: BoxFit.contain,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
+      onChatTap: () => controller.openChat(patient),
     );
   }
 
-  void _showResultDialog(BuildContext context, bool success) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16.r),
-          ),
-          child: Container(
-            padding: EdgeInsets.all(24.w),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Icon
-                Icon(
-                  success ? Icons.check_circle : Icons.error,
-                  color: success ? Colors.green : Colors.red,
-                  size: 64.sp,
-                ),
-                SizedBox(height: 16.h),
-                // Title
-                Text(
-                  success ? 'نجح' : 'فشل',
-                  style: TextStyle(
-                    fontSize: 20.sp,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                SizedBox(height: 8.h),
-                // Message
-                Text(
-                  success
-                      ? 'تم إضافة المريض بنجاح'
-                      : 'حدث خطأ أثناء إضافة المريض',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 16.sp,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                SizedBox(height: 24.h),
-                // OK Button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      padding: EdgeInsets.symmetric(vertical: 12.h),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12.r),
-                      ),
-                    ),
-                    child: Text(
-                      'موافق',
-                      style: TextStyle(
-                        fontSize: 16.sp,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.white,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
 }

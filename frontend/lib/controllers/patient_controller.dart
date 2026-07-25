@@ -21,6 +21,33 @@ class PatientController extends GetxController {
   final Rx<Map<String, dynamic>?> myDoctor = Rx<Map<String, dynamic>?>(null);
   final RxList<Map<String, dynamic>> myDoctors = <Map<String, dynamic>>[].obs;
 
+  // Doctor pagination (مثل frontend_desktop)
+  var doctorCurrentPage = 1;
+  final int doctorPageLimit = 25;
+  final RxBool isLoadingMorePatients = false.obs;
+  final RxBool hasMorePatients = true.obs;
+
+  // Doctor server-side search
+  final RxList<PatientModel> searchResults = <PatientModel>[].obs;
+  final RxBool isSearching = false.obs;
+  var doctorSearchPage = 1;
+  final RxBool hasMoreSearchResults = true.obs;
+  final RxBool isLoadingMoreSearch = false.obs;
+  final RxString lastSearchQuery = ''.obs;
+
+  bool get _isDoctorUser =>
+      Get.find<AuthController>().currentUser.value?.userType == 'doctor';
+
+  /// القائمة المعروضة للطبيب: نتائج البحث من السيرفر أو الصفحات المحمّلة.
+  List<PatientModel> get doctorDisplayedPatients {
+    if (lastSearchQuery.value.trim().isNotEmpty) {
+      return searchResults;
+    }
+    return patients;
+  }
+
+  bool get isDoctorSearching => lastSearchQuery.value.trim().isNotEmpty;
+
   Future<List<PatientModel>> _fetchAllPages({
     required Future<List<PatientModel>> Function(int skip, int limit) fetchPage,
     int pageSize = 100,
@@ -54,12 +81,22 @@ class PatientController extends GetxController {
     return deduped;
   }
 
-  // جلب قائمة المرضى (للطبيب أو موظف الاستقبال) مع كاش Hive
+  // جلب قائمة المرضى (للطبيب: pagination من API | للاستقبال: كاش + جلب كامل)
   Future<void> loadPatients({
     int skip = 0,
     int limit = 50,
     bool fetchAll = true,
+    bool isInitial = false,
+    bool isRefresh = false,
   }) async {
+    if (_isDoctorUser) {
+      await _loadDoctorPatientsPaginated(
+        isInitial: isInitial,
+        isRefresh: isRefresh,
+      );
+      return;
+    }
+
     try {
       isLoading.value = true;
       print('📋 [PatientController] Loading patients with cache...');
@@ -109,23 +146,11 @@ class PatientController extends GetxController {
           );
         }
       } else {
-        // الطبيب (أو أي نوع آخر): يجلب مرضاه فقط من /doctor/patients
-        print('📋 [PatientController] Loading doctor patients (API)...');
-        if (fetchAll && skip == 0) {
-          patientsList = await _fetchAllPages(
-            fetchPage: (s, l) => _doctorService.getMyPatients(skip: s, limit: l),
-            pageSize: 100,
-          );
-        } else {
-          patientsList = await _doctorService.getMyPatients(
-            skip: skip,
-            limit: limit,
-          );
-        }
-
-        if (patientsList.isEmpty) {
-          print('⚠️ [PatientController] No patients found for this doctor!');
-        }
+        // الطبيب — يُدار عبر _loadDoctorPatientsPaginated (لا يصل هنا)
+        patientsList = await _doctorService.getMyPatients(
+          skip: skip,
+          limit: limit,
+        );
       }
 
       patients.assignAll(patientsList);
@@ -154,6 +179,154 @@ class PatientController extends GetxController {
     } finally {
       isLoading.value = false;
     }
+  }
+
+  Future<void> _loadDoctorPatientsPaginated({
+    required bool isInitial,
+    required bool isRefresh,
+  }) async {
+    try {
+      if (isRefresh || isInitial) {
+        doctorCurrentPage = 1;
+        hasMorePatients.value = true;
+        // لا نُظهر سبينر إن وُجدت بيانات — يمنع وميض الواجهة (مثل desktop)
+        if (patients.isEmpty) {
+          isLoading.value = true;
+        }
+      } else {
+        if (!hasMorePatients.value || isLoadingMorePatients.value) return;
+        isLoadingMorePatients.value = true;
+      }
+
+      print(
+        '📋 [PatientController] Loading doctor patients - page: $doctorCurrentPage, limit: $doctorPageLimit',
+      );
+
+      final patientsList = await _doctorService.getMyPatients(
+        skip: (doctorCurrentPage - 1) * doctorPageLimit,
+        limit: doctorPageLimit,
+      );
+
+      if (isRefresh || isInitial) {
+        patients.assignAll(patientsList);
+      } else {
+        patients.addAll(patientsList);
+      }
+
+      hasMorePatients.value = patientsList.length >= doctorPageLimit;
+      if (hasMorePatients.value) {
+        doctorCurrentPage++;
+      }
+
+      print(
+        '✅ [PatientController] Loaded ${patientsList.length} patients (total: ${patients.length}, hasMore: ${hasMorePatients.value})',
+      );
+    } on ApiException catch (e) {
+      await NetworkUtils.showError(e);
+    } catch (e) {
+      await NetworkUtils.showError(
+        e,
+        fallbackMessage: 'حدث خطأ أثناء تحميل المرضى',
+      );
+    } finally {
+      isLoading.value = false;
+      isLoadingMorePatients.value = false;
+    }
+  }
+
+  Future<void> loadMorePatients() async {
+    if (!_isDoctorUser) return;
+    if (!hasMorePatients.value || isLoadingMorePatients.value) return;
+    await _loadDoctorPatientsPaginated(isInitial: false, isRefresh: false);
+  }
+
+  Future<void> searchDoctorPatients({required String searchQuery}) async {
+    if (!_isDoctorUser) return;
+
+    final query = searchQuery.trim();
+    if (query.isEmpty) {
+      clearDoctorSearch();
+      return;
+    }
+
+    if (query == lastSearchQuery.value && searchResults.isNotEmpty) {
+      return;
+    }
+
+    try {
+      doctorSearchPage = 1;
+      hasMoreSearchResults.value = true;
+      lastSearchQuery.value = query;
+      isSearching.value = true;
+      searchResults.clear();
+
+      final results = await _doctorService.searchMyPatients(
+        searchQuery: query,
+        skip: 0,
+        limit: doctorPageLimit,
+      );
+
+      searchResults.assignAll(results);
+      hasMoreSearchResults.value = results.length >= doctorPageLimit;
+      if (hasMoreSearchResults.value) {
+        doctorSearchPage = 2;
+      }
+    } on ApiException catch (e) {
+      await NetworkUtils.showError(e);
+    } catch (e) {
+      await NetworkUtils.showError(
+        e,
+        fallbackMessage: 'حدث خطأ أثناء البحث',
+      );
+    } finally {
+      isSearching.value = false;
+    }
+  }
+
+  Future<void> loadMoreSearchResults() async {
+    if (!_isDoctorUser) return;
+    if (isLoadingMoreSearch.value || !hasMoreSearchResults.value) return;
+    if (lastSearchQuery.value.trim().isEmpty) return;
+
+    isLoadingMoreSearch.value = true;
+    try {
+      final results = await _doctorService.searchMyPatients(
+        searchQuery: lastSearchQuery.value,
+        skip: (doctorSearchPage - 1) * doctorPageLimit,
+        limit: doctorPageLimit,
+      );
+
+      if (results.isNotEmpty) {
+        searchResults.addAll(results);
+        doctorSearchPage++;
+        hasMoreSearchResults.value = results.length >= doctorPageLimit;
+      } else {
+        hasMoreSearchResults.value = false;
+      }
+    } on ApiException catch (e) {
+      await NetworkUtils.showError(e);
+    } catch (e) {
+      await NetworkUtils.showError(
+        e,
+        fallbackMessage: 'حدث خطأ أثناء تحميل نتائج البحث',
+      );
+    } finally {
+      isLoadingMoreSearch.value = false;
+    }
+  }
+
+  void clearDoctorSearch() {
+    lastSearchQuery.value = '';
+    doctorSearchPage = 1;
+    hasMoreSearchResults.value = true;
+    isLoadingMoreSearch.value = false;
+    isSearching.value = false;
+    searchResults.clear();
+  }
+
+  Future<void> refreshDoctorPatients() async {
+    clearDoctorSearch();
+    await loadPatients(isInitial: false, isRefresh: true);
   }
 
   /// تطبيق ملف فرد العائلة المختار فوراً (بدون انتظار إعادة تحميل الشاشة).
@@ -315,14 +488,34 @@ class PatientController extends GetxController {
   }
 
   PatientModel? getPatientById(String patientId) {
-    try {
-      return patients.firstWhere((p) => p.id == patientId);
-    } catch (e) {
-      return null;
+    final selected = selectedPatient.value;
+    if (selected != null && selected.id == patientId) {
+      return selected;
+    }
+
+    for (final patient in searchResults) {
+      if (patient.id == patientId) return patient;
+    }
+
+    for (final patient in patients) {
+      if (patient.id == patientId) return patient;
+    }
+
+    return null;
+  }
+
+  Future<void> reloadPatientsList() async {
+    if (_isDoctorUser) {
+      await refreshDoctorPatients();
+    } else {
+      await loadPatients();
     }
   }
 
   List<PatientModel> searchPatients(String query) {
+    if (_isDoctorUser) {
+      return doctorDisplayedPatients;
+    }
     if (query.isEmpty) return patients;
 
     return patients.where((patient) {
@@ -333,6 +526,102 @@ class PatientController extends GetxController {
 
   void selectPatient(PatientModel? patient) {
     selectedPatient.value = patient;
+  }
+
+  Future<void> updatePatientProfile({
+    required String patientId,
+    String? name,
+    String? phone,
+    String? gender,
+    int? age,
+    String? city,
+  }) async {
+    PatientModel? oldPatient;
+    try {
+      final index = patients.indexWhere((p) => p.id == patientId);
+      if (index != -1) {
+        oldPatient = patients[index];
+      }
+
+      final authController = Get.find<AuthController>();
+      final userType =
+          authController.currentUser.value?.userType.toLowerCase();
+
+      final PatientModel updatedPatient;
+      if (userType == 'receptionist' || userType == 'admin') {
+        updatedPatient = await _patientService.updatePatientByReception(
+          patientId: patientId,
+          name: name,
+          phone: phone,
+          gender: gender,
+          age: age,
+          city: city,
+        );
+      } else {
+        updatedPatient = await _doctorService.updatePatientProfile(
+          patientId: patientId,
+          name: name,
+          gender: gender,
+          age: age,
+          city: city,
+        );
+      }
+
+      final newIndex = patients.indexWhere((p) => p.id == patientId);
+      if (newIndex != -1) {
+        patients[newIndex] = updatedPatient;
+      }
+
+      if (selectedPatient.value?.id == patientId) {
+        selectedPatient.value = updatedPatient;
+      }
+
+      final searchIndex = searchResults.indexWhere((p) => p.id == patientId);
+      if (searchIndex != -1) {
+        searchResults[searchIndex] = updatedPatient;
+      }
+
+      try {
+        final box = Hive.box('patients');
+        box.put(
+          'list',
+          patients.map((p) => p.toJson()).toList(),
+        );
+        box.put('lastUpdated', DateTime.now().toIso8601String());
+      } catch (_) {}
+    } on ApiException catch (e) {
+      if (oldPatient != null) {
+        final index = patients.indexWhere((p) => p.id == patientId);
+        if (index != -1) {
+          patients[index] = oldPatient;
+        }
+        if (selectedPatient.value?.id == patientId) {
+          selectedPatient.value = oldPatient;
+        }
+      }
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', e.message);
+      }
+      rethrow;
+    } catch (e) {
+      if (oldPatient != null) {
+        final index = patients.indexWhere((p) => p.id == patientId);
+        if (index != -1) {
+          patients[index] = oldPatient;
+        }
+        if (selectedPatient.value?.id == patientId) {
+          selectedPatient.value = oldPatient;
+        }
+      }
+      if (NetworkUtils.isNetworkError(e)) {
+        NetworkUtils.showNetworkErrorDialog();
+      } else {
+        Get.snackbar('خطأ', 'حدث خطأ أثناء تحديث بيانات المريض');
+      }
+      rethrow;
+    }
   }
 
   // تحديث الأطباء المرتبطين بمريض معين في الواجهة بدون إعادة تحميل كاملة

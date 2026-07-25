@@ -17,6 +17,7 @@ class ChatController extends GetxController {
   final RxBool isLoadingMore = false.obs;
   final RxBool hasMoreMessages = true.obs;
   final RxBool isConnected = false.obs;
+  final RxBool isPeerTyping = false.obs;
   String? currentPatientId;
   String? currentDoctorId;
   String? currentRoomId;
@@ -27,9 +28,9 @@ class ChatController extends GetxController {
   // Track message IDs that are being sent (to show loading indicator)
   final RxList<String> sendingMessageIds = <String>[].obs;
   bool _isConnecting = false;
-
-  // Flag to track if we need to reload messages after user change
-  bool _shouldReloadAfterUserChange = false;
+  bool _selfTypingActive = false;
+  Timer? _selfTypingStopTimer;
+  Timer? _peerTypingHideTimer;
 
   /// Bumped on every conversation open so stale API responses are ignored.
   int _loadGeneration = 0;
@@ -43,6 +44,11 @@ class ChatController extends GetxController {
     socketService.off('message_received');
     socketService.off('message_sent');
     socketService.off('joined_conversation');
+    socketService.off('message_updated');
+    socketService.off('typing_start');
+    socketService.off('typing_stop');
+    socketService.off('typing');
+    socketService.off('user_typing');
     socketService.off('error');
 
     // Leave current room if connected
@@ -61,8 +67,11 @@ class ChatController extends GetxController {
     currentPatientId = null;
     currentDoctorId = null;
     currentRoomId = null;
-    _shouldReloadAfterUserChange = true;
     _isConnecting = false;
+    _selfTypingStopTimer?.cancel();
+    _peerTypingHideTimer?.cancel();
+    _selfTypingActive = false;
+    isPeerTyping.value = false;
     isConnected.value = false;
   }
 
@@ -89,6 +98,10 @@ class ChatController extends GetxController {
     currentRoomId = null;
     currentPatientId = patientId;
     currentDoctorId = doctorId;
+    _selfTypingStopTimer?.cancel();
+    _peerTypingHideTimer?.cancel();
+    _selfTypingActive = false;
+    isPeerTyping.value = false;
     hasMoreMessages.value = true;
     isLoadingMore.value = false;
     isLoading.value = true;
@@ -131,6 +144,11 @@ class ChatController extends GetxController {
     socketService.off('message_received');
     socketService.off('message_sent');
     socketService.off('joined_conversation');
+    socketService.off('message_updated');
+    socketService.off('typing_start');
+    socketService.off('typing_stop');
+    socketService.off('typing');
+    socketService.off('user_typing');
     socketService.off('error');
     // Leave current room if connected
     if (currentRoomId != null && socketService.isConnected) {
@@ -142,6 +160,10 @@ class ChatController extends GetxController {
     currentRoomId = null;
     currentPatientId = null;
     currentDoctorId = null;
+    _selfTypingStopTimer?.cancel();
+    _peerTypingHideTimer?.cancel();
+    _selfTypingActive = false;
+    isPeerTyping.value = false;
     // Don't disconnect socket here - keep it connected for reuse
     // _chatService.disconnect();
     super.onClose();
@@ -301,6 +323,11 @@ class ChatController extends GetxController {
       socketService.off('message_received');
       socketService.off('message_sent');
       socketService.off('joined_conversation');
+      socketService.off('message_updated');
+      socketService.off('typing_start');
+      socketService.off('typing_stop');
+      socketService.off('typing');
+      socketService.off('user_typing');
       socketService.off('error');
 
       // Setup connection status callback
@@ -514,6 +541,59 @@ class ChatController extends GetxController {
         NetworkUtils.showError(errorMessage);
       });
 
+      socketService.on('message_updated', (data) {
+        try {
+          final payload = data['message'] as Map<String, dynamic>? ?? data;
+          final updated = MessageModel.fromJson(payload);
+          final index = messages.indexWhere((m) => m.id == updated.id);
+          if (index >= 0) {
+            messages[index] = updated;
+            messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+          }
+        } catch (_) {}
+      });
+
+      void handleTypingPayload(dynamic data, {required bool isTyping}) {
+        if (data is! Map) return;
+        final roomId = data['room_id']?.toString() ?? data['roomId']?.toString();
+        if (roomId != null && roomId.isNotEmpty && roomId != currentRoomId) return;
+        final senderId =
+            data['sender_id']?.toString() ??
+            data['senderId']?.toString() ??
+            data['user_id']?.toString();
+        final myId = _authController.currentUser.value?.id;
+        if (senderId != null && myId != null && senderId == myId) return;
+
+        if (isTyping) {
+          isPeerTyping.value = true;
+          _peerTypingHideTimer?.cancel();
+          _peerTypingHideTimer = Timer(const Duration(seconds: 4), () {
+            isPeerTyping.value = false;
+          });
+          return;
+        }
+
+        _peerTypingHideTimer?.cancel();
+        isPeerTyping.value = false;
+      }
+
+      socketService.on(
+        'typing_start',
+        (data) => handleTypingPayload(data, isTyping: true),
+      );
+      socketService.on(
+        'typing_stop',
+        (data) => handleTypingPayload(data, isTyping: false),
+      );
+      socketService.on(
+        'typing',
+        (data) => handleTypingPayload(data, isTyping: true),
+      );
+      socketService.on(
+        'user_typing',
+        (data) => handleTypingPayload(data, isTyping: true),
+      );
+
       isConnected.value = socketService.isConnected;
       _isConnecting = false;
     } catch (e) {
@@ -590,6 +670,7 @@ class ChatController extends GetxController {
       if (content.trim().isEmpty) {
         return;
       }
+      stopTyping();
 
       // Ensure socket is connected
       if (!_chatService.socketService.isConnected) {
@@ -681,6 +762,7 @@ class ChatController extends GetxController {
       if (currentPatientId == null) {
         throw ApiException('لا يوجد مريض محدد');
       }
+      stopTyping();
 
       // Create a temporary message to show with loading indicator
       final currentUser = _authController.currentUser.value;
@@ -752,6 +834,48 @@ class ChatController extends GetxController {
     }
   }
 
+  Future<void> editMessage({
+    required String messageId,
+    required String newContent,
+  }) async {
+    if (newContent.trim().isEmpty || currentPatientId == null) return;
+    final index = messages.indexWhere((m) => m.id == messageId);
+    if (index < 0) return;
+
+    final old = messages[index];
+    final optimistic = MessageModel(
+      id: old.id,
+      senderId: old.senderId,
+      receiverId: old.receiverId,
+      message: newContent.trim(),
+      timestamp: old.timestamp,
+      isRead: old.isRead,
+      imageUrl: old.imageUrl,
+      roomId: old.roomId,
+      senderRole: old.senderRole,
+    );
+    messages[index] = optimistic;
+
+    try {
+      final updated = await _chatService.editTextMessage(
+        patientId: currentPatientId!,
+        messageId: messageId,
+        content: newContent.trim(),
+        doctorId: currentDoctorId,
+      );
+      final updatedIndex = messages.indexWhere((m) => m.id == messageId);
+      if (updatedIndex >= 0) {
+        messages[updatedIndex] = updated;
+      }
+    } catch (e) {
+      final rollbackIndex = messages.indexWhere((m) => m.id == messageId);
+      if (rollbackIndex >= 0) {
+        messages[rollbackIndex] = old;
+      }
+      await NetworkUtils.showError(e, fallbackMessage: 'فشل تعديل الرسالة');
+    }
+  }
+
   // تعليم الرسائل كمقروءة
   Future<void> markAsRead(String messageId) async {
     try {
@@ -799,8 +923,43 @@ class ChatController extends GetxController {
     currentDoctorId = null;
     currentRoomId = null;
     sendingMessageIds.clear();
+    _selfTypingStopTimer?.cancel();
+    _peerTypingHideTimer?.cancel();
+    _selfTypingActive = false;
+    isPeerTyping.value = false;
     // Don't disconnect socket - keep it connected for reuse between chats
     // _chatService.disconnect();
+  }
+
+  /// Notify peer about typing state.
+  void onComposerTextChanged(String value) {
+    final roomId = currentRoomId;
+    if (roomId == null || !_chatService.socketService.isConnected) return;
+
+    if (value.trim().isEmpty) {
+      stopTyping();
+      return;
+    }
+
+    if (!_selfTypingActive) {
+      _chatService.socketService.startTyping(roomId);
+      _selfTypingActive = true;
+    }
+
+    _selfTypingStopTimer?.cancel();
+    _selfTypingStopTimer = Timer(const Duration(milliseconds: 1400), stopTyping);
+  }
+
+  /// Explicitly stop typing event.
+  void stopTyping() {
+    final roomId = currentRoomId;
+    _selfTypingStopTimer?.cancel();
+    if (_selfTypingActive &&
+        roomId != null &&
+        _chatService.socketService.isConnected) {
+      _chatService.socketService.stopTyping(roomId);
+    }
+    _selfTypingActive = false;
   }
 
   List<MessageModel> getUnreadMessages(String userId) {

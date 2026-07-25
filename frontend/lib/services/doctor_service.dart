@@ -126,16 +126,43 @@ class DoctorService {
     }
   }
 
+  Future<PatientModel> updatePatientProfile({
+    required String patientId,
+    String? name,
+    String? gender,
+    int? age,
+    String? city,
+  }) async {
+    try {
+      final Map<String, dynamic> data = {};
+      if (name != null) data['name'] = name;
+      if (gender != null) data['gender'] = gender;
+      if (age != null) data['age'] = age;
+      if (city != null) data['city'] = city;
+
+      final response = await _api.patch(
+        ApiConstants.doctorUpdatePatient(patientId),
+        data: data,
+      );
+
+      if (response.statusCode == 200) {
+        return _mapPatientOutToModel(
+          (response.data as Map).cast<String, dynamic>(),
+        );
+      }
+      throw ApiException('فشل تحديث بيانات المريض');
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('فشل تحديث بيانات المريض: ${e.toString()}');
+    }
+  }
+
   // جلب قائمة المرضى للطبيب
   Future<List<PatientModel>> getMyPatients({
     int skip = 0,
     int limit = 50,
   }) async {
     try {
-      print('🏥 [DoctorService] Fetching patients for doctor...');
-      print('   📋 Endpoint: ${ApiConstants.doctorPatients}');
-      print('   📋 Skip: $skip, Limit: $limit');
-      
       final response = await _api.get(
         ApiConstants.doctorPatients,
         queryParameters: {
@@ -144,61 +171,64 @@ class DoctorService {
         },
       );
 
-      print('🏥 [DoctorService] Response status: ${response.statusCode}');
-      print('🏥 [DoctorService] Response data type: ${response.data.runtimeType}');
-      print('🏥 [DoctorService] Response data: ${response.data}');
+      if (response.statusCode == 200) {
+        final data = _unwrapPatientsResponse(response.data);
+        return _mapPatientsList(data);
+      }
+      throw ApiException('فشل جلب قائمة المرضى');
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('فشل جلب قائمة المرضى: ${e.toString()}');
+    }
+  }
+
+  List<dynamic> _unwrapPatientsResponse(dynamic responseData) {
+    if (responseData is List) return responseData;
+    if (responseData is Map) {
+      if (responseData['data'] is List) return responseData['data'] as List;
+      if (responseData['patients'] is List) {
+        return responseData['patients'] as List;
+      }
+    }
+    throw ApiException('تنسيق استجابة غير متوقع');
+  }
+
+  List<PatientModel> _mapPatientsList(List<dynamic> data) {
+    final patients = <PatientModel>[];
+    for (final item in data) {
+      if (item is Map) {
+        patients.add(
+          _mapPatientOutToModel(Map<String, dynamic>.from(item)),
+        );
+      }
+    }
+    return patients;
+  }
+
+  // ⭐ البحث عن المرضى (للطبيب) — من السيرفر مباشرة
+  Future<List<PatientModel>> searchMyPatients({
+    required String searchQuery,
+    int skip = 0,
+    int limit = 50,
+  }) async {
+    try {
+      final response = await _api.get(
+        ApiConstants.doctorPatients,
+        queryParameters: {
+          'skip': skip,
+          'limit': limit,
+          'search': searchQuery,
+        },
+      );
 
       if (response.statusCode == 200) {
-        // Handle different response formats
-        dynamic responseData = response.data;
-        
-        // Check if it's already a List
-        if (responseData is! List) {
-          print('⚠️ [DoctorService] Response is not a List, trying to parse...');
-          // Maybe it's wrapped in a map?
-          if (responseData is Map) {
-            if (responseData.containsKey('data')) {
-              responseData = responseData['data'];
-            } else if (responseData.containsKey('patients')) {
-              responseData = responseData['patients'];
-            } else {
-              print('❌ [DoctorService] Response is a Map but no data/patients key found');
-              print('   Keys: ${responseData.keys}');
-              throw ApiException('تنسيق استجابة غير متوقع');
-            }
-          } else {
-            print('❌ [DoctorService] Response is neither List nor Map');
-            throw ApiException('تنسيق استجابة غير متوقع');
-          }
-        }
-        
-        final data = responseData as List;
-        print('🏥 [DoctorService] Found ${data.length} patients');
-        
-        if (data.isEmpty) {
-          print('⚠️ [DoctorService] No patients found. Make sure patients are assigned to this doctor.');
-          print('   💡 Patients need to have primary_doctor_id or secondary_doctor_id set.');
-        } else {
-          print('🏥 [DoctorService] First patient sample: ${data.isNotEmpty ? data.first : "N/A"}');
-        }
-        
-        final patients = data
-            .map((json) => _mapPatientOutToModel(json))
-            .toList();
-        
-        print('✅ [DoctorService] Successfully mapped ${patients.length} patients');
-        return patients;
-      } else {
-        print('❌ [DoctorService] Failed with status: ${response.statusCode}');
-        print('❌ [DoctorService] Response: ${response.data}');
-        throw ApiException('فشل جلب قائمة المرضى');
+        final data = _unwrapPatientsResponse(response.data);
+        return _mapPatientsList(data);
       }
+      throw ApiException('فشل البحث عن المرضى');
     } catch (e) {
-      print('❌ [DoctorService] Error: $e');
-      if (e is ApiException) {
-        rethrow;
-      }
-      throw ApiException('فشل جلب قائمة المرضى: ${e.toString()}');
+      if (e is ApiException) rethrow;
+      throw ApiException('فشل البحث عن المرضى: ${e.toString()}');
     }
   }
 
@@ -603,27 +633,45 @@ class DoctorService {
   Future<GalleryImageModel> uploadGalleryImage(
     String patientId,
     File imageFile,
-    String? note,
-  ) async {
+    String? note, {
+    String? idempotencyKey,
+  }) async {
     try {
       print('📸 [DoctorService] Uploading gallery image for patient: $patientId');
-      
+      final multipartFile = await _buildMultipartFile(imageFile: imageFile);
+
       final formData = dio.FormData.fromMap({
-        'image': await dio.MultipartFile.fromFile(
-          imageFile.path,
-          filename: imageFile.path.split('/').last,
-        ),
+        'image': multipartFile,
         if (note != null && note.isNotEmpty) 'note': note,
       });
 
       final response = await _api.post(
         ApiConstants.doctorPatientGallery(patientId),
         formData: formData,
+        options: dio.Options(
+          headers: idempotencyKey == null || idempotencyKey.isEmpty
+              ? null
+              : {'X-Idempotency-Key': idempotencyKey},
+          sendTimeout: const Duration(seconds: 120),
+          receiveTimeout: const Duration(seconds: 120),
+        ),
       );
 
-      if (response.statusCode == 200) {
+      if (response.statusCode == 200 || response.statusCode == 201) {
         print('✅ [DoctorService] Image uploaded successfully');
-        return GalleryImageModel.fromJson(response.data);
+        final body = response.data;
+        if (body is Map<String, dynamic>) {
+          final payload = (body['image'] is Map)
+              ? Map<String, dynamic>.from(body['image'] as Map)
+              : body;
+          return GalleryImageModel.fromJson(payload);
+        }
+        if (body is Map) {
+          return GalleryImageModel.fromJson(
+            Map<String, dynamic>.from(body),
+          );
+        }
+        throw ApiException('استجابة غير صالحة من الخادم بعد رفع الصورة');
       } else {
         throw ApiException('فشل رفع الصورة');
       }
@@ -780,6 +828,69 @@ class DoctorService {
         rethrow;
       }
       throw ApiException('فشل حذف الصورة: ${e.toString()}');
+    }
+  }
+
+  /// جلب مخطط الأسنان (FDI) للمريض.
+  Future<Map<String, dynamic>> getDentalChart(String patientId) async {
+    try {
+      final response = await _api.get(
+        ApiConstants.patientDentalChart(patientId),
+      );
+      if (response.statusCode == 200) {
+        final data = response.data;
+        if (data is Map) {
+          return Map<String, dynamic>.from(data);
+        }
+        return <String, dynamic>{};
+      }
+      throw ApiException('فشل جلب مخطط الأسنان');
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('فشل جلب مخطط الأسنان: ${e.toString()}');
+    }
+  }
+
+  /// حفظ/استبدال مخطط الأسنان بالكامل.
+  Future<Map<String, dynamic>> upsertDentalChart({
+    required String patientId,
+    required Map<String, List<String>> chart,
+    required Map<String, List<Map<String, dynamic>>> notes,
+    String? selectedTooth,
+  }) async {
+    try {
+      final notesPayload = <String, dynamic>{};
+      notes.forEach((tooth, entries) {
+        notesPayload[tooth] = entries.map((e) {
+          return {
+            'text': e['text'] ?? e['note'] ?? '',
+            'createdAt': e['createdAt'] ?? e['created_at'],
+            'created_at': e['created_at'] ?? e['createdAt'],
+          };
+        }).toList();
+      });
+
+      final response = await _api.put(
+        ApiConstants.patientDentalChart(patientId),
+        data: {
+          'chart': chart,
+          'notes': notesPayload,
+          'selected_tooth': selectedTooth,
+          'selectedTooth': selectedTooth,
+        },
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final data = response.data;
+        if (data is Map) {
+          return Map<String, dynamic>.from(data);
+        }
+        return <String, dynamic>{};
+      }
+      throw ApiException('فشل حفظ مخطط الأسنان');
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('فشل حفظ مخطط الأسنان: ${e.toString()}');
     }
   }
 

@@ -26,14 +26,15 @@ class DoctorChatsScreen extends GetView<DoctorChatsScreenController> {
     return Theme(
       data: cairoTheme,
       child: Scaffold(
-        backgroundColor: const Color(0xFFF4FEFF),
+        backgroundColor: const Color(0xFFF4F8FF),
         appBar: PreferredSize(
           preferredSize: Size.fromHeight(kToolbarHeight),
           child: Directionality(
             textDirection: ui.TextDirection.ltr, // keep back button on LEFT always
             child: AppBar(
-              backgroundColor: const Color(0xFFF4FEFF),
+              backgroundColor: Colors.transparent,
               elevation: 0,
+              scrolledUnderElevation: 0,
               automaticallyImplyLeading: false,
               leading: Padding(
                 padding: EdgeInsets.only(left: 16.w),
@@ -47,9 +48,9 @@ class DoctorChatsScreen extends GetView<DoctorChatsScreenController> {
                   child: Text(
                     'المحادثات',
                     style: AppFonts.lamaSans(
-                      fontSize: 22.sp,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
+                      fontSize: 26.sp,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF1F2A44),
                     ),
                   ),
                 ),
@@ -59,262 +60,314 @@ class DoctorChatsScreen extends GetView<DoctorChatsScreenController> {
           ),
         ),
         body: Obx(() {
-        // Show loading widget when loading and list is empty
-        if (controller.isLoading.value && controller.chatList.isEmpty) {
-          return const LoadingWidget(message: 'جاري تحميل المحادثات...');
-        }
+          if (controller.isLoading.value && controller.chatList.isEmpty) {
+            return const LoadingWidget(message: 'جاري تحميل المحادثات...');
+          }
 
-        if (controller.chatList.isEmpty) {
-          return EmptyStateWidget(
-            icon: Icons.chat_bubble_outline,
-            title: 'لا توجد محادثات',
-            subtitle: 'لم يتم بدء أي محادثات بعد',
+          final unreadTotal = controller.chatList.fold<int>(
+            0,
+            (sum, item) => sum + ((item['unread_count'] as int?) ?? 0),
           );
-        }
+          final chats = controller.filteredChatList;
 
-        return RefreshIndicator(
-          onRefresh: controller.loadChatList,
-          child: ListView.separated(
-            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
-            itemBuilder: (_, i) {
-              final chatItem = controller.chatList[i];
-
-              // Get patient name
-              String name = chatItem['patient_name'] ?? 'مريض';
-
-              // Get last message
-              String last = chatItem['last_message'] ?? 'لا توجد رسائل';
-
-              // Get unread count
-              int unread = chatItem['unread_count'] ?? 0;
-
-              // Get patient image
-              String? userImageUrl = chatItem['patient_image_url'];
-
-              // Format time
-              String timeText = '';
-              if (chatItem['last_message_time'] != null) {
-                try {
-                  // Parse UTC time and convert to local
-                  final dateTime = DateTime.parse(
-                    chatItem['last_message_time'],
-                  ).toLocal();
-                  final now = DateTime.now();
-                  final difference = now.difference(dateTime);
-
-                  if (difference.inDays == 0) {
-                    // Today - show time in 12-hour format
-                    final hour = dateTime.hour;
-                    final minute = dateTime.minute.toString().padLeft(2, '0');
-
-                    String period;
-                    int displayHour;
-
-                    if (hour == 0) {
-                      displayHour = 12;
-                      period = 'ص';
-                    } else if (hour < 12) {
-                      displayHour = hour;
-                      period = 'ص';
-                    } else if (hour == 12) {
-                      displayHour = 12;
-                      period = 'م';
-                    } else {
-                      displayHour = hour - 12;
-                      period = 'م';
-                    }
-
-                    timeText = '$displayHour:$minute $period';
-                  } else if (difference.inDays == 1) {
-                    timeText = 'أمس';
-                  } else if (difference.inDays < 7) {
-                    timeText = DateFormat('EEEE', 'ar').format(dateTime);
-                  } else {
-                    timeText = DateFormat('dd/MM/yyyy', 'ar').format(dateTime);
-                  }
-                } catch (e) {
-                  timeText = '';
-                }
-              }
-
-              return InkWell(
-                borderRadius: BorderRadius.circular(16.r),
-                onTap: () => controller.openChat(chatItem['patient_id']),
-                child: Container(
-                  padding: EdgeInsets.symmetric(vertical: 14.h),
+          return Column(
+            children: [
+              Container(
+                margin: EdgeInsets.fromLTRB(16.w, 10.h, 16.w, 10.h),
+                padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 14.h),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF4A90D9), Color(0xFF2F5FA7)],
+                    begin: Alignment.topRight,
+                    end: Alignment.bottomLeft,
+                  ),
+                  borderRadius: BorderRadius.circular(22.r),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF2F5FA7).withValues(alpha: 0.24),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Directionality(
+                  textDirection: ui.TextDirection.rtl,
                   child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // image at the right (في RTL)
-                      Builder(
-                        builder: (context) {
-                          final validImageUrl = ImageUtils.convertToValidUrl(
-                            userImageUrl,
-                          );
-                          final hasImage =
-                              validImageUrl != null &&
-                              ImageUtils.isValidImageUrl(validImageUrl);
-
-                          return CircleAvatar(
-                            radius: 28.r,
-                            backgroundColor: Colors.white,
-                            child: ClipOval(
-                              child: hasImage
-                                  ? CachedNetworkImage(
-                                      imageUrl: validImageUrl,
-                                      width: 50.w,
-                                      height: 50.w,
-                                      fit: BoxFit.cover,
-                                      fadeInDuration: Duration.zero,
-                                      fadeOutDuration: Duration.zero,
-                                      memCacheWidth: 112,
-                                      memCacheHeight: 112,
-                                      placeholder: (context, url) => Container(
-                                        width: 50.w,
-                                        height: 50.w,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          gradient: LinearGradient(
-                                            colors: [
-                                              AppColors.primary,
-                                              AppColors.secondary,
-                                            ],
-                                          ),
-                                        ),
-                                        child: Icon(
-                                          Icons.person,
-                                          color: AppColors.white,
-                                          size: 28.sp,
-                                        ),
-                                      ),
-                                      errorWidget: (context, url, error) =>
-                                          Container(
-                                            width: 50.w,
-                                            height: 50.w,
-                                            decoration: BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              gradient: LinearGradient(
-                                                colors: [
-                                                  AppColors.primary,
-                                                  AppColors.secondary,
-                                                ],
-                                              ),
-                                            ),
-                                            child: Icon(
-                                              Icons.person,
-                                              color: AppColors.white,
-                                              size: 28.sp,
-                                            ),
-                                          ),
-                                    )
-                                  : Container(
-                                      width: 56.w,
-                                      height: 56.w,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        gradient: LinearGradient(
-                                          colors: [
-                                            AppColors.primary,
-                                            AppColors.secondary,
-                                          ],
-                                        ),
-                                      ),
-                                      child: Icon(
-                                        Icons.person,
-                                        color: AppColors.white,
-                                        size: 28.sp,
-                                      ),
-                                    ),
-                            ),
-                          );
-                        },
+                      Container(
+                        width: 44.w,
+                        height: 44.w,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.22),
+                          borderRadius: BorderRadius.circular(14.r),
+                        ),
+                        child: Icon(
+                          Icons.chat_rounded,
+                          color: AppColors.white,
+                          size: 24.sp,
+                        ),
                       ),
                       SizedBox(width: 12.w),
-                      // name + last message
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    name,
-                                    style: AppFonts.lamaSans(
-                                      fontSize: 14.sp,
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.textPrimary,
-                                    ),
-                                    textAlign: TextAlign.right,
-                                  ),
-                                ),
-                                if (timeText.isNotEmpty) ...[
-                                  SizedBox(width: 8.w),
-                                  Text(
-                                    timeText,
-                                    style: AppFonts.lamaSans(
-                                      fontSize: 12.sp,
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                            SizedBox(height: 6.h),
                             Text(
-                              last,
+                              'تواصل مع مرضاك بسهولة',
                               style: AppFonts.lamaSans(
-                                fontSize: 16.sp,
-                                color: AppColors.textSecondary,
+                                fontSize: 14.sp,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.white,
                               ),
-                              textAlign: TextAlign.right,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                            ),
+                            SizedBox(height: 5.h),
+                            Text(
+                              '${controller.chatList.length} محادثة • $unreadTotal غير مقروءة',
+                              style: AppFonts.lamaSans(
+                                fontSize: 12.sp,
+                                fontWeight: FontWeight.w500,
+                                color: AppColors.white.withValues(alpha: 0.88),
+                              ),
                             ),
                           ],
                         ),
                       ),
-                      SizedBox(width: 12.w),
-                      // arrow + unread badge at the end (left in RTL)
-                      Column(
-                        children: [
-                          Icon(
-                            Icons.keyboard_arrow_left,
-                            color: AppColors.textSecondary,
-                          ),
-                          if (unread > 0)
-                            Container(
-                              width: 30.w,
-                              height: 30.w,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF7CC7D0),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Center(
-                                child: Text(
-                                  '$unread',
-                                  style: AppFonts.lamaSans(
-                                    fontSize: 14.sp,
-                                    fontWeight: FontWeight.w900,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
+                    ],
+                  ),
+                ),
+              ),
+              Container(
+                margin: EdgeInsets.fromLTRB(16.w, 0, 16.w, 8.h),
+                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 2.h),
+                decoration: BoxDecoration(
+                  color: AppColors.white,
+                  borderRadius: BorderRadius.circular(16.r),
+                  border: Border.all(color: const Color(0xFFE4ECF6)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF1F2A44).withValues(alpha: 0.05),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: TextField(
+                  textDirection: ui.TextDirection.rtl,
+                  onChanged: (value) => controller.searchQuery.value = value,
+                  decoration: InputDecoration(
+                    hintText: 'ابحث باسم المريض أو آخر رسالة',
+                    hintStyle: AppFonts.lamaSans(
+                      fontSize: 13.sp,
+                      color: const Color(0xFF9BA9BC),
+                    ),
+                    border: InputBorder.none,
+                    prefixIcon: Icon(
+                      Icons.search_rounded,
+                      color: const Color(0xFF7D8FA8),
+                      size: 20.sp,
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: chats.isEmpty
+                    ? EmptyStateWidget(
+                        icon: Icons.chat_bubble_outline_rounded,
+                        title: controller.searchQuery.value.trim().isEmpty
+                            ? 'لا توجد محادثات'
+                            : 'لا توجد نتائج',
+                        subtitle: controller.searchQuery.value.trim().isEmpty
+                            ? 'لم يتم بدء أي محادثات بعد'
+                            : 'جرّب كلمة بحث مختلفة',
+                      )
+                    : RefreshIndicator(
+                        onRefresh: controller.loadChatList,
+                        child: ListView.separated(
+                          padding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 16.h),
+                          itemCount: chats.length,
+                          separatorBuilder: (_, __) => SizedBox(height: 10.h),
+                          itemBuilder: (_, i) => _buildChatCard(chats[i]),
+                        ),
+                      ),
+              ),
+            ],
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _buildChatCard(Map<String, dynamic> chatItem) {
+    final name = (chatItem['patient_name'] as String?) ?? 'مريض';
+    final rawLast = (chatItem['last_message'] as String?) ?? 'لا توجد رسائل';
+    final last = _stripReplyMeta(rawLast);
+    final unread = (chatItem['unread_count'] as int?) ?? 0;
+    final timeText = _formatTime(chatItem['last_message_time']?.toString());
+    final imageUrl = ImageUtils.convertToValidUrl(chatItem['patient_image_url']);
+    final hasImage = imageUrl != null && ImageUtils.isValidImageUrl(imageUrl);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18.r),
+        onTap: () => controller.openChat(
+          chatItem['patient_id'],
+          patientName: chatItem['patient_name']?.toString(),
+          patientImageUrl: chatItem['patient_image_url']?.toString(),
+        ),
+        child: Ink(
+          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
+          decoration: BoxDecoration(
+            color: AppColors.white,
+            borderRadius: BorderRadius.circular(18.r),
+            border: Border.all(color: const Color(0xFFE4ECF6)),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF1F2A44).withValues(alpha: 0.06),
+                blurRadius: 14,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Directionality(
+            textDirection: ui.TextDirection.rtl,
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 27.r,
+                  backgroundColor: const Color(0xFFE9F3FF),
+                  child: ClipOval(
+                    child: hasImage
+                        ? CachedNetworkImage(
+                            imageUrl: imageUrl,
+                            width: 54.w,
+                            height: 54.w,
+                            fit: BoxFit.cover,
+                            fadeInDuration: Duration.zero,
+                            fadeOutDuration: Duration.zero,
+                            memCacheWidth: 120,
+                            memCacheHeight: 120,
+                            errorWidget: (_, __, ___) => Icon(
+                              Icons.person,
+                              color: AppColors.primary,
+                              size: 24.sp,
                             ),
-                        ],
+                          )
+                        : Icon(
+                            Icons.person,
+                            color: AppColors.primary,
+                            size: 24.sp,
+                          ),
+                  ),
+                ),
+                SizedBox(width: 12.w),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: AppFonts.lamaSans(
+                          fontSize: 17.sp,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF1F2A44),
+                        ),
+                        textAlign: TextAlign.right,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      SizedBox(height: 6.h),
+                      Text(
+                        last,
+                        style: AppFonts.lamaSans(
+                          fontSize: 14.sp,
+                          fontWeight: unread > 0 ? FontWeight.w700 : FontWeight.w500,
+                          color: unread > 0
+                              ? const Color(0xFF2E486A)
+                              : const Color(0xFF8193A9),
+                        ),
+                        textAlign: TextAlign.right,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
-              );
-            },
-            separatorBuilder: (_, __) =>
-                Divider(color: AppColors.divider, height: 1),
-            itemCount: controller.chatList.length,
+                SizedBox(width: 10.w),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      timeText,
+                      style: AppFonts.lamaSans(
+                        fontSize: 11.sp,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF93A4BA),
+                      ),
+                    ),
+                    SizedBox(height: 8.h),
+                    if (unread > 0)
+                      Container(
+                        constraints: BoxConstraints(minWidth: 24.w),
+                        height: 24.w,
+                        padding: EdgeInsets.symmetric(horizontal: 6.w),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          borderRadius: BorderRadius.circular(99.r),
+                        ),
+                        child: Center(
+                          child: Text(
+                            unread > 99 ? '99+' : '$unread',
+                            style: AppFonts.lamaSans(
+                              fontSize: 11.sp,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.white,
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      Icon(
+                        Icons.chevron_left_rounded,
+                        color: const Color(0xFFB7C3D3),
+                        size: 22.sp,
+                      ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        );
-        }),
+        ),
       ),
     );
+  }
+
+  String _formatTime(String? raw) {
+    if (raw == null || raw.isEmpty) return '';
+    try {
+      final dateTime = DateTime.parse(raw).toLocal();
+      final now = DateTime.now();
+      final diff = now.difference(dateTime);
+      if (diff.inDays == 0) {
+        final hour = dateTime.hour;
+        final minute = dateTime.minute.toString().padLeft(2, '0');
+        final period = hour < 12 ? 'ص' : 'م';
+        final displayHour = hour == 0
+            ? 12
+            : hour > 12
+                ? hour - 12
+                : hour;
+        return '$displayHour:$minute $period';
+      }
+      if (diff.inDays == 1) return 'أمس';
+      if (diff.inDays < 7) return DateFormat('EEEE', 'ar').format(dateTime);
+      return DateFormat('dd/MM/yyyy', 'ar').format(dateTime);
+    } catch (_) {
+      return '';
+    }
+  }
+
+  String _stripReplyMeta(String value) {
+    return value.replaceFirst(RegExp(r'^\[reply:[^:\]]+::[^\]]*\]\n'), '');
   }
 }

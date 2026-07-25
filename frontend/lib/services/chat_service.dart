@@ -141,6 +141,35 @@ class ChatService {
     }
   }
 
+  // تعديل رسالة نصية
+  Future<MessageModel> editTextMessage({
+    required String patientId,
+    required String messageId,
+    required String content,
+    String? doctorId,
+  }) async {
+    try {
+      final payload = <String, dynamic>{
+        'content': content,
+        if (doctorId != null && doctorId.isNotEmpty) 'doctor_id': doctorId,
+      };
+
+      final response = await _api.patch(
+        ApiConstants.chatUpdateMessage(patientId, messageId),
+        data: payload,
+      );
+
+      final data = response.data;
+      if (data is Map) {
+        return MessageModel.fromJson(Map<String, dynamic>.from(data));
+      }
+      throw ApiException('فشل تعديل الرسالة');
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('فشل تعديل الرسالة: ${e.toString()}');
+    }
+  }
+
   // تعليم رسالة كمقروءة
   Future<void> markAsRead({
     required String roomId,

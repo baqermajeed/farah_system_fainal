@@ -91,10 +91,12 @@ class GalleryController extends GetxController {
       galleryImages.insert(0, tempImage);
 
       // 2) رفع فعلي للسيرفر
+      final operationId = DateTime.now().microsecondsSinceEpoch.toString();
       final newImage = await _doctorService.uploadGalleryImage(
         patientId,
         imageFile,
         note,
+        idempotencyKey: operationId,
       );
 
       // 3) استبدال الصورة المؤقتة بالحقيقية

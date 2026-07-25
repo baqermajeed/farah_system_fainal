@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:farah_sys_final/controllers/appointment_controller.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
+import 'package:farah_sys_final/controllers/dental_chart_controller.dart';
 import 'package:farah_sys_final/controllers/gallery_controller.dart';
 import 'package:farah_sys_final/controllers/implant_stage_controller.dart';
 import 'package:farah_sys_final/controllers/medical_record_controller.dart';
@@ -33,6 +34,7 @@ class PatientDetailsController extends GetxController
 
   late final GalleryController galleryController;
   late final MedicalRecordController medicalRecordController;
+  late final DentalChartController dentalChartController;
 
   late final TabController tabController;
   final RxInt currentTabIndex = 0.obs;
@@ -73,18 +75,24 @@ class PatientDetailsController extends GetxController
 
     // If we came from an appointment tap, open the "المواعيد" tab by default.
     tabController = TabController(
-      length: 3,
+      length: 4,
       vsync: this,
       initialIndex: selectedAppointmentId != null ? 1 : 0,
     );
 
-    // Keep an Rx mirror of the tab index for reactive UI updates.
-    tabController.addListener(() {
-      currentTabIndex.value = tabController.index;
-    });
+    tabController.addListener(_onTabChanged);
 
     galleryController = Get.put(GalleryController());
     medicalRecordController = Get.put(MedicalRecordController());
+    dentalChartController = Get.put(DentalChartController());
+  }
+
+  void _onTabChanged() {
+    if (tabController.indexIsChanging) return;
+    final index = tabController.index;
+    if (currentTabIndex.value != index) {
+      currentTabIndex.value = index;
+    }
   }
 
   @override
@@ -101,7 +109,7 @@ class PatientDetailsController extends GetxController
         // For receptionist, ensure patients list is loaded so getPatientById works
         final patient = patientController.getPatientById(patientId!);
         if (patient == null) {
-          await patientController.loadPatients();
+          await patientController.reloadPatientsList();
         }
         loadPatientDoctors(patientId!);
       } else {
@@ -109,6 +117,7 @@ class PatientDetailsController extends GetxController
         appointmentController.loadPatientAppointmentsById(patientId!);
         galleryController.loadGallery(patientId!);
         medicalRecordController.loadPatientRecords(patientId!);
+        dentalChartController.bindPatient(patientId!);
         loadUnreadCount();
 
         // Load implant stages if treatment type is زراعة
@@ -126,6 +135,7 @@ class PatientDetailsController extends GetxController
 
   @override
   void onClose() {
+    tabController.removeListener(_onTabChanged);
     tabController.dispose();
     super.onClose();
   }

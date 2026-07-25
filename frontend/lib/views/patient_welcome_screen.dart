@@ -142,7 +142,7 @@ class PatientWelcomeScreen extends GetView<PatientWelcomeController> {
                                 .authController.currentUser.value?.name;
                             final displayName =
                                 profileName ?? userName ?? 'المريض';
-
+                            
                             return Text(
                               'مرحباً،\n$displayName',
                               textAlign: TextAlign.right,

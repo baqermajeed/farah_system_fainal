@@ -84,9 +84,16 @@ class ApiException implements Exception {
     if (statusCode == 404) {
       return NotFoundException(message, data: data);
     }
-    if (statusCode >= 500) {
+    if (statusCode == 502 || statusCode == 503 || statusCode == 504) {
       return NetworkException(
         'تحقق من اتصالك بالإنترنت ثم حاول مرة أخرى.',
+      );
+    }
+    if (statusCode >= 500) {
+      return ServerException(
+        message.isEmpty ? 'حدث خطأ في الخادم، حاول مرة أخرى.' : message,
+        statusCode: statusCode,
+        data: data,
       );
     }
     if (_looksLikeConnectionWording(message)) {

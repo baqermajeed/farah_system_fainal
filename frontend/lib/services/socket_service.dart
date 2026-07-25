@@ -281,6 +281,32 @@ class SocketService {
     _socket!.emit('send_message', data);
   }
 
+  /// Edit message (if backend supports Socket event).
+  void editMessage({
+    required String roomId,
+    required String messageId,
+    required String content,
+  }) {
+    if (_socket == null || !_isConnected) return;
+    _socket!.emit('edit_message', {
+      'room_id': roomId,
+      'message_id': messageId,
+      'content': content,
+    });
+  }
+
+  /// Notify room that current user is typing.
+  void startTyping(String roomId) {
+    if (_socket == null || !_isConnected) return;
+    _socket!.emit('typing_start', {'room_id': roomId});
+  }
+
+  /// Notify room that current user stopped typing.
+  void stopTyping(String roomId) {
+    if (_socket == null || !_isConnected) return;
+    _socket!.emit('typing_stop', {'room_id': roomId});
+  }
+
   /// Mark messages as read
   void markAsRead(String roomId) {
     if (_socket == null || !_isConnected) {

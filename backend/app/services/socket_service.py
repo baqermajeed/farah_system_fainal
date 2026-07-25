@@ -463,6 +463,89 @@ async def send_message(sid: str, data: dict):
         await sio.emit('error', {'message': f'خطأ في إرسال الرسالة: {str(e)}', 'code': 'E500'}, room=sid)
 
 
+@sio.on('edit_message')
+async def edit_message(sid: str, data: dict):
+    """Edit an existing message content."""
+    try:
+        room_id = data.get('room_id')
+        message_id = data.get('message_id')
+        content = str(data.get('content', '')).strip()
+
+        if not room_id or not message_id:
+            await sio.emit('error', {'message': 'بيانات التعديل غير مكتملة', 'code': 'E400'}, room=sid)
+            return
+        if not content:
+            await sio.emit('error', {'message': 'لا يمكن حفظ رسالة فارغة', 'code': 'E400'}, room=sid)
+            return
+
+        user_data = socket_users.get(sid)
+        if not user_data:
+            await sio.emit('error', {'message': 'غير مصرح', 'code': 'E401'}, room=sid)
+            return
+        user = user_data['user']
+
+        try:
+            room = await ChatRoom.get(OID(room_id))
+            message = await ChatMessage.get(OID(message_id))
+        except Exception:
+            await sio.emit('error', {'message': 'العنصر المطلوب غير موجود', 'code': 'E404'}, room=sid)
+            return
+
+        room = await ensure_chat_room_user_ids(room)
+        if message.room_id != room.id:
+            await sio.emit('error', {'message': 'غير مصرح', 'code': 'E403'}, room=sid)
+            return
+        if message.sender_user_id != user.id:
+            await sio.emit('error', {'message': 'يمكنك تعديل رسائلك فقط', 'code': 'E403'}, room=sid)
+            return
+
+        if user.role == Role.DOCTOR and room.doctor_user_id != user.id:
+            await sio.emit('error', {'message': 'غير مصرح', 'code': 'E403'}, room=sid)
+            return
+        if user.role == Role.PATIENT and room.patient_user_id != user.id:
+            await sio.emit('error', {'message': 'غير مصرح', 'code': 'E403'}, room=sid)
+            return
+
+        message.content = content
+        await message.save()
+
+        if user.role == Role.DOCTOR:
+            receiver_id = str(room.patient_user_id) if room.patient_user_id else None
+            receiver_role = Role.PATIENT
+        elif user.role == Role.PATIENT:
+            receiver_id = str(room.doctor_user_id) if room.doctor_user_id else None
+            receiver_role = Role.DOCTOR
+        else:
+            receiver_id = None
+            receiver_role = None
+
+        message_data = {
+            "id": str(message.id),
+            "room_id": str(message.room_id),
+            "sender_user_id": str(message.sender_user_id) if message.sender_user_id else None,
+            "sender_role": message.sender_role,
+            "receiver_id": receiver_id,
+            "receiver_role": receiver_role,
+            "content": message.content,
+            "imageUrl": message.imageUrl,
+            "is_read": message.is_read,
+            "created_at": message.created_at.isoformat() if message.created_at else "",
+            "doctor_id": str(room.doctor_id) if room.doctor_id else None,
+            "doctor_user_id": str(room.doctor_user_id) if room.doctor_user_id else None,
+            "patient_id": str(room.patient_id) if room.patient_id else None,
+        }
+
+        await emit_message_updated_to_room(
+            str(room.id),
+            message_data,
+            receiver_user_id=receiver_id,
+        )
+        await sio.emit('message_updated', {'message': message_data}, room=sid)
+    except Exception as e:
+        print(f"❌ Error editing message: {e}")
+        await sio.emit('error', {'message': f'خطأ في تعديل الرسالة: {str(e)}', 'code': 'E500'}, room=sid)
+
+
 @sio.on('mark_read')
 async def mark_read(sid: str, data: dict):
     """Mark messages as read."""
@@ -526,6 +609,21 @@ async def emit_message_to_room(room_id: str, message_data: dict, receiver_user_i
             )
     except Exception as e:
         print(f"⚠️ Failed to emit message to room {room_id}: {e}")
+
+
+async def emit_message_updated_to_room(room_id: str, message_data: dict, receiver_user_id: str | None = None):
+    """Emit message update to a room and receiver inbox room."""
+    try:
+        room_key = f"room_{room_id}"
+        await sio.emit('message_updated', {'message': message_data}, room=room_key)
+        if receiver_user_id:
+            await sio.emit(
+                'message_updated',
+                {'message': message_data},
+                room=f"user_{receiver_user_id}",
+            )
+    except Exception as e:
+        print(f"⚠️ Failed to emit message update to room {room_id}: {e}")
 
 
 def get_socket_app():

@@ -26,4 +26,23 @@ class AppColors {
   static const Color onboardingDarkBlue = Color(0xFF3F6683); // rectangle behind illustration
   static const Color onboardingTitle = Color(0xFFF8B23C); // orange title
   static const Color onboardingButton = Color(0xFF4A88B8); // buttons and controls
+
+  // Doctor dashboard — modern UI palette
+  static const Color doctorSurface = Color(0xFFF8FAFC);
+  static const Color doctorCard = Color(0xFFFFFFFF);
+  static const Color doctorHeroStart = Color(0xFF4A90D9);
+  static const Color doctorHeroEnd = Color(0xFF6BB5F0);
+  static const Color doctorAccentGreen = Color(0xFF34C759);
+  static const Color doctorAccentPurple = Color(0xFF8B5CF6);
+  static const Color doctorAccentOrange = Color(0xFFFF9500);
+  static const Color doctorNavInactive = Color(0xFF94A3B8);
+  static const Color doctorLabel = Color(0xFF64748B);
+
+  static List<BoxShadow> get doctorCardShadow => [
+        BoxShadow(
+          color: const Color(0xFF64748B).withValues(alpha: 0.08),
+          blurRadius: 20,
+          offset: const Offset(0, 4),
+        ),
+      ];
 }

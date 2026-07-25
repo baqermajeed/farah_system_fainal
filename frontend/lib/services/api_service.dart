@@ -52,6 +52,12 @@ class ApiService {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
+          // For FormData requests, let Dio set multipart boundary headers.
+          if (options.data is dio.FormData) {
+            options.headers.remove(Headers.contentTypeHeader);
+            options.contentType = Headers.multipartFormDataContentType;
+          }
+
           // Add token to headers
           try {
             final token = await _tokenStorage.getAccessToken();

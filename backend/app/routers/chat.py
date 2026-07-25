@@ -11,8 +11,14 @@ from app.utils.chat_helpers import ensure_chat_room_user_ids, get_or_create_chat
 from app.utils.r2_clinic import upload_clinic_image
 from app.utils.patient_out import resolve_patient_identity, patient_name_hint_for_id
 from app.utils.logger import get_logger
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/chat", tags=["chat"]) 
+
+
+class ChatMessageEditIn(BaseModel):
+    content: str
+    doctor_id: Optional[str] = None
 
 async def _get_or_room_for_user(*, patient_id: str, user: User, doctor_id: str | None = None) -> ChatRoom:
     """الحصول على أو إنشاء غرفة محادثة بين الطبيب والمريض."""
@@ -420,6 +426,86 @@ async def send_message(
             is_read=False,
             created_at="",
         )
+
+
+@router.patch("/{patient_id}/messages/{message_id}", response_model=ChatMessageOut)
+async def edit_message(
+    patient_id: str,
+    message_id: str,
+    payload: ChatMessageEditIn,
+    current: User = Depends(get_current_user),
+):
+    """تعديل نص رسالة موجودة (لصاحب الرسالة فقط)."""
+    room = await _get_or_room_for_user(
+        patient_id=patient_id,
+        user=current,
+        doctor_id=payload.doctor_id,
+    )
+
+    try:
+        message = await ChatMessage.get(OID(message_id))
+    except Exception:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    if not message or message.room_id != room.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if message.sender_user_id != current.id:
+        raise HTTPException(status_code=403, detail="You can edit only your messages")
+
+    new_content = (payload.content or "").strip()
+    if not new_content:
+        raise HTTPException(status_code=400, detail="Message content cannot be empty")
+
+    message.content = new_content
+    await message.save()
+
+    if current.role == Role.DOCTOR:
+        receiver_id = str(room.patient_user_id) if room.patient_user_id else None
+        receiver_role = Role.PATIENT.value
+    elif current.role == Role.PATIENT:
+        receiver_id = str(room.doctor_user_id) if room.doctor_user_id else None
+        receiver_role = Role.DOCTOR.value
+    else:
+        receiver_id = None
+        receiver_role = None
+
+    message_data = {
+        "id": str(message.id),
+        "room_id": str(message.room_id),
+        "sender_user_id": str(message.sender_user_id) if message.sender_user_id else None,
+        "sender_role": message.sender_role,
+        "receiver_id": receiver_id,
+        "receiver_role": receiver_role,
+        "content": message.content,
+        "imageUrl": message.imageUrl,
+        "is_read": message.is_read,
+        "created_at": message.created_at.isoformat() if message.created_at else "",
+        "doctor_id": str(room.doctor_id) if room.doctor_id else None,
+        "doctor_user_id": str(room.doctor_user_id) if room.doctor_user_id else None,
+        "patient_id": str(room.patient_id) if room.patient_id else None,
+    }
+
+    try:
+        from app.services.socket_service import emit_message_updated_to_room
+
+        await emit_message_updated_to_room(
+            str(room.id),
+            message_data,
+            receiver_user_id=receiver_id,
+        )
+    except Exception as e:
+        print(f"⚠️ Failed to emit message update via Socket.IO: {e}")
+
+    return ChatMessageOut(
+        id=str(message.id),
+        room_id=str(message.room_id),
+        sender_user_id=str(message.sender_user_id) if message.sender_user_id else None,
+        sender_role=str(message.sender_role) if message.sender_role is not None else None,
+        content=message.content or "",
+        imageUrl=message.imageUrl,
+        is_read=bool(message.is_read),
+        created_at=message.created_at.isoformat() if message.created_at else "",
+    )
 
 @router.put("/rooms/{room_id}/messages/{message_id}/read", response_model=ChatMessageOut)
 async def mark_message_as_read(

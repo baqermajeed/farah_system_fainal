@@ -67,11 +67,15 @@ class ApiConstants {
   static const String receptionAssignPatient = '/reception/assign';
   static String receptionUploadPatientImage(String patientId) =>
       '/reception/patients/$patientId/upload-image';
+  static String receptionUpdatePatient(String patientId) =>
+      '/reception/patients/$patientId';
 
   // Doctor Endpoints
   static const String doctorPatients = '/doctor/patients';
   static const String doctorInactivePatients = '/doctor/patients/inactive';
   static const String doctorAddPatient = '/doctor/patients';
+  static String doctorUpdatePatient(String patientId) =>
+      '/doctor/patients/$patientId';
   static String doctorPatientTreatment(String patientId) =>
       '/doctor/patients/$patientId/treatment';
   static String doctorPatientNotes(String patientId) =>
@@ -101,6 +105,13 @@ class ApiConstants {
       '/doctor/patients/$patientId/upload-image';
   static const String doctorAppointments = '/doctor/appointments';
 
+  // Dental Chart (FDI)
+  static String patientDentalChart(String patientId) =>
+      '/patients/$patientId/dental-chart';
+  static String patientDentalTooth(String patientId, String toothNo) =>
+      '/patients/$patientId/dental-chart/teeth/$toothNo';
+  static const String dentalChartMeta = '/dental-chart/meta';
+
   // Implant Stages Endpoints
   static String getImplantStages(String patientId) =>
       '/patients/$patientId/implant-stages';
@@ -118,6 +129,8 @@ class ApiConstants {
   static String chatMessages(String patientId) => '/chat/$patientId/messages';
   static String chatSendMessage(String patientId) =>
       '/chat/$patientId/messages';
+  static String chatUpdateMessage(String patientId, String messageId) =>
+      '/chat/$patientId/messages/$messageId';
   static String chatMarkRead(String roomId, String messageId) =>
       '/chat/rooms/$roomId/messages/$messageId/read';
 

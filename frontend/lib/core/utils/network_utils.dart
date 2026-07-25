@@ -32,6 +32,7 @@ class NetworkUtils {
   /// Messages that must never appear in snackbars/dialogs (server / connection).
   static bool hasForbiddenConnectionText(String message) {
     final lower = message.toLowerCase();
+    if (lower.contains('internal server error')) return false;
     return message.contains('الخادم') ||
         message.contains('السيرفر') ||
         message.contains('تعذر الاتصال') ||
@@ -42,7 +43,6 @@ class NetworkUtils {
         message.contains('مشكلة بالسيرفر') ||
         message.contains('مشكلة في الخادم') ||
         message.contains('مشكلة بالخادم') ||
-        lower.contains('internal server') ||
         lower.contains('bad gateway') ||
         lower.contains('service unavailable') ||
         lower.contains('backend');
@@ -56,6 +56,13 @@ class NetworkUtils {
   /// Detect if an error is network-related or forbidden server/connection wording.
   static bool isNetworkError(Object error) {
     if (error is NetworkException) return true;
+    if (error is ApiException) {
+      final status = error.statusCode;
+      if (status != null) {
+        if (status == 502 || status == 503 || status == 504) return true;
+        if (status >= 500) return false;
+      }
+    }
 
     final message = _messageOf(error);
     if (hasForbiddenConnectionText(message)) return true;

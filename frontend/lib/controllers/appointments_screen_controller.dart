@@ -44,7 +44,7 @@ class AppointmentsScreenController extends GetxController
       appointmentController.loadDoctorAppointments();
       // Load patients to get their names and images
       if (patientController.patients.isEmpty) {
-        patientController.loadPatients();
+        patientController.reloadPatientsList();
       }
       // Load implant stages for patients with زراعة treatment
       loadImplantStages();

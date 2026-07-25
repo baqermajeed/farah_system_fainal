@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import 'package:farah_sys_final/controllers/chat_controller.dart';
 import 'package:farah_sys_final/controllers/patient_controller.dart';
 import 'package:farah_sys_final/controllers/presence_controller.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
+import 'package:farah_sys_final/models/message_model.dart';
 
 /// Controller لشاشة الدردشة الفردية — يملك حالة الواجهة الخاصة بهذه الشاشة
 /// (حقل النص، التمرير، اختيار الصور)، بينما يفوّض تحميل/إرسال الرسائل
@@ -21,19 +23,34 @@ class ChatScreenController extends GetxController {
   final TextEditingController messageController = TextEditingController();
   final ScrollController scrollController = ScrollController();
   final ImagePicker _imagePicker = ImagePicker();
+  final Rxn<MessageModel> replyingTo = Rxn<MessageModel>();
+  final Rxn<MessageModel> editingMessage = Rxn<MessageModel>();
+  final RxString highlightedMessageId = ''.obs;
 
   String? patientId;
+  String? patientNameArg;
+  String? patientImageUrlArg;
   String? doctorId;
   String? doctorName;
   String? doctorUserId;
   int _lastMessageCount = 0;
   bool _loadingOlder = false;
+  final Map<String, GlobalKey> _messageKeys = {};
+  Timer? _highlightTimer;
+  static final RegExp _replyMetaRegex = RegExp(
+    r'^\[reply:([^:\]]+)::([^\]]*)\]\n',
+  );
+  static final RegExp _replyImageMetaRegex = RegExp(
+    r'^\[reply_image:([^\]]*)\]\n',
+  );
 
   @override
   void onInit() {
     super.onInit();
     final args = Get.arguments as Map<String, dynamic>?;
     patientId = args?['patientId'];
+    patientNameArg = args?['patientName']?.toString();
+    patientImageUrlArg = args?['patientImageUrl']?.toString();
     doctorId = args?['doctorId'];
     doctorName = args?['doctorName'];
     doctorUserId = args?['doctorUserId']?.toString();
@@ -112,6 +129,9 @@ class ChatScreenController extends GetxController {
 
   @override
   void onClose() {
+    chatController.stopTyping();
+    _highlightTimer?.cancel();
+    _messageKeys.clear();
     messageController.dispose();
     scrollController.dispose();
     chatController.disconnect();
@@ -128,12 +148,25 @@ class ChatScreenController extends GetxController {
     }
     if (patientId != null) {
       final patient = patientController.getPatientById(patientId!);
+      final fallback = patientNameArg?.trim();
+      if (fallback != null && fallback.isNotEmpty) return fallback;
       return patient?.name ?? 'مريض';
     }
     return 'محادثة';
   }
 
   String? doctorImageUrl() {
+    final currentUserType =
+        authController.currentUser.value?.userType.toLowerCase();
+    if (currentUserType == 'doctor') {
+      if (patientId != null) {
+        final patient = patientController.getPatientById(patientId!);
+        final modelUrl = ImageUtils.convertToValidUrl(patient?.imageUrl);
+        if (modelUrl != null && modelUrl.isNotEmpty) return modelUrl;
+      }
+      return ImageUtils.convertToValidUrl(patientImageUrlArg);
+    }
+
     for (final doctor in patientController.myDoctors) {
       final id = doctor['id']?.toString();
       if (doctorId != null && id == doctorId) {
@@ -202,11 +235,26 @@ class ChatScreenController extends GetxController {
   }
 
   Future<void> sendMessage() async {
-    if (messageController.text.trim().isNotEmpty && patientId != null) {
-      await chatController.sendMessage(messageController.text.trim());
+    final raw = messageController.text.trim();
+    if (raw.isEmpty || patientId == null) return;
+
+    final editing = editingMessage.value;
+    if (editing != null) {
+      await chatController.editMessage(
+        messageId: editing.id,
+        newContent: raw,
+      );
       messageController.clear();
+      cancelEditing();
       scrollToBottom();
+      return;
     }
+
+    final payload = buildOutgoingText(raw);
+    await chatController.sendMessage(payload);
+    messageController.clear();
+    clearReply();
+    scrollToBottom();
   }
 
   Future<void> pickImage() async {
@@ -217,13 +265,15 @@ class ChatScreenController extends GetxController {
       );
 
       if (image != null && patientId != null) {
+        final payload = messageController.text.trim().isNotEmpty
+            ? buildOutgoingText(messageController.text.trim())
+            : null;
         await chatController.sendMessageWithImage(
           image: File(image.path),
-          content: messageController.text.trim().isNotEmpty
-              ? messageController.text.trim()
-              : null,
+          content: payload,
         );
         messageController.clear();
+        clearReply();
         scrollToBottom();
       }
     } catch (e) {
@@ -254,4 +304,250 @@ class ChatScreenController extends GetxController {
 
     return '$displayHour:$minute $period';
   }
+
+  void onComposerChanged(String value) {
+    chatController.onComposerTextChanged(value);
+  }
+
+  void setReply(MessageModel message) {
+    editingMessage.value = null;
+    replyingTo.value = message;
+  }
+
+  void clearReply() {
+    replyingTo.value = null;
+  }
+
+  void startEditing(MessageModel message) {
+    replyingTo.value = null;
+    editingMessage.value = message;
+    messageController.text = extractForwardText(message);
+    messageController.selection = TextSelection.fromPosition(
+      TextPosition(offset: messageController.text.length),
+    );
+  }
+
+  void cancelEditing() {
+    editingMessage.value = null;
+  }
+
+  GlobalKey messageKey(String messageId) {
+    return _messageKeys.putIfAbsent(messageId, () => GlobalKey());
+  }
+
+  void cleanupMessageKeys(Iterable<String> activeMessageIds) {
+    final keep = activeMessageIds.toSet();
+    _messageKeys.removeWhere((id, _) => !keep.contains(id));
+  }
+
+  MessageModel? findMessageById(String messageId) {
+    try {
+      return chatController.messages.firstWhere((m) => m.id == messageId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<bool> scrollToMessageById(String messageId) async {
+    for (var i = 0; i < 5; i++) {
+      final key = _messageKeys[messageId];
+      final context = key?.currentContext;
+      if (context != null) {
+        await Scrollable.ensureVisible(
+          context,
+          duration: const Duration(milliseconds: 420),
+          curve: Curves.easeOutCubic,
+          alignment: 0.45,
+        );
+
+        highlightedMessageId.value = messageId;
+        _highlightTimer?.cancel();
+        _highlightTimer = Timer(const Duration(seconds: 2), () {
+          if (highlightedMessageId.value == messageId) {
+            highlightedMessageId.value = '';
+          }
+        });
+        return true;
+      }
+
+      final hasTargetInLoadedList =
+          chatController.messages.any((m) => m.id == messageId);
+      if (hasTargetInLoadedList) {
+        await _scrollNearLoadedMessage(messageId);
+        await Future.delayed(const Duration(milliseconds: 140));
+        continue;
+      }
+
+      if (!chatController.hasMoreMessages.value) break;
+      await chatController.loadOlderMessages();
+      await Future.delayed(const Duration(milliseconds: 150));
+    }
+    return false;
+  }
+
+  Future<void> _scrollNearLoadedMessage(String messageId) async {
+    if (!scrollController.hasClients) return;
+    final total = chatController.messages.length;
+    if (total <= 1) return;
+
+    final logicalIndex =
+        chatController.messages.indexWhere((m) => m.id == messageId);
+    if (logicalIndex < 0) return;
+
+    final reverseIndex = total - 1 - logicalIndex;
+    final ratio = (reverseIndex / (total - 1)).clamp(0.0, 1.0);
+    final maxExtent = scrollController.position.maxScrollExtent;
+    final target = maxExtent * ratio;
+
+    await scrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  Future<bool> scrollToReplyTarget({
+    required String? messageId,
+    String? replySnippet,
+    String? replyImageUrl,
+  }) async {
+    final id = messageId?.trim() ?? '';
+    if (id.isNotEmpty) {
+      final byId = await scrollToMessageById(id);
+      if (byId) return true;
+    }
+
+    final normalizedReplyImage = _normalizeImageRef(replyImageUrl);
+    final snippet = (replySnippet ?? '').trim();
+
+    int score(MessageModel m) {
+      var s = 0;
+      if (snippet.isNotEmpty) {
+        final text = extractForwardText(m).trim();
+        if (text == snippet) s += 5;
+        if (text.contains(snippet) || snippet.contains(text)) s += 3;
+      }
+      if (normalizedReplyImage.isNotEmpty) {
+        final current = _normalizeImageRef(m.imageUrl);
+        if (current.isNotEmpty && current == normalizedReplyImage) s += 6;
+      }
+      return s;
+    }
+
+    MessageModel? best;
+    var bestScore = 0;
+    for (var i = 0; i < 5; i++) {
+      for (final m in chatController.messages) {
+        final sc = score(m);
+        if (sc > bestScore) {
+          bestScore = sc;
+          best = m;
+        }
+      }
+      if (bestScore >= 5) break;
+      if (!chatController.hasMoreMessages.value) break;
+      await chatController.loadOlderMessages();
+      await Future.delayed(const Duration(milliseconds: 150));
+    }
+
+    if (best != null && bestScore > 0) {
+      return scrollToMessageById(best.id);
+    }
+    return false;
+  }
+
+  String _normalizeImageRef(String? raw) {
+    if (raw == null) return '';
+    final value = raw.trim();
+    if (value.isEmpty) return '';
+    final url = ImageUtils.convertToValidUrl(value) ?? value;
+    final noQuery = url.split('?').first;
+    final normalized = noQuery.replaceAll('\\', '/');
+    final parts = normalized.split('/');
+    return parts.isEmpty ? normalized : parts.last.toLowerCase();
+  }
+
+  String buildOutgoingText(String content) {
+    final base = content.trim();
+    final reply = replyingTo.value;
+    if (reply == null) return base;
+    final snippet = _replySnippetFromMessage(reply);
+    final safeSnippet = snippet.replaceAll(']', ')').replaceAll('\n', ' ');
+    final imagePath = (reply.imageUrl ?? '').trim();
+    final imageMeta = imagePath.isEmpty
+        ? ''
+        : '[reply_image:${Uri.encodeComponent(imagePath)}]\n';
+    return '[reply:${reply.id}::$safeSnippet]\n$imageMeta$base';
+  }
+
+  ParsedChatMessage parseMessage(String raw) {
+    var input = raw;
+    final match = _replyMetaRegex.firstMatch(input);
+    if (match == null) {
+      return ParsedChatMessage(
+        text: raw,
+        replyMessageId: null,
+        replySnippet: null,
+        replyImageUrl: null,
+      );
+    }
+    final replyId = match.group(1);
+    final snippet = match.group(2);
+    input = input.substring(match.end);
+
+    String? replyImageUrl;
+    final imageMatch = _replyImageMetaRegex.firstMatch(input);
+    if (imageMatch != null) {
+      final encoded = imageMatch.group(1);
+      if (encoded != null && encoded.isNotEmpty) {
+        try {
+          replyImageUrl = Uri.decodeComponent(encoded);
+        } catch (_) {
+          replyImageUrl = encoded;
+        }
+      }
+      input = input.substring(imageMatch.end);
+    }
+
+    final text = input.trimLeft();
+    return ParsedChatMessage(
+      text: text,
+      replyMessageId: replyId,
+      replySnippet: (snippet == null || snippet.isEmpty) ? null : snippet,
+      replyImageUrl: replyImageUrl,
+    );
+  }
+
+  String _replySnippetFromMessage(MessageModel message) {
+    final parsed = parseMessage(message.message);
+    final clean = parsed.text.trim();
+    if (clean.isNotEmpty) {
+      if (clean.length <= 45) return clean;
+      return '${clean.substring(0, 45)}...';
+    }
+    if ((message.imageUrl ?? '').isNotEmpty) {
+      return 'صورة';
+    }
+    return 'رسالة';
+  }
+
+  String extractForwardText(MessageModel message) {
+    final parsed = parseMessage(message.message);
+    return parsed.text.trim();
+  }
+
+}
+
+class ParsedChatMessage {
+  ParsedChatMessage({
+    required this.text,
+    required this.replyMessageId,
+    required this.replySnippet,
+    required this.replyImageUrl,
+  });
+
+  final String text;
+  final String? replyMessageId;
+  final String? replySnippet;
+  final String? replyImageUrl;
 }
