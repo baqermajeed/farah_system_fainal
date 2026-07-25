@@ -174,6 +174,7 @@ async def doctor_appointments_breakdown_stats(
     date_to: Optional[str] = Query(None, description="تاريخ النهاية (ISO format)"),
     status: Optional[str] = Query(None, description="فلترة حالة الموعد: pending|scheduled|completed|cancelled|canceled|late"),
     stage_name: Optional[str] = Query(None, description="فلترة اسم مرحلة الزراعة"),
+    include_lists: bool = Query(False, description="إرجاع قوائم المواعيد التفصيلية"),
     current=Depends(require_roles([Role.ADMIN, Role.DOCTOR])),
 ):
     """تفصيل مواعيد الطبيب: يوم/شهر/فترة + توزيع الحالات + قائمة مواعيد اليوم."""
@@ -184,6 +185,7 @@ async def doctor_appointments_breakdown_stats(
         group=group,
         status=status,
         stage_name=stage_name,
+        include_lists=include_lists,
     )
 
 

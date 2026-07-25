@@ -309,9 +309,10 @@ class MyApp extends StatelessWidget {
               name: AppRoutes.doctorStats,
               page: () => const DoctorStatsScreen(),
               binding: BindingsBuilder(() {
-                if (!Get.isRegistered<DoctorStatsController>()) {
-                  Get.put<DoctorStatsController>(DoctorStatsController());
+                if (Get.isRegistered<DoctorStatsController>()) {
+                  Get.delete<DoctorStatsController>();
                 }
+                Get.put<DoctorStatsController>(DoctorStatsController());
               }),
             ),
             GetPage(

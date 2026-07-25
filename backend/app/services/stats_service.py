@@ -524,6 +524,7 @@ async def get_doctor_details_cards_stats(
     ]
     unknown_age_count = 0
     gender_counts = {"male": 0, "female": 0, "unknown": 0}
+    activity_counts = {"active": 0, "pending": 0, "inactive": 0}
     treatment_counts: dict[str, int] = defaultdict(int)
 
     doctor_key = str(did)
@@ -531,6 +532,12 @@ async def get_doctor_details_cards_stats(
         patient_user = user_map.get(patient.user_id)
         normalized_gender = _normalize_gender(getattr(patient_user, "gender", None))
         gender_counts[normalized_gender] += 1
+
+        status = (getattr(patient, "activity_status", "pending") or "pending").strip().lower()
+        if status in activity_counts:
+            activity_counts[status] += 1
+        else:
+            activity_counts["pending"] += 1
 
         age_value = getattr(patient_user, "age", None)
         if age_value is None:
@@ -564,15 +571,6 @@ async def get_doctor_details_cards_stats(
         key=lambda item: item[1],
         default=("لا يوجد", 0),
     )
-
-    # Transfers metrics (operations + statuses) from existing transfer logic.
-    transfer_stats = await get_doctor_patient_transfer_stats(
-        doctor_id=doctor_id,
-        date_from=date_from,
-        date_to=date_to,
-    )
-    if transfer_stats.get("detail"):
-        return transfer_stats
 
     # Unique transferred patients for this month and selected range.
     now = datetime.now(timezone.utc)
@@ -661,15 +659,35 @@ async def get_doctor_details_cards_stats(
         },
         "patient_insights": {
             "gender": gender_counts,
+            "activity_status": activity_counts,
             "age": {
                 "top_bucket_label": top_age_row["label"],
                 "top_bucket_count": top_age_row["count"],
                 "unknown_count": unknown_age_count,
+                "buckets": [
+                    {"label": bucket["label"], "count": bucket["count"]}
+                    for bucket in age_buckets
+                    if bucket["count"] > 0
+                ]
+                + (
+                    [{"label": "غير محدد", "count": unknown_age_count}]
+                    if unknown_age_count > 0
+                    else []
+                ),
             },
             "treatment": {
                 "top_type": top_treatment[0],
                 "top_count": top_treatment[1],
                 "total_linked": total_patients,
+                "distribution": [
+                    {"type": name, "count": count}
+                    for name, count in sorted(
+                        treatment_counts.items(),
+                        key=lambda item: item[1],
+                        reverse=True,
+                    )
+                    if (name or "").strip()
+                ],
             },
         },
         "metrics": {
@@ -677,9 +695,9 @@ async def get_doctor_details_cards_stats(
             "transfers_today": today_new_ops,
             "transfers_month_unique": len(month_new_unique_ids),
             "transfers_month_ops": month_new_ops,
-            "active_count": transfer_stats["active_patients"]["range"]["count"],
-            "inactive_count": transfer_stats["inactive_patients"]["range"]["count"],
-            "pending_count": transfer_stats["pending_patients"]["range"]["count"],
+            "active_count": activity_counts["active"],
+            "inactive_count": activity_counts["inactive"],
+            "pending_count": activity_counts["pending"],
         },
         "range": {"from": date_from, "to": date_to},
     }
@@ -1678,6 +1696,7 @@ async def get_doctor_appointments_breakdown_stats(
     group: str = "day",
     status: Optional[str] = None,
     stage_name: Optional[str] = None,
+    include_lists: bool = False,
 ) -> Dict:
     from beanie import PydanticObjectId as OID
     from beanie.operators import In
@@ -1708,7 +1727,18 @@ async def get_doctor_appointments_breakdown_stats(
         else month_start.replace(month=month_start.month + 1)
     )
 
-    appointments = await Appointment.find(Appointment.doctor_id == did).to_list()
+    scan_start = month_start
+    if df is not None and df < scan_start:
+        scan_start = df
+    scan_end = next_month_start
+    if dt is not None and dt > scan_end:
+        scan_end = dt
+
+    appointments = await Appointment.find(
+        Appointment.doctor_id == did,
+        Appointment.scheduled_at >= scan_start,
+        Appointment.scheduled_at < scan_end,
+    ).to_list()
     today_apps: list[Appointment] = []
     month_apps: list[Appointment] = []
     range_apps: list[Appointment] = []
@@ -1746,40 +1776,49 @@ async def get_doctor_appointments_breakdown_stats(
             timeline_counts[period] += 1
 
     selected_apps = range_apps if (df is not None or dt is not None) else today_apps
-    selected_patient_ids = list({app.patient_id for app in selected_apps})
-    patients_selected = (
-        await Patient.find(In(Patient.id, selected_patient_ids)).to_list()
-        if selected_patient_ids
-        else []
-    )
-    selected_patients_map = {p.id: p for p in patients_selected}
-    selected_user_ids = list({p.user_id for p in patients_selected if getattr(p, "user_id", None)})
-    users_selected = await User.find(In(User.id, selected_user_ids)).to_list() if selected_user_ids else []
-    selected_users_map = {u.id: u for u in users_selected}
-
-    selected_list = []
-    for app in sorted(selected_apps, key=lambda x: x.scheduled_at):
-        patient = selected_patients_map.get(app.patient_id)
-        patient_user = selected_users_map.get(patient.user_id) if patient else None
-        selected_list.append(
-            {
-                "id": str(app.id),
-                "patient_id": str(app.patient_id),
-                "patient_name": patient_user.name if patient_user else None,
-                "patient_phone": patient_user.phone if patient_user else None,
-                "scheduled_at": app.scheduled_at.isoformat(),
-                "status": getattr(app, "status", "pending"),
-                "stage_name": getattr(app, "stage_name", None),
-                "note": getattr(app, "note", None),
-            }
+    selected_list: list[dict] = []
+    if include_lists and selected_apps:
+        selected_patient_ids = list({app.patient_id for app in selected_apps})
+        patients_selected = await Patient.find(
+            In(Patient.id, selected_patient_ids)
+        ).to_list()
+        selected_patients_map = {p.id: p for p in patients_selected}
+        selected_user_ids = list(
+            {p.user_id for p in patients_selected if getattr(p, "user_id", None)}
         )
+        users_selected = (
+            await User.find(In(User.id, selected_user_ids)).to_list()
+            if selected_user_ids
+            else []
+        )
+        selected_users_map = {u.id: u for u in users_selected}
+
+        for app in sorted(selected_apps, key=lambda x: x.scheduled_at):
+            patient = selected_patients_map.get(app.patient_id)
+            patient_user = selected_users_map.get(patient.user_id) if patient else None
+            selected_list.append(
+                {
+                    "id": str(app.id),
+                    "patient_id": str(app.patient_id),
+                    "patient_name": patient_user.name if patient_user else None,
+                    "patient_phone": patient_user.phone if patient_user else None,
+                    "scheduled_at": app.scheduled_at.isoformat(),
+                    "status": getattr(app, "status", "pending"),
+                    "stage_name": getattr(app, "stage_name", None),
+                    "note": getattr(app, "note", None),
+                }
+            )
 
     upcoming_now = 0
-    for app in appointments:
+    future_pending = await Appointment.find(
+        Appointment.doctor_id == did,
+        Appointment.scheduled_at > now,
+    ).to_list()
+    for app in future_pending:
         status_key = _status_bucket(getattr(app, "status", "pending"))
         if status_filter and status_key != status_filter:
             continue
-        if _to_utc(app.scheduled_at) > now and status_key == "pending":
+        if status_key == "pending":
             upcoming_now += 1
 
     return {

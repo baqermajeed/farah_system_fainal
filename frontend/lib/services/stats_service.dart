@@ -45,6 +45,7 @@ class StatsService {
       ApiConstants.statsDoctorAppointmentsBreakdown(doctorId),
       queryParameters: {
         'group': group,
+        'include_lists': false,
         if (dateFrom != null) 'date_from': dateFrom,
         if (dateTo != null) 'date_to': dateTo,
       },

@@ -1,50 +1,66 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
-import 'package:farah_sys_final/services/chat_service.dart';
 import 'package:farah_sys_final/services/stats_service.dart';
+
+class DoctorStatsAgeBucket {
+  const DoctorStatsAgeBucket({required this.label, required this.count});
+
+  final String label;
+  final int count;
+}
 
 class DoctorStatsController extends GetxController {
   final StatsService _statsService = StatsService();
-  final ChatService _chatService = ChatService();
 
-  final RxBool isLoading = false.obs;
+  static const int sectionCount = 16;
+
+  final RxBool isLoading = true.obs;
   final RxBool hasError = false.obs;
+  final RxInt revealedSections = 0.obs;
+  bool _fetchInProgress = false;
 
   final RxInt _totalPatients = 0.obs;
-  final RxString _totalPatientsLabel = '0'.obs;
+  final RxInt _newPatientsToday = 0.obs;
+  final RxInt _newPatientsMonth = 0.obs;
   final RxInt _todayCount = 0.obs;
   final RxInt _monthAppointmentsCount = 0.obs;
   final RxInt _lateAppointmentsCount = 0.obs;
   final RxInt _completedAppointmentsCount = 0.obs;
   final RxInt _pendingAppointmentsCount = 0.obs;
-  final RxInt _activeTreatments = 0.obs;
-  final RxInt _unreadCount = 0.obs;
+  final RxInt _activePatients = 0.obs;
+  final RxInt _pendingPatients = 0.obs;
+  final RxInt _inactivePatients = 0.obs;
+  final RxInt _maleCount = 0.obs;
+  final RxInt _femaleCount = 0.obs;
   final RxDouble _completionRate = 0.0.obs;
   final RxList<int> _dailyAppointmentCounts = RxList<int>.filled(7, 0);
+  final RxList<DoctorStatsAgeBucket> _ageBuckets = <DoctorStatsAgeBucket>[].obs;
   final RxMap<String, int> _treatmentDistribution = <String, int>{}.obs;
 
-  @override
-  void onReady() {
-    super.onReady();
-    loadStats();
-  }
-
   int get totalPatients => _totalPatients.value;
-  String get totalPatientsLabel => _totalPatientsLabel.value;
+  String get totalPatientsLabel => '${_totalPatients.value}';
+  int get newPatientsToday => _newPatientsToday.value;
+  int get newPatientsMonth => _newPatientsMonth.value;
   int get todayAppointmentsCount => _todayCount.value;
   int get monthAppointmentsCount => _monthAppointmentsCount.value;
   int get lateAppointmentsCount => _lateAppointmentsCount.value;
   int get completedAppointmentsCount => _completedAppointmentsCount.value;
   int get pendingAppointmentsCount => _pendingAppointmentsCount.value;
-  int get activeTreatments => _activeTreatments.value;
-  int get totalUnreadMessages => _unreadCount.value;
+  int get activePatients => _activePatients.value;
+  int get pendingPatients => _pendingPatients.value;
+  int get inactivePatients => _inactivePatients.value;
+  int get maleCount => _maleCount.value;
+  int get femaleCount => _femaleCount.value;
   double get completionRate => _completionRate.value;
-  List<int> get dailyAppointmentCounts => _dailyAppointmentCounts.toList();
-  Map<String, int> get treatmentDistribution =>
-      Map<String, int>.from(_treatmentDistribution);
+  List<int> get dailyAppointmentCounts => _dailyAppointmentCounts;
+  List<DoctorStatsAgeBucket> get ageBuckets => _ageBuckets;
+  Map<String, int> get treatmentDistribution => _treatmentDistribution;
 
-  List<String> get weekDayLabels {
+  late final List<String> weekDayLabels = _buildWeekDayLabels();
+
+  static List<String> _buildWeekDayLabels() {
     const days = [
       'السبت',
       'الأحد',
@@ -63,12 +79,22 @@ class DoctorStatsController extends GetxController {
     });
   }
 
-  Future<void> loadStats() async {
-    if (isLoading.value) return;
+  @override
+  void onInit() {
+    super.onInit();
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (!isClosed) loadStats();
+    });
+  }
 
+  Future<void> loadStats() async {
+    if (_fetchInProgress) return;
+
+    _fetchInProgress = true;
     try {
       isLoading.value = true;
       hasError.value = false;
+      revealedSections.value = 0;
 
       final doctorId = await _statsService.resolveDoctorId();
       final now = DateTime.now();
@@ -79,57 +105,56 @@ class DoctorStatsController extends GetxController {
 
       var loadedAny = false;
 
-      try {
-        final cards = await _statsService.getDoctorDetailsCards(doctorId);
-        _applyCardsStats(cards);
-        loadedAny = true;
-      } catch (e, stack) {
-        if (kDebugMode) {
-          debugPrint('[DoctorStatsController] cards error: $e');
-          debugPrint('$stack');
-        }
-      }
-
-      try {
-        final appointments = await _statsService.getDoctorAppointmentsBreakdown(
-          doctorId,
-          dateFrom: weekStart.toUtc().toIso8601String(),
-          dateTo: weekEnd.toUtc().toIso8601String(),
-          group: 'day',
-        );
-        _applyAppointmentsStats(appointments, weekStart);
-        loadedAny = true;
-      } catch (e, stack) {
-        if (kDebugMode) {
-          debugPrint('[DoctorStatsController] appointments error: $e');
-          debugPrint('$stack');
-        }
-
-        // fallback: جلب ملخص الشهر بدون فلترة التاريخ
-        try {
-          final fallback = await _statsService.getDoctorAppointmentsBreakdown(
+      final weekAppointmentsFuture = _statsService
+          .getDoctorAppointmentsBreakdown(
             doctorId,
+            dateFrom: weekStart.toUtc().toIso8601String(),
+            dateTo: weekEnd.toUtc().toIso8601String(),
             group: 'day',
-          );
-          _applyAppointmentsStats(fallback, weekStart);
-          loadedAny = true;
-        } catch (fallbackError, fallbackStack) {
-          if (kDebugMode) {
-            debugPrint(
-              '[DoctorStatsController] appointments fallback error: $fallbackError',
-            );
-            debugPrint('$fallbackStack');
-          }
-        }
-      }
+          )
+          .then((appointments) {
+            _applyAppointmentsStats(appointments, weekStart);
+            return true;
+          })
+          .catchError((e, stack) async {
+            if (kDebugMode) {
+              debugPrint('[DoctorStatsController] appointments error: $e');
+              debugPrint('$stack');
+            }
+            try {
+              final fallback = await _statsService.getDoctorAppointmentsBreakdown(
+                doctorId,
+                group: 'day',
+              );
+              _applyAppointmentsStats(fallback, weekStart);
+              return true;
+            } catch (fallbackError, fallbackStack) {
+              if (kDebugMode) {
+                debugPrint(
+                  '[DoctorStatsController] appointments fallback error: $fallbackError',
+                );
+                debugPrint('$fallbackStack');
+              }
+              return false;
+            }
+          });
 
-      try {
-        _unreadCount.value = await _loadUnreadCount();
-      } catch (e) {
-        if (kDebugMode) {
-          debugPrint('[DoctorStatsController] unread load error: $e');
-        }
-      }
+      final cardsFuture = _statsService
+          .getDoctorDetailsCards(doctorId)
+          .then((cards) {
+            _applyCardsStats(cards);
+            return true;
+          })
+          .catchError((e, stack) {
+            if (kDebugMode) {
+              debugPrint('[DoctorStatsController] cards error: $e');
+              debugPrint('$stack');
+            }
+            return false;
+          });
+
+      final results = await Future.wait([cardsFuture, weekAppointmentsFuture]);
+      loadedAny = results.any((loaded) => loaded);
 
       hasError.value = !loadedAny;
     } catch (e, stack) {
@@ -140,33 +165,78 @@ class DoctorStatsController extends GetxController {
       }
     } finally {
       isLoading.value = false;
+      _fetchInProgress = false;
+      if (!hasError.value) {
+        await _revealSectionsGradually();
+      } else {
+        revealedSections.value = 0;
+      }
+    }
+  }
+
+  Future<void> _revealSectionsGradually() async {
+    for (var i = 1; i <= sectionCount; i++) {
+      if (isClosed) return;
+      revealedSections.value = i;
+      await Future<void>.delayed(Duration.zero);
     }
   }
 
   void _applyCardsStats(Map<String, dynamic> cards) {
     final counts = (cards['counts'] as Map?)?.cast<String, dynamic>() ?? {};
     final metrics = (cards['metrics'] as Map?)?.cast<String, dynamic>() ?? {};
+    final insights =
+        (cards['patient_insights'] as Map?)?.cast<String, dynamic>() ?? {};
+    final gender =
+        (insights['gender'] as Map?)?.cast<String, dynamic>() ?? {};
+    final activity =
+        (insights['activity_status'] as Map?)?.cast<String, dynamic>() ??
+            metrics;
+    final age =
+        (insights['age'] as Map?)?.cast<String, dynamic>() ?? {};
     final treatment =
-        ((cards['patient_insights'] as Map?)?['treatment'] as Map?)
-            ?.cast<String, dynamic>() ??
-        {};
+        (insights['treatment'] as Map?)?.cast<String, dynamic>() ?? {};
 
-    final patientsTotal = _asInt(counts['total_patients']);
-    _totalPatients.value = patientsTotal;
-    _totalPatientsLabel.value = '$patientsTotal';
-    _activeTreatments.value = _asInt(metrics['active_count']);
+    _totalPatients.value = _asInt(counts['total_patients']);
+    _newPatientsToday.value = _asInt(metrics['transfers_today']);
+    _newPatientsMonth.value = _asInt(metrics['transfers_month_unique']);
 
-    final topType = treatment['top_type']?.toString() ?? 'غير محدد';
-    final topCount = _asInt(treatment['top_count']);
-    final totalLinked = _asInt(treatment['total_linked']);
+    _activePatients.value = _asInt(activity['active']);
+    _pendingPatients.value = _asInt(activity['pending']);
+    _inactivePatients.value = _asInt(activity['inactive']);
+
+    _maleCount.value = _asInt(gender['male']);
+    _femaleCount.value = _asInt(gender['female']);
+
+    final buckets = <DoctorStatsAgeBucket>[];
+    for (final item in age['buckets'] as List? ?? []) {
+      if (item is! Map) continue;
+      final label = item['label']?.toString() ?? '';
+      final count = _asInt(item['count']);
+      if (label.isEmpty || count <= 0) continue;
+      buckets.add(DoctorStatsAgeBucket(label: label, count: count));
+    }
+    _ageBuckets.assignAll(buckets);
 
     final distribution = <String, int>{};
-    if (topCount > 0) {
-      distribution[topType] = topCount;
+    for (final item in treatment['distribution'] as List? ?? []) {
+      if (item is! Map) continue;
+      final type = item['type']?.toString() ?? '';
+      final count = _asInt(item['count']);
+      if (type.isEmpty || count <= 0) continue;
+      distribution[type] = count;
     }
-    final others = totalLinked - topCount;
-    if (others > 0) {
-      distribution['أخرى'] = others;
+    if (distribution.isEmpty) {
+      final topType = treatment['top_type']?.toString() ?? '';
+      final topCount = _asInt(treatment['top_count']);
+      final totalLinked = _asInt(treatment['total_linked']);
+      if (topCount > 0 && topType.isNotEmpty) {
+        distribution[topType] = topCount;
+      }
+      final others = totalLinked - topCount;
+      if (others > 0) {
+        distribution['أخرى'] = others;
+      }
     }
     _treatmentDistribution.assignAll(distribution);
   }
@@ -214,21 +284,5 @@ class DoctorStatsController extends GetxController {
     if (value is int) return value;
     if (value is double) return value.round();
     return int.tryParse(value?.toString() ?? '') ?? 0;
-  }
-
-  Future<int> _loadUnreadCount() async {
-    try {
-      final chatList = await _chatService.getChatList();
-      var total = 0;
-      for (final chat in chatList) {
-        total += chat['unread_count'] as int? ?? 0;
-      }
-      return total;
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('[DoctorStatsController] unread load error: $e');
-      }
-      return 0;
-    }
   }
 }
