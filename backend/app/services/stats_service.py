@@ -14,9 +14,18 @@ logger = get_logger("stats_service")
 
 
 def parse_dates(date_from: Optional[str], date_to: Optional[str]) -> tuple[Optional[datetime], Optional[datetime]]:
-    """تحويل سلاسل from/to إلى كائنات datetime إن وُجدت."""
-    df = datetime.fromisoformat(date_from.replace('Z', '+00:00')) if date_from else None
-    dt = datetime.fromisoformat(date_to.replace('Z', '+00:00')) if date_to else None
+    """تحويل سلاسل from/to إلى كائنات datetime بوحدة UTC."""
+    def _to_utc_datetime(value: str) -> datetime:
+        raw = value.strip()
+        if "T" not in raw:
+            raw = f"{raw}T00:00:00"
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+
+    df = _to_utc_datetime(date_from) if date_from else None
+    dt = _to_utc_datetime(date_to) if date_to else None
     return df, dt
 
 

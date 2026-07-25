@@ -76,25 +76,62 @@ class DoctorStatsController extends GetxController {
           .subtract(const Duration(days: 6));
       final weekEnd = DateTime(now.year, now.month, now.day)
           .add(const Duration(days: 1));
-      final dateFmt = DateFormat('yyyy-MM-dd');
 
-      final results = await Future.wait([
-        _statsService.getDoctorDetailsCards(doctorId),
-        _statsService.getDoctorAppointmentsBreakdown(
+      var loadedAny = false;
+
+      try {
+        final cards = await _statsService.getDoctorDetailsCards(doctorId);
+        _applyCardsStats(cards);
+        loadedAny = true;
+      } catch (e, stack) {
+        if (kDebugMode) {
+          debugPrint('[DoctorStatsController] cards error: $e');
+          debugPrint('$stack');
+        }
+      }
+
+      try {
+        final appointments = await _statsService.getDoctorAppointmentsBreakdown(
           doctorId,
-          dateFrom: dateFmt.format(weekStart),
-          dateTo: dateFmt.format(weekEnd),
+          dateFrom: weekStart.toUtc().toIso8601String(),
+          dateTo: weekEnd.toUtc().toIso8601String(),
           group: 'day',
-        ),
-        _loadUnreadCount(),
-      ]);
+        );
+        _applyAppointmentsStats(appointments, weekStart);
+        loadedAny = true;
+      } catch (e, stack) {
+        if (kDebugMode) {
+          debugPrint('[DoctorStatsController] appointments error: $e');
+          debugPrint('$stack');
+        }
 
-      final cards = results[0] as Map<String, dynamic>;
-      final appointments = results[1] as Map<String, dynamic>;
-      _unreadCount.value = results[2] as int;
+        // fallback: جلب ملخص الشهر بدون فلترة التاريخ
+        try {
+          final fallback = await _statsService.getDoctorAppointmentsBreakdown(
+            doctorId,
+            group: 'day',
+          );
+          _applyAppointmentsStats(fallback, weekStart);
+          loadedAny = true;
+        } catch (fallbackError, fallbackStack) {
+          if (kDebugMode) {
+            debugPrint(
+              '[DoctorStatsController] appointments fallback error: $fallbackError',
+            );
+            debugPrint('$fallbackStack');
+          }
+        }
+      }
 
-      _applyCardsStats(cards);
-      _applyAppointmentsStats(appointments, weekStart);
+      try {
+        _unreadCount.value = await _loadUnreadCount();
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[DoctorStatsController] unread load error: $e');
+        }
+      }
+
+      hasError.value = !loadedAny;
     } catch (e, stack) {
       hasError.value = true;
       if (kDebugMode) {
