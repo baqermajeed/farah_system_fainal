@@ -4,903 +4,482 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
+import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
 import 'package:farah_sys_final/controllers/doctor_stats_controller.dart';
+import 'package:farah_sys_final/models/doctor_stats_model.dart';
+import 'package:farah_sys_final/views/doctor/widgets/doctor_glass_card.dart';
 
 class DoctorStatsScreen extends GetView<DoctorStatsController> {
   const DoctorStatsScreen({super.key});
 
-  // Premium palette — deep navy + refined accents
-  static const Color _ink = Color(0xFF0A1628);
-  static const Color _inkMid = Color(0xFF132238);
-  static const Color _royal = Color(0xFF1E4D8C);
-  static const Color _azure = Color(0xFF3B82F6);
-  static const Color _sky = Color(0xFF60A5FA);
-  static const Color _gold = Color(0xFFD4A853);
-  static const Color _mint = Color(0xFF10B981);
-  static const Color _coral = Color(0xFFF43F5E);
-  static const Color _violet = Color(0xFF8B5CF6);
-  static const Color _amber = Color(0xFFF59E0B);
-  static const Color _surface = Color(0xFFF0F4FA);
-  static const Color _muted = Color(0xFF94A3B8);
-  static const Color _text = Color(0xFF1E293B);
+  static const _headerGradient = LinearGradient(
+    begin: Alignment.topRight,
+    end: Alignment.bottomLeft,
+    colors: [Color(0xFF0A1628), Color(0xFF132238), Color(0xFF1E4D8C)],
+    stops: [0.0, 0.55, 1.0],
+  );
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _surface,
-      body: RefreshIndicator(
-        color: _azure,
-        backgroundColor: Colors.white,
-        onRefresh: controller.loadStats,
-        child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(
-            parent: ClampingScrollPhysics(),
-          ),
-          slivers: [
-            SliverToBoxAdapter(child: _buildPremiumHeader()),
-            Obx(() => _buildBodySliver()),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBodySliver() {
-    if (controller.isLoading.value) {
-      return SliverFillRemaining(
-        hasScrollBody: false,
-        child: Center(
-          child: SizedBox(
-            width: 36.w,
-            height: 36.w,
-            child: const CircularProgressIndicator(
-              color: _azure,
-              strokeWidth: 2.5,
-            ),
-          ),
-        ),
-      );
-    }
-
-    if (controller.hasError.value) {
-      return SliverFillRemaining(
-        hasScrollBody: false,
-        child: _buildErrorState(),
-      );
-    }
-
-    if (controller.revealedSections.value <= 0) {
-      return SliverFillRemaining(
-        hasScrollBody: false,
-        child: Center(
-          child: SizedBox(
-            width: 36.w,
-            height: 36.w,
-            child: const CircularProgressIndicator(
-              color: _azure,
-              strokeWidth: 2.5,
-            ),
-          ),
-        ),
-      );
-    }
-
-    return SliverPadding(
-      padding: EdgeInsets.fromLTRB(18.w, 0, 18.w, 36.h),
-      sliver: SliverList(
-        delegate: SliverChildBuilderDelegate(
-          (context, index) => _sectionAt(index),
-          childCount: controller.revealedSections.value,
-        ),
-      ),
-    );
-  }
-
-  Widget _sectionAt(int index) {
-    switch (index) {
-      case 0:
-        return _buildHeroCard();
-      case 1:
-        return SizedBox(height: 22.h);
-      case 2:
-        return _buildBentoGrid();
-      case 3:
-        return SizedBox(height: 26.h);
-      case 4:
-        return _sectionHeader(
-          'تدفق المرضى',
-          'المرضى الجدد المحوّلون',
-          Icons.person_add_alt_1_rounded,
-          _mint,
-        );
-      case 5:
-        return Padding(
-          padding: EdgeInsets.only(top: 14.h),
-          child: _buildNewPatientsRow(),
-        );
-      case 6:
-        return SizedBox(height: 26.h);
-      case 7:
-        return _sectionHeader(
-          'صحة السجل',
-          'حالة المرضى الحالية',
-          Icons.favorite_rounded,
-          _coral,
-        );
-      case 8:
-        return Padding(
-          padding: EdgeInsets.only(top: 14.h),
-          child: _buildPatientStatusCards(),
-        );
-      case 9:
-        return SizedBox(height: 26.h);
-      case 10:
-        return _sectionHeader(
-          'الديموغرافيا',
-          'الجنس والفئات العمرية',
-          Icons.people_rounded,
-          _violet,
-        );
-      case 11:
-        return Padding(
-          padding: EdgeInsets.only(top: 14.h),
-          child: _buildDemographicsBlock(),
-        );
-      case 12:
-        return SizedBox(height: 26.h);
-      case 13:
-        return _sectionHeader(
-          'تحليل المواعيد',
-          'النشاط الأسبوعي والشهري',
-          Icons.calendar_month_rounded,
-          _azure,
-        );
-      case 14:
-        return Padding(
-          padding: EdgeInsets.only(top: 14.h),
-          child: Column(
+      backgroundColor: AppColors.doctorSurface,
+      body: Obx(() {
+        if (controller.isLoading.value) {
+          return Column(
             children: [
-              _buildWeekChart(),
-              SizedBox(height: 16.h),
-              _buildAppointmentStatus(),
-            ],
-          ),
-        );
-      case 15:
-        return Padding(
-          padding: EdgeInsets.only(top: 26.h),
-          child: Column(
-            children: [
-              _sectionHeader(
-                'محفظة العلاج',
-                'توزيع أنواع العلاج',
-                Icons.medical_services_rounded,
-                _gold,
+              _StatsHeader(onBack: Get.back),
+              const Expanded(
+                child: Center(
+                  child: CircularProgressIndicator(color: AppColors.primary),
+                ),
               ),
-              SizedBox(height: 14.h),
-              _buildTreatmentList(),
+            ],
+          );
+        }
+
+        if (controller.hasError.value) {
+          return Column(
+            children: [
+              _StatsHeader(onBack: Get.back),
+              Expanded(child: _ErrorBody(onRetry: controller.loadStats)),
+            ],
+          );
+        }
+
+        return RefreshIndicator(
+          color: AppColors.primary,
+          onRefresh: controller.loadStats,
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: ClampingScrollPhysics(),
+            ),
+            slivers: [
+              SliverToBoxAdapter(child: _StatsHeader(onBack: Get.back)),
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(18.w, 0, 18.w, 36.h),
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate([
+                    SizedBox(height: 16.h),
+                    _sectionTitle('المرضى'),
+                    SizedBox(height: 12.h),
+                    _PatientMetricsRow(controller: controller),
+                    SizedBox(height: 24.h),
+                    _sectionTitle('حالة المرضى'),
+                    SizedBox(height: 12.h),
+                    _PatientStatusCard(controller: controller),
+                    if (controller.showDemographics) ...[
+                      SizedBox(height: 24.h),
+                      _sectionTitle('الديموغرافيا'),
+                      SizedBox(height: 12.h),
+                      _DemographicsCard(controller: controller),
+                    ],
+                    SizedBox(height: 24.h),
+                    _sectionTitle('نشاط المواعيد الأسبوعي'),
+                    SizedBox(height: 12.h),
+                    _WeekChart(controller: controller),
+                    SizedBox(height: 24.h),
+                    _sectionTitle('حالة المواعيد هذا الشهر'),
+                    SizedBox(height: 12.h),
+                    _AppointmentStatusCard(controller: controller),
+                    SizedBox(height: 24.h),
+                    _sectionTitle('توزيع أنواع العلاج'),
+                    SizedBox(height: 12.h),
+                    _TreatmentCard(controller: controller),
+                  ]),
+                ),
+              ),
             ],
           ),
         );
-      default:
-        return const SizedBox.shrink();
-    }
+      }),
+    );
   }
 
-  // ─── Header ───────────────────────────────────────────────────────────────
+  Widget _sectionTitle(String title) {
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Text(
+        title,
+        style: AppFonts.lamaSans(
+          fontSize: 16.sp,
+          fontWeight: FontWeight.w700,
+          color: AppColors.textPrimary,
+        ),
+        textDirection: TextDirection.rtl,
+      ),
+    );
+  }
 
-  Widget _buildPremiumHeader() {
+}
+
+class _StatsHeader extends StatelessWidget {
+  const _StatsHeader({required this.onBack});
+
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      height: 200.h,
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
-          colors: [_ink, _inkMid, _royal],
-          stops: [0.0, 0.55, 1.0],
-        ),
+        gradient: DoctorStatsScreen._headerGradient,
         borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(36),
-          bottomRight: Radius.circular(36),
+          bottomLeft: Radius.circular(32),
+          bottomRight: Radius.circular(32),
         ),
       ),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Positioned(top: -40.h, right: -30.w, child: _orb(160.w, _azure, 0.12)),
-          Positioned(bottom: 10.h, left: -20.w, child: _orb(100.w, _gold, 0.08)),
-          Positioned(top: 60.h, left: 40.w, child: _orb(60.w, _mint, 0.06)),
-          SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(18.w, 10.h, 18.w, 0),
-              child: Column(
-                children: [
-                  Row(
-                    textDirection: ui.TextDirection.ltr,
-                    children: [
-                      Transform.rotate(
-                        angle: math.pi,
-                        child: BackButtonWidget(
-                          backgroundColor: Colors.white.withValues(alpha: 0.12),
-                          assetPath: 'assets/images/back.png',
-                        ),
-                      ),
-                      Expanded(
-                        child: Text(
-                          'الإحصائيات',
-                          textAlign: TextAlign.center,
-                          style: AppFonts.lamaSans(
-                            fontSize: 17.sp,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white.withValues(alpha: 0.95),
-                            letterSpacing: 0.3,
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: 44.w),
-                    ],
-                  ),
-                  SizedBox(height: 22.h),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'لوحة التحليلات',
-                          style: AppFonts.lamaSans(
-                            fontSize: 26.sp,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                            height: 1.1,
-                          ),
-                        ),
-                        SizedBox(height: 6.h),
-                        Text(
-                          'رؤية استراتيجية لعيادتك',
-                          style: AppFonts.lamaSans(
-                            fontSize: 12.sp,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.white.withValues(alpha: 0.55),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _orb(double size, Color color, double opacity) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(
-          colors: [color.withValues(alpha: opacity), Colors.transparent],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeroCard() {
-    final completion = (controller.completionRate * 100).round();
-    return Transform.translate(
-      offset: Offset(0, -28.h),
-      child: Container(
-        padding: EdgeInsets.all(20.w),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Colors.white, Color(0xFFF8FAFD)],
-          ),
-          borderRadius: BorderRadius.circular(28.r),
-          border: Border.all(color: Colors.white),
-          boxShadow: [
-            BoxShadow(
-              color: _ink.withValues(alpha: 0.12),
-              blurRadius: 40,
-              offset: const Offset(0, 16),
-            ),
-            BoxShadow(
-              color: _azure.withValues(alpha: 0.06),
-              blurRadius: 20,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          textDirection: ui.TextDirection.rtl,
-          children: [
-            Expanded(
-              flex: 3,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'إجمالي المرضى',
-                    style: AppFonts.lamaSans(
-                      fontSize: 12.sp,
-                      fontWeight: FontWeight.w600,
-                      color: _muted,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  SizedBox(height: 4.h),
-                  Text(
-                    controller.totalPatientsLabel,
-                    style: AppFonts.lamaSans(
-                      fontSize: 42.sp,
-                      fontWeight: FontWeight.w800,
-                      color: _ink,
-                      height: 1,
-                    ),
-                  ),
-                  SizedBox(height: 12.h),
-                  Row(
-                    children: [
-                      _heroChip(
-                        '${controller.todayAppointmentsCount}',
-                        'اليوم',
-                        _coral,
-                      ),
-                      SizedBox(width: 8.w),
-                      _heroChip(
-                        '${controller.monthAppointmentsCount}',
-                        'الشهر',
-                        _azure,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(width: 16.w),
-            _buildCompletionRing(completion),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _heroChip(String value, String label, Color color) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(10.r),
-        border: Border.all(color: color.withValues(alpha: 0.15)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            value,
-            style: AppFonts.lamaSans(
-              fontSize: 14.sp,
-              fontWeight: FontWeight.w800,
-              color: color,
-            ),
-          ),
-          SizedBox(width: 4.w),
-          Text(
-            label,
-            style: AppFonts.lamaSans(
-              fontSize: 10.sp,
-              fontWeight: FontWeight.w500,
-              color: _muted,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCompletionRing(int percent) {
-    return SizedBox(
-      width: 80.w,
-      height: 80.w,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          SizedBox.expand(
-            child: CircularProgressIndicator(
-              value: controller.completionRate.clamp(0.0, 1.0),
-              strokeWidth: 6,
-              backgroundColor: _mint.withValues(alpha: 0.12),
-              color: _mint,
-              strokeCap: StrokeCap.round,
-            ),
-          ),
-          Column(
-            mainAxisSize: MainAxisSize.min,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(18.w, 10.h, 18.w, 24.h),
+          child: Column(
             children: [
-              Text(
-                '$percent%',
-                style: AppFonts.lamaSans(
-                  fontSize: 16.sp,
-                  fontWeight: FontWeight.w800,
-                  color: _mint,
-                ),
+              Row(
+                textDirection: ui.TextDirection.ltr,
+                children: [
+                  Transform.rotate(
+                    angle: math.pi,
+                    child: BackButtonWidget(
+                      backgroundColor: Colors.white.withValues(alpha: 0.12),
+                      assetPath: 'assets/images/back.png',
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      'الإحصائيات',
+                      textAlign: TextAlign.center,
+                      style: AppFonts.lamaSans(
+                        fontSize: 17.sp,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white.withValues(alpha: 0.95),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: 44.w),
+                ],
               ),
-              Text(
-                'إنجاز',
-                style: AppFonts.lamaSans(
-                  fontSize: 9.sp,
-                  fontWeight: FontWeight.w500,
-                  color: _muted,
+              SizedBox(height: 18.h),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'لوحة التحليلات',
+                      style: AppFonts.lamaSans(
+                        fontSize: 24.sp,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                    SizedBox(height: 4.h),
+                    Text(
+                      'رؤية استراتيجية لعيادتك',
+                      style: AppFonts.lamaSans(
+                        fontSize: 12.sp,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }
+}
 
-  // ─── Bento grid ───────────────────────────────────────────────────────────
+class _PatientMetricsRow extends StatelessWidget {
+  const _PatientMetricsRow({required this.controller});
 
-  Widget _buildBentoGrid() {
-    final items = [
-      _BentoItem(
-        'جدد اليوم',
-        '${controller.newPatientsToday}',
-        Icons.bolt_rounded,
-        [_mint, const Color(0xFF059669)],
+  final DoctorStatsController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final metrics = [
+      _PatientMetricData(
+        title: 'إجمالي المرضى',
+        value: controller.totalPatientsLabel,
+        icon: Icons.people_alt_rounded,
+        color: AppColors.primary,
       ),
-      _BentoItem(
-        'جدد الشهر',
-        '${controller.newPatientsMonth}',
-        Icons.trending_up_rounded,
-        [_violet, const Color(0xFF6D28D9)],
+      _PatientMetricData(
+        title: 'جدد اليوم',
+        value: '${controller.newPatientsToday}',
+        icon: Icons.person_add_alt_1_rounded,
+        color: AppColors.doctorAccentGreen,
       ),
-      _BentoItem(
-        'نشطون',
-        '${controller.activePatients}',
-        Icons.verified_rounded,
-        [_azure, _royal],
-      ),
-      _BentoItem(
-        'قيد المراجعة',
-        '${controller.pendingPatients}',
-        Icons.hourglass_top_rounded,
-        [_amber, const Color(0xFFD97706)],
+      _PatientMetricData(
+        title: 'جدد الشهر',
+        value: '${controller.newPatientsMonth}',
+        icon: Icons.trending_up_rounded,
+        color: AppColors.doctorAccentPurple,
       ),
     ];
 
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 12.w,
-        mainAxisSpacing: 12.h,
-        childAspectRatio: 1.55,
-      ),
-      itemCount: items.length,
-      itemBuilder: (_, i) => _BentoCard(item: items[i]),
-    );
-  }
-
-  // ─── New patients ─────────────────────────────────────────────────────────
-
-  Widget _buildNewPatientsRow() {
     return Row(
+      textDirection: TextDirection.rtl,
       children: [
-        Expanded(
-          child: _accentStatCard(
-            value: '${controller.newPatientsToday}',
-            label: 'محوّلون اليوم',
-            sublabel: 'مريض جديد',
-            gradient: [_mint, const Color(0xFF047857)],
-            icon: Icons.wb_sunny_rounded,
-          ),
-        ),
-        SizedBox(width: 12.w),
-        Expanded(
-          child: _accentStatCard(
-            value: '${controller.newPatientsMonth}',
-            label: 'محوّلون الشهر',
-            sublabel: 'مريض جديد',
-            gradient: [_royal, _azure],
-            icon: Icons.date_range_rounded,
-          ),
-        ),
+        for (var i = 0; i < metrics.length; i++) ...[
+          if (i > 0) SizedBox(width: 10.w),
+          Expanded(child: _PatientMetricTile(metric: metrics[i])),
+        ],
       ],
     );
   }
+}
 
-  Widget _accentStatCard({
-    required String value,
-    required String label,
-    required String sublabel,
-    required List<Color> gradient,
-    required IconData icon,
-  }) {
+class _PatientMetricTile extends StatelessWidget {
+  const _PatientMetricTile({required this.metric});
+
+  final _PatientMetricData metric;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.all(18.w),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topRight,
-          end: Alignment.bottomLeft,
-          colors: gradient,
-        ),
-        borderRadius: BorderRadius.circular(22.r),
-        boxShadow: [
-          BoxShadow(
-            color: gradient.first.withValues(alpha: 0.35),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: Colors.white.withValues(alpha: 0.85), size: 22.sp),
-          const Spacer(),
-          Text(
-            value,
-            style: AppFonts.lamaSans(
-              fontSize: 32.sp,
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
-              height: 1,
-            ),
-          ),
-          SizedBox(height: 4.h),
-          Text(
-            label,
-            style: AppFonts.lamaSans(
-              fontSize: 11.sp,
-              fontWeight: FontWeight.w600,
-              color: Colors.white.withValues(alpha: 0.9),
-            ),
-          ),
-          Text(
-            sublabel,
-            style: AppFonts.lamaSans(
-              fontSize: 9.sp,
-              fontWeight: FontWeight.w400,
-              color: Colors.white.withValues(alpha: 0.6),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ─── Patient status ───────────────────────────────────────────────────────
-
-  Widget _buildPatientStatusCards() {
-    final items = [
-      ('نشط', controller.activePatients, _mint, Icons.check_circle_rounded),
-      ('مراجعة', controller.pendingPatients, _amber, Icons.pending_rounded),
-      ('غير نشط', controller.inactivePatients, _coral, Icons.remove_circle_rounded),
-    ];
-
-    return Row(
-      children: items.map((item) {
-        return Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(left: item == items.last ? 0 : 8.w),
-            child: _statusPill(item.$1, item.$2, item.$3, item.$4),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _statusPill(String label, int count, Color color, IconData icon) {
-    return Container(
-      padding: EdgeInsets.symmetric(vertical: 16.h, horizontal: 8.w),
+      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 14.h),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18.r),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
+        border: Border.all(color: metric.color.withValues(alpha: 0.12)),
         boxShadow: [
           BoxShadow(
-            color: color.withValues(alpha: 0.08),
+            color: metric.color.withValues(alpha: 0.1),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),
         ],
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Container(
             width: 36.w,
             height: 36.w,
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                begin: Alignment.topRight,
+                end: Alignment.bottomLeft,
+                colors: [
+                  metric.color,
+                  metric.color.withValues(alpha: 0.7),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(11.r),
             ),
-            child: Icon(icon, color: color, size: 18.sp),
+            child: Icon(metric.icon, color: Colors.white, size: 18.sp),
           ),
           SizedBox(height: 10.h),
-          Text(
-            '$count',
-            style: AppFonts.lamaSans(
-              fontSize: 20.sp,
-              fontWeight: FontWeight.w800,
-              color: _text,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              metric.value,
+              style: AppFonts.lamaSans(
+                fontSize: 20.sp,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textPrimary,
+                height: 1,
+              ),
             ),
           ),
+          SizedBox(height: 4.h),
           Text(
-            label,
+            metric.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
             style: AppFonts.lamaSans(
               fontSize: 9.sp,
               fontWeight: FontWeight.w600,
-              color: _muted,
+              color: AppColors.doctorLabel,
+              height: 1.2,
             ),
-            textAlign: TextAlign.center,
           ),
         ],
       ),
     );
   }
+}
 
-  // ─── Demographics ─────────────────────────────────────────────────────────
+class _PatientMetricData {
+  const _PatientMetricData({
+    required this.title,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
 
-  Widget _buildDemographicsBlock() {
-    final totalGender = math.max(
-      controller.maleCount + controller.femaleCount,
-      1,
-    );
-    final femalePct = controller.femaleCount / totalGender;
-    final malePct = controller.maleCount / totalGender;
+  final String title;
+  final String value;
+  final IconData icon;
+  final Color color;
+}
 
-    return _glassCard(
+class _DemographicsCard extends StatelessWidget {
+  const _DemographicsCard({required this.controller});
+
+  final DoctorStatsController controller;
+
+  Color _genderColor(String key) {
+    return key == 'female' ? const Color(0xFFEC4899) : AppColors.primary;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DoctorGlassCard(
       child: Column(
         children: [
-          Row(
-            textDirection: ui.TextDirection.rtl,
-            children: [
-              Expanded(
-                child: _genderStat(
-                  'إناث',
-                  controller.femaleCount,
-                  femalePct,
-                  const Color(0xFFEC4899),
-                  Icons.female_rounded,
-                ),
-              ),
-              Container(
-                width: 1,
-                height: 60.h,
-                color: const Color(0xFFE2E8F0),
-                margin: EdgeInsets.symmetric(horizontal: 12.w),
-              ),
-              Expanded(
-                child: _genderStat(
-                  'ذكور',
-                  controller.maleCount,
-                  malePct,
-                  _azure,
-                  Icons.male_rounded,
-                ),
-              ),
-            ],
-          ),
-          if (controller.ageBuckets.isNotEmpty) ...[
-            Padding(
-              padding: EdgeInsets.symmetric(vertical: 16.h),
-              child: Divider(color: _muted.withValues(alpha: 0.2), height: 1),
+          if (controller.genderItems.isNotEmpty)
+            Row(
+              textDirection: TextDirection.rtl,
+              children: [
+                for (var i = 0; i < controller.genderItems.length; i++) ...[
+                  if (i > 0) SizedBox(width: 12.w),
+                  Expanded(
+                    child: _genderTile(
+                      controller.genderItems[i],
+                      _genderColor(controller.genderItems[i].key),
+                    ),
+                  ),
+                ],
+              ],
             ),
-            ...controller.ageBuckets.asMap().entries.map((entry) {
-              final i = entry.key;
-              final bucket = entry.value;
-              final maxAge = controller.ageBuckets
-                  .fold<int>(0, (m, e) => math.max(m, e.count));
-              final pct = maxAge == 0 ? 0.0 : bucket.count / maxAge;
-              final colors = [_azure, _mint, _violet, _amber, _coral];
-              return _ageBar(
-                bucket.label,
-                bucket.count,
-                pct,
-                colors[i % colors.length],
-                isLast: i == controller.ageBuckets.length - 1,
+          if (controller.ageBuckets.isNotEmpty) ...[
+            if (controller.genderItems.isNotEmpty) ...[
+              SizedBox(height: 16.h),
+              const Divider(height: 1),
+              SizedBox(height: 12.h),
+            ],
+            ...controller.ageBuckets.map((bucket) {
+              final barValue = (bucket.percent / 100).clamp(0.04, 1.0);
+              return Padding(
+                padding: EdgeInsets.only(bottom: 10.h),
+                child: Row(
+                  textDirection: TextDirection.rtl,
+                  children: [
+                    SizedBox(
+                      width: 48.w,
+                      child: Text(
+                        bucket.label,
+                        style: AppFonts.lamaSans(
+                          fontSize: 11.sp,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                        ),
+                        textAlign: TextAlign.right,
+                      ),
+                    ),
+                    SizedBox(width: 8.w),
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4.r),
+                        child: LinearProgressIndicator(
+                          value: barValue,
+                          minHeight: 6.h,
+                          backgroundColor: AppColors.divider,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 8.w),
+                    Text(
+                      '${bucket.count}',
+                      style: AppFonts.lamaSans(
+                        fontSize: 12.sp,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ],
+                ),
               );
             }),
-          ] else
-            Padding(
-              padding: EdgeInsets.only(top: 12.h),
-              child: Text(
-                'لا توجد بيانات عمرية',
-                style: AppFonts.lamaSans(fontSize: 12.sp, color: _muted),
-                textAlign: TextAlign.center,
-              ),
-            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _genderStat(
-    String label,
-    int count,
-    double pct,
-    Color color,
-    IconData icon,
-  ) {
+  Widget _genderTile(DoctorStatsBreakdownItem item, Color color) {
+    final barValue = (item.percent / 100).clamp(0.04, 1.0);
     return Column(
       children: [
-        Icon(icon, color: color, size: 26.sp),
-        SizedBox(height: 8.h),
         Text(
-          '$count',
+          '${item.count}',
           style: AppFonts.lamaSans(
-            fontSize: 24.sp,
+            fontSize: 22.sp,
             fontWeight: FontWeight.w800,
-            color: _text,
+            color: AppColors.textPrimary,
           ),
         ),
         Text(
-          label,
-          style: AppFonts.lamaSans(
-            fontSize: 11.sp,
-            fontWeight: FontWeight.w600,
-            color: _muted,
-          ),
+          item.label,
+          style: AppFonts.lamaSans(fontSize: 11.sp, color: AppColors.doctorLabel),
         ),
-        SizedBox(height: 8.h),
+        SizedBox(height: 6.h),
         ClipRRect(
           borderRadius: BorderRadius.circular(4.r),
           child: LinearProgressIndicator(
-            value: pct.clamp(0.04, 1.0),
+            value: barValue,
             minHeight: 4.h,
-            backgroundColor: color.withValues(alpha: 0.1),
-            color: color,
-          ),
-        ),
-        SizedBox(height: 4.h),
-        Text(
-          '${(pct * 100).round()}%',
-          style: AppFonts.lamaSans(
-            fontSize: 10.sp,
-            fontWeight: FontWeight.w700,
+            backgroundColor: color.withValues(alpha: 0.12),
             color: color,
           ),
         ),
       ],
     );
   }
+}
 
-  Widget _ageBar(
-    String label,
-    int count,
-    double pct,
-    Color color, {
-    bool isLast = false,
-  }) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: isLast ? 0 : 12.h),
-      child: Row(
-        textDirection: ui.TextDirection.rtl,
-        children: [
-          SizedBox(
-            width: 52.w,
-            child: Text(
-              label,
-              style: AppFonts.lamaSans(
-                fontSize: 11.sp,
-                fontWeight: FontWeight.w700,
-                color: _text,
-              ),
-              textAlign: TextAlign.right,
-            ),
-          ),
-          SizedBox(width: 10.w),
-          Expanded(
-            child: Stack(
-              children: [
-                Container(
-                  height: 8.h,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEEF2F7),
-                    borderRadius: BorderRadius.circular(6.r),
-                  ),
-                ),
-                FractionallySizedBox(
-                  widthFactor: pct.clamp(0.03, 1.0),
-                  child: Container(
-                    height: 8.h,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [color, color.withValues(alpha: 0.5)],
-                      ),
-                      borderRadius: BorderRadius.circular(6.r),
-                      boxShadow: [
-                        BoxShadow(
-                          color: color.withValues(alpha: 0.3),
-                          blurRadius: 6,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(width: 10.w),
-          Text(
-            '$count',
-            style: AppFonts.lamaSans(
-              fontSize: 12.sp,
-              fontWeight: FontWeight.w800,
-              color: color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+class _WeekChart extends StatelessWidget {
+  const _WeekChart({required this.controller});
 
-  // ─── Week chart ───────────────────────────────────────────────────────────
+  final DoctorStatsController controller;
 
-  Widget _buildWeekChart() {
-    final counts = controller.dailyAppointmentCounts;
-    final labels = controller.weekDayLabels;
-    final maxCount = counts.fold<int>(0, math.max);
-    final total = counts.fold<int>(0, (a, b) => a + b);
+  @override
+  Widget build(BuildContext context) {
+    final days = controller.weeklyAppointments;
+    final maxCount = days.fold<int>(0, (max, day) => math.max(max, day.count));
+    final total = controller.weeklyAppointmentsTotal;
 
-    return _glassCard(
+    return DoctorGlassCard(
+      padding: EdgeInsets.fromLTRB(16.w, 16.h, 16.w, 12.h),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            textDirection: ui.TextDirection.rtl,
+            textDirection: TextDirection.rtl,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
                 'آخر 7 أيام',
                 style: AppFonts.lamaSans(
                   fontSize: 12.sp,
-                  fontWeight: FontWeight.w600,
-                  color: _muted,
+                  color: AppColors.doctorLabel,
                 ),
               ),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 5.h),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [_azure.withValues(alpha: 0.15), _sky.withValues(alpha: 0.08)],
-                  ),
-                  borderRadius: BorderRadius.circular(20.r),
-                  border: Border.all(color: _azure.withValues(alpha: 0.2)),
-                ),
-                child: Text(
-                  'الإجمالي: $total',
-                  style: AppFonts.lamaSans(
-                    fontSize: 11.sp,
-                    fontWeight: FontWeight.w700,
-                    color: _royal,
-                  ),
+              Text(
+                'الإجمالي: $total',
+                style: AppFonts.lamaSans(
+                  fontSize: 11.sp,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primary,
                 ),
               ),
             ],
           ),
-          SizedBox(height: 24.h),
+          SizedBox(height: 12.h),
           SizedBox(
-            height: 150.h,
+            height: 130.h,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
-              children: List.generate(7, (index) {
-                final value = counts[index];
-                final factor =
-                    maxCount == 0 ? 0.05 : (value / maxCount).clamp(0.05, 1.0);
-                final isToday = index == 6;
+              children: days.map((day) {
+                final factor = maxCount == 0
+                    ? 0.08
+                    : (day.count / maxCount).clamp(0.08, 1.0);
 
                 return Expanded(
                   child: Padding(
@@ -909,467 +488,313 @@ class DoctorStatsScreen extends GetView<DoctorStatsController> {
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         Text(
-                          '$value',
+                          '${day.count}',
                           style: AppFonts.lamaSans(
                             fontSize: 10.sp,
-                            fontWeight: FontWeight.w800,
-                            color: isToday ? _azure : _muted,
+                            fontWeight: FontWeight.w700,
+                            color: day.isToday
+                                ? AppColors.primary
+                                : AppColors.doctorLabel,
+                          ),
+                        ),
+                        SizedBox(height: 4.h),
+                        Container(
+                          height: 80.h * factor,
+                          decoration: BoxDecoration(
+                            color: day.isToday
+                                ? AppColors.primary
+                                : AppColors.primary.withValues(alpha: 0.25),
+                            borderRadius: BorderRadius.circular(6.r),
                           ),
                         ),
                         SizedBox(height: 6.h),
-                        Container(
-                          height: 100.h * factor,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.bottomCenter,
-                              end: Alignment.topCenter,
-                              colors: isToday
-                                  ? [_royal, _sky]
-                                  : [
-                                      _azure.withValues(alpha: 0.25),
-                                      _sky.withValues(alpha: 0.08),
-                                    ],
-                            ),
-                            borderRadius: BorderRadius.circular(12.r),
-                          ),
-                        ),
-                        SizedBox(height: 8.h),
                         Text(
-                          labels[index],
+                          day.dayLabel,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: AppFonts.lamaSans(
                             fontSize: 8.sp,
                             fontWeight:
-                                isToday ? FontWeight.w800 : FontWeight.w500,
-                            color: isToday ? _text : _muted,
+                                day.isToday ? FontWeight.w700 : FontWeight.w500,
+                            color: AppColors.doctorLabel,
                           ),
                         ),
                       ],
                     ),
                   ),
                 );
-              }),
+              }).toList(),
             ),
           ),
         ],
       ),
     );
   }
+}
 
-  // ─── Appointment status ───────────────────────────────────────────────────
+class _PatientStatusCard extends StatelessWidget {
+  const _PatientStatusCard({required this.controller});
 
-  Widget _buildAppointmentStatus() {
-    final segments = [
-      _Seg('مكتملة', controller.completedAppointmentsCount, _mint),
-      _Seg('انتظار', controller.pendingAppointmentsCount, _azure),
-      _Seg('متأخرة', controller.lateAppointmentsCount, _coral),
-    ];
-    final total = math.max(
-      segments.fold<int>(0, (s, e) => s + e.count),
-      1,
+  final DoctorStatsController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return _StatusBreakdownCard(
+      items: controller.patientStatusItems,
+      colorForKey: _patientStatusColor,
     );
+  }
 
-    return _glassCard(
+  Color _patientStatusColor(String key) {
+    switch (key) {
+      case 'active':
+        return AppColors.doctorAccentGreen;
+      case 'inactive':
+        return AppColors.error;
+      default:
+        return AppColors.primary;
+    }
+  }
+}
+
+class _AppointmentStatusCard extends StatelessWidget {
+  const _AppointmentStatusCard({required this.controller});
+
+  final DoctorStatsController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return _StatusBreakdownCard(
+      items: controller.appointmentStatusItems,
+      colorForKey: _appointmentStatusColor,
+    );
+  }
+
+  Color _appointmentStatusColor(String key) {
+    switch (key) {
+      case 'completed':
+        return AppColors.doctorAccentGreen;
+      case 'late':
+        return AppColors.error;
+      default:
+        return AppColors.primary;
+    }
+  }
+}
+
+class _StatusBreakdownCard extends StatelessWidget {
+  const _StatusBreakdownCard({
+    required this.items,
+    required this.colorForKey,
+  });
+
+  final List<DoctorStatsBreakdownItem> items;
+  final Color Function(String key) colorForKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final visibleItems = items.where((item) => item.count > 0).toList();
+
+    return DoctorGlassCard(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'حالة المواعيد — هذا الشهر',
-            style: AppFonts.lamaSans(
-              fontSize: 13.sp,
-              fontWeight: FontWeight.w700,
-              color: _text,
-            ),
-          ),
-          SizedBox(height: 14.h),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8.r),
-            child: SizedBox(
-              height: 12.h,
-              child: Row(
-                children: segments
-                    .where((s) => s.count > 0)
-                    .map(
-                      (s) => Expanded(
-                        flex: s.count,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [s.color, s.color.withValues(alpha: 0.7)],
-                            ),
-                          ),
+          if (visibleItems.isNotEmpty) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8.r),
+              child: SizedBox(
+                height: 12.h,
+                child: Row(
+                  children: visibleItems
+                      .map(
+                        (item) => Expanded(
+                          flex: item.count,
+                          child: Container(color: colorForKey(item.key)),
                         ),
-                      ),
-                    )
-                    .toList(),
+                      )
+                      .toList(),
+                ),
               ),
             ),
-          ),
-          SizedBox(height: 16.h),
-          ...segments.map(
-            (s) => Padding(
-              padding: EdgeInsets.only(bottom: 10.h),
+            SizedBox(height: 16.h),
+          ],
+          ...items.asMap().entries.map((entry) {
+            final item = entry.value;
+            final isLast = entry.key == items.length - 1;
+            final color = colorForKey(item.key);
+
+            return Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 12.h),
               child: Row(
-                textDirection: ui.TextDirection.rtl,
+                textDirection: TextDirection.rtl,
                 children: [
                   Container(
                     width: 8.w,
                     height: 8.w,
                     decoration: BoxDecoration(
-                      color: s.color,
+                      color: color,
                       shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: s.color.withValues(alpha: 0.4),
-                          blurRadius: 4,
-                        ),
-                      ],
                     ),
                   ),
                   SizedBox(width: 10.w),
                   Expanded(
                     child: Text(
-                      s.label,
+                      item.label,
                       style: AppFonts.lamaSans(
                         fontSize: 13.sp,
                         fontWeight: FontWeight.w600,
-                        color: _text,
+                        color: AppColors.textPrimary,
                       ),
                     ),
                   ),
                   Text(
-                    '${s.count}',
+                    '${item.count}',
                     style: AppFonts.lamaSans(
                       fontSize: 15.sp,
                       fontWeight: FontWeight.w800,
-                      color: s.color,
+                      color: color,
                     ),
                   ),
                   SizedBox(width: 6.w),
                   Text(
-                    '${((s.count / total) * 100).round()}%',
+                    '(${item.percent}%)',
                     style: AppFonts.lamaSans(
                       fontSize: 11.sp,
-                      color: _muted,
+                      color: AppColors.doctorLabel,
                     ),
                   ),
                 ],
               ),
-            ),
-          ),
+            );
+          }),
         ],
       ),
     );
   }
+}
 
-  // ─── Treatment list ───────────────────────────────────────────────────────
+class _TreatmentCard extends StatelessWidget {
+  const _TreatmentCard({required this.controller});
 
-  Widget _buildTreatmentList() {
-    final distribution = controller.treatmentDistribution;
-    if (distribution.isEmpty) {
-      return _glassCard(
-        child: Center(
-          child: Padding(
-            padding: EdgeInsets.symmetric(vertical: 20.h),
-            child: Text(
-              'لا توجد بيانات علاج',
-              style: AppFonts.lamaSans(fontSize: 13.sp, color: _muted),
-            ),
+  final DoctorStatsController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = controller.treatmentItems;
+    if (items.isEmpty) {
+      return DoctorGlassCard(
+        child: Text(
+          'لا توجد بيانات علاج بعد',
+          style: AppFonts.lamaSans(
+            fontSize: 14.sp,
+            color: AppColors.doctorLabel,
           ),
+          textAlign: TextAlign.center,
         ),
       );
     }
 
-    final total = distribution.values.fold<int>(0, (a, b) => a + b);
-    final colors = [_royal, _mint, _violet, _amber, _coral, _azure];
-    final entries = distribution.entries.toList();
+    final colors = [
+      AppColors.primary,
+      AppColors.doctorAccentGreen,
+      AppColors.doctorAccentPurple,
+      AppColors.doctorAccentOrange,
+      AppColors.secondary,
+    ];
 
-    return Column(
-      children: entries.asMap().entries.map((entry) {
-        final rank = entry.key + 1;
-        final item = entry.value;
-        final color = colors[entry.key % colors.length];
-        final pct = total == 0 ? 0.0 : item.value / total;
+    return DoctorGlassCard(
+      child: Column(
+        children: items.asMap().entries.map((entry) {
+          final index = entry.key;
+          final item = entry.value;
+          final color = colors[index % colors.length];
+          final barValue = (item.percent / 100).clamp(0.04, 1.0);
 
-        return Padding(
-          padding: EdgeInsets.only(bottom: 10.h),
-          child: _glassCard(
-            padding: EdgeInsets.all(16.w),
-            child: Row(
-              textDirection: ui.TextDirection.rtl,
+          return Padding(
+            padding: EdgeInsets.only(bottom: 12.h),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              textDirection: TextDirection.rtl,
               children: [
-                Container(
-                  width: 32.w,
-                  height: 32.w,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [color, color.withValues(alpha: 0.6)],
-                    ),
-                    borderRadius: BorderRadius.circular(10.r),
-                    boxShadow: [
-                      BoxShadow(
-                        color: color.withValues(alpha: 0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 3),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  textDirection: TextDirection.rtl,
+                  children: [
+                    Text(
+                      '${item.count} مريض',
+                      style: AppFonts.lamaSans(
+                        fontSize: 12.sp,
+                        fontWeight: FontWeight.w700,
+                        color: color,
                       ),
-                    ],
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    '$rank',
-                    style: AppFonts.lamaSans(
-                      fontSize: 13.sp,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
                     ),
-                  ),
-                ),
-                SizedBox(width: 12.w),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        textDirection: ui.TextDirection.rtl,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              item.key,
-                              style: AppFonts.lamaSans(
-                                fontSize: 13.sp,
-                                fontWeight: FontWeight.w700,
-                                color: _text,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              textAlign: TextAlign.right,
-                            ),
-                          ),
-                          Text(
-                            '${item.value} مريض',
-                            style: AppFonts.lamaSans(
-                              fontSize: 11.sp,
-                              fontWeight: FontWeight.w700,
-                              color: color,
-                            ),
-                          ),
-                        ],
-                      ),
-                      SizedBox(height: 8.h),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(4.r),
-                        child: LinearProgressIndicator(
-                          value: pct.clamp(0.04, 1.0),
-                          minHeight: 5.h,
-                          backgroundColor: color.withValues(alpha: 0.1),
-                          color: color,
+                    Expanded(
+                      child: Text(
+                        item.type,
+                        style: AppFonts.lamaSans(
+                          fontSize: 13.sp,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
                         ),
+                        textAlign: TextAlign.right,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    ],
+                    ),
+                  ],
+                ),
+                SizedBox(height: 6.h),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4.r),
+                  child: LinearProgressIndicator(
+                    value: barValue,
+                    minHeight: 6.h,
+                    backgroundColor: AppColors.divider,
+                    color: color,
                   ),
                 ),
               ],
             ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  // ─── Shared widgets ───────────────────────────────────────────────────────
-
-  Widget _sectionHeader(
-    String title,
-    String subtitle,
-    IconData icon,
-    Color accent,
-  ) {
-    return Row(
-      textDirection: ui.TextDirection.rtl,
-      children: [
-        Container(
-          width: 40.w,
-          height: 40.w,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [accent, accent.withValues(alpha: 0.6)],
-            ),
-            borderRadius: BorderRadius.circular(12.r),
-            boxShadow: [
-              BoxShadow(
-                color: accent.withValues(alpha: 0.25),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Icon(icon, color: Colors.white, size: 20.sp),
-        ),
-        SizedBox(width: 12.w),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: AppFonts.lamaSans(
-                  fontSize: 16.sp,
-                  fontWeight: FontWeight.w800,
-                  color: _text,
-                ),
-              ),
-              Text(
-                subtitle,
-                style: AppFonts.lamaSans(
-                  fontSize: 11.sp,
-                  fontWeight: FontWeight.w500,
-                  color: _muted,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _glassCard({required Widget child, EdgeInsetsGeometry? padding}) {
-    return Container(
-      width: double.infinity,
-      padding: padding ?? EdgeInsets.all(20.w),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24.r),
-        border: Border.all(color: Colors.white),
-        boxShadow: [
-          BoxShadow(
-            color: _ink.withValues(alpha: 0.06),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
+          );
+        }).toList(),
       ),
-      child: child,
-    );
-  }
-
-  Widget _buildErrorState() {
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      children: [
-        SizedBox(height: 160.h),
-        Center(
-          child: Column(
-            children: [
-              Container(
-                width: 72.w,
-                height: 72.w,
-                decoration: BoxDecoration(
-                  color: _coral.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(Icons.cloud_off_rounded, color: _coral, size: 32.sp),
-              ),
-              SizedBox(height: 16.h),
-              Text(
-                'تعذر تحميل البيانات',
-                style: AppFonts.lamaSans(
-                  fontSize: 16.sp,
-                  fontWeight: FontWeight.w700,
-                  color: _text,
-                ),
-              ),
-              SizedBox(height: 8.h),
-              TextButton(
-                onPressed: controller.loadStats,
-                child: Text(
-                  'إعادة المحاولة',
-                  style: AppFonts.lamaSans(
-                    fontWeight: FontWeight.w700,
-                    color: _azure,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 }
 
-// ─── Private models & cards ─────────────────────────────────────────────────
+class _ErrorBody extends StatelessWidget {
+  const _ErrorBody({required this.onRetry});
 
-class _BentoItem {
-  const _BentoItem(this.title, this.value, this.icon, this.gradient);
-  final String title;
-  final String value;
-  final IconData icon;
-  final List<Color> gradient;
-}
-
-class _BentoCard extends StatelessWidget {
-  const _BentoCard({required this.item});
-  final _BentoItem item;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.all(16.w),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20.r),
-        border: Border.all(
-          color: item.gradient.first.withValues(alpha: 0.12),
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        SizedBox(height: 80.h),
+        Icon(Icons.cloud_off_rounded, color: AppColors.error, size: 48.sp),
+        SizedBox(height: 16.h),
+        Text(
+          'تعذر تحميل البيانات',
+          textAlign: TextAlign.center,
+          style: AppFonts.lamaSans(
+            fontSize: 16.sp,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textPrimary,
+          ),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: item.gradient.first.withValues(alpha: 0.08),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        textDirection: ui.TextDirection.rtl,
-        children: [
-          Container(
-            width: 36.w,
-            height: 36.w,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(colors: item.gradient),
-              borderRadius: BorderRadius.circular(10.r),
-            ),
-            child: Icon(item.icon, color: Colors.white, size: 18.sp),
-          ),
-          const Spacer(),
-          Text(
-            item.value,
+        TextButton(
+          onPressed: onRetry,
+          child: Text(
+            'إعادة المحاولة',
             style: AppFonts.lamaSans(
-              fontSize: 26.sp,
-              fontWeight: FontWeight.w800,
-              color: const Color(0xFF1E293B),
+              fontWeight: FontWeight.w700,
+              color: AppColors.primary,
             ),
           ),
-          Text(
-            item.title,
-            style: AppFonts.lamaSans(
-              fontSize: 11.sp,
-              fontWeight: FontWeight.w600,
-              color: const Color(0xFF94A3B8),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
-}
-
-class _Seg {
-  const _Seg(this.label, this.count, this.color);
-  final String label;
-  final int count;
-  final Color color;
 }

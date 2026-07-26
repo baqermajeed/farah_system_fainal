@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from typing import Optional
 
 from app.security import require_roles, get_current_user
 from app.constants import Role
+from app.models import Doctor
 from app.services.stats_service import (
     get_overview_stats,
     get_users_stats,
@@ -18,9 +19,28 @@ from app.services.stats_service import (
     get_doctor_appointments_breakdown_stats,
     get_doctors_comparison_stats,
     get_doctor_details_cards_stats,
+    get_doctor_mobile_dashboard_stats,
 )
 
 router = APIRouter(prefix="/stats", tags=["statistics"])
+
+
+async def _ensure_doctor_stats_access(doctor_id: str, current) -> None:
+    if current.role == Role.ADMIN:
+        return
+    doctor = await Doctor.find_one(Doctor.user_id == current.id)
+    if not doctor or str(doctor.id) != doctor_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+
+@router.get("/doctors/{doctor_id}/mobile-dashboard")
+async def doctor_mobile_dashboard_stats(
+    doctor_id: str,
+    current=Depends(require_roles([Role.ADMIN, Role.DOCTOR])),
+):
+    """إحصائيات موحّدة لتطبيق الطبيب — كل الحسابات من قاعدة البيانات."""
+    await _ensure_doctor_stats_access(doctor_id, current)
+    return await get_doctor_mobile_dashboard_stats(doctor_id=doctor_id)
 
 
 @router.get("/dashboard")

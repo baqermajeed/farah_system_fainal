@@ -27,6 +27,16 @@ class StatsService {
     return doctorId;
   }
 
+  Future<Map<String, dynamic>> getDoctorMobileDashboard(String doctorId) async {
+    final response = await _api.get(
+      ApiConstants.statsDoctorMobileDashboard(doctorId),
+    );
+    if (response.statusCode != 200) {
+      throw ApiException('تعذر جلب إحصائيات الطبيب');
+    }
+    return (response.data as Map).cast<String, dynamic>();
+  }
+
   Future<Map<String, dynamic>> getDoctorDetailsCards(String doctorId) async {
     final response = await _api.get(ApiConstants.statsDoctorDetailsCards(doctorId));
     if (response.statusCode != 200) {

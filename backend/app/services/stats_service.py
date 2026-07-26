@@ -624,6 +624,11 @@ async def get_doctor_details_cards_stats(
         ).to_list()
         new_patient_ids = {str(p.id) for p in new_patients}
 
+    today_new_unique_ids = {
+        str(log.patient_id)
+        for log in today_logs
+        if getattr(log, "patient_id", None) and str(log.patient_id) in new_patient_ids
+    }
     month_new_unique_ids = {
         str(log.patient_id)
         for log in month_logs
@@ -692,7 +697,8 @@ async def get_doctor_details_cards_stats(
         },
         "metrics": {
             "period_patients_count": len(range_new_unique_ids),
-            "transfers_today": today_new_ops,
+            "transfers_today": len(today_new_unique_ids),
+            "transfers_today_ops": today_new_ops,
             "transfers_month_unique": len(month_new_unique_ids),
             "transfers_month_ops": month_new_ops,
             "active_count": activity_counts["active"],
@@ -1484,6 +1490,77 @@ def _status_bucket(status: str) -> str:
     return "other"
 
 
+def _clinic_datetime(dt: datetime) -> datetime:
+    if dt is None:
+        return _clinic_now()
+    value = dt.replace(microsecond=0) if dt.microsecond else dt
+    if value.tzinfo is not None:
+        return value.replace(tzinfo=None)
+    return value
+
+
+def _clinic_now() -> datetime:
+    return datetime.now().replace(microsecond=0)
+
+
+def _arabic_weekday_label(dt: datetime) -> str:
+    labels = {
+        0: "الاثنين",
+        1: "الثلاثاء",
+        2: "الأربعاء",
+        3: "الخميس",
+        4: "الجمعة",
+        5: "السبت",
+        6: "الأحد",
+    }
+    return labels.get(dt.weekday(), "")
+
+
+def _effective_appointment_status(
+    status: str,
+    scheduled_at: datetime,
+    now_clinic: datetime,
+) -> str:
+    normalized = (status or "pending").strip().lower()
+    if normalized == "completed":
+        return "completed"
+    if normalized in {"canceled", "cancelled"}:
+        return "cancelled"
+    if normalized == "late":
+        return "late"
+    if normalized in {"scheduled", "pending"}:
+        scheduled = _clinic_datetime(scheduled_at)
+        if scheduled < now_clinic:
+            return "late"
+        return "pending"
+    return "other"
+
+
+def _safe_percent(count: int, total: int) -> int:
+    if total <= 0:
+        return 0
+    return round((count / total) * 100)
+
+
+def _build_breakdown_items(
+    *,
+    rows: List[tuple[str, str, int]],
+    total: Optional[int] = None,
+) -> Dict:
+    computed_total = total if total is not None else sum(row[2] for row in rows)
+    items = []
+    for key, label, count in rows:
+        items.append(
+            {
+                "key": key,
+                "label": label,
+                "count": count,
+                "percent": _safe_percent(count, computed_total),
+            }
+        )
+    return {"total": computed_total, "items": items}
+
+
 async def get_doctor_patients_breakdown_stats(
     *,
     doctor_id: str,
@@ -1510,10 +1587,10 @@ async def get_doctor_patients_breakdown_stats(
 
     doctor_user = await User.get(doctor.user_id)
 
-    now = datetime.now(timezone.utc)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    now_clinic = _clinic_now()
+    today_start = now_clinic.replace(hour=0, minute=0, second=0, microsecond=0)
     tomorrow_start = today_start + timedelta(days=1)
-    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    month_start = today_start.replace(day=1)
     next_month_start = (
         month_start.replace(year=month_start.year + 1, month=1)
         if month_start.month == 12
@@ -1754,12 +1831,16 @@ async def get_doctor_appointments_breakdown_stats(
         if stage_name and app_stage_name != stage_name:
             continue
 
-        status_key = _status_bucket(getattr(app, "status", "pending"))
+        status_key = _effective_appointment_status(
+            getattr(app, "status", "pending"),
+            app.scheduled_at,
+            now_clinic,
+        )
         if status_filter and status_key != status_filter:
             continue
 
         by_status_all[status_key] += 1
-        app_time = _to_utc(app.scheduled_at)
+        app_time = _clinic_datetime(app.scheduled_at)
 
         if today_start <= app_time < tomorrow_start:
             today_apps.append(app)
@@ -1812,10 +1893,14 @@ async def get_doctor_appointments_breakdown_stats(
     upcoming_now = 0
     future_pending = await Appointment.find(
         Appointment.doctor_id == did,
-        Appointment.scheduled_at > now,
+        Appointment.scheduled_at > now_clinic,
     ).to_list()
     for app in future_pending:
-        status_key = _status_bucket(getattr(app, "status", "pending"))
+        status_key = _effective_appointment_status(
+            getattr(app, "status", "pending"),
+            app.scheduled_at,
+            now_clinic,
+        )
         if status_filter and status_key != status_filter:
             continue
         if status_key == "pending":
@@ -1972,4 +2057,169 @@ async def get_doctors_comparison_stats(
         "range": {"from": date_from, "to": date_to},
         "total_doctors": len(results),
         "doctors": results,
+    }
+
+
+async def get_doctor_mobile_dashboard_stats(*, doctor_id: str) -> Dict:
+    """
+    Endpoint موحّد لتطبيق الطبيب — كل الأرقام والنسب محسوبة من قاعدة البيانات.
+    """
+    from beanie import PydanticObjectId as OID
+
+    try:
+        did = OID(doctor_id)
+    except Exception:
+        return {"detail": "Invalid doctor_id"}
+
+    doctor = await Doctor.get(did)
+    if not doctor:
+        return {"detail": "Doctor not found"}
+
+    cards = await get_doctor_details_cards_stats(doctor_id=doctor_id)
+    if cards.get("detail"):
+        return cards
+
+    now_clinic = _clinic_now()
+    today_start = now_clinic.replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow_start = today_start + timedelta(days=1)
+    week_start = today_start - timedelta(days=6)
+    month_start = today_start.replace(day=1)
+    next_month_start = (
+        month_start.replace(year=month_start.year + 1, month=1)
+        if month_start.month == 12
+        else month_start.replace(month=month_start.month + 1)
+    )
+
+    appointments = await Appointment.find(
+        Appointment.doctor_id == did,
+        Appointment.scheduled_at >= week_start,
+        Appointment.scheduled_at < next_month_start,
+    ).to_list()
+
+    week_day_keys = [
+        (week_start + timedelta(days=offset)).strftime("%Y-%m-%d")
+        for offset in range(7)
+    ]
+    week_counts = {key: 0 for key in week_day_keys}
+    by_status_month = {
+        "pending": 0,
+        "completed": 0,
+        "cancelled": 0,
+        "late": 0,
+        "other": 0,
+    }
+
+    for app in appointments:
+        app_time = _clinic_datetime(app.scheduled_at)
+        status_key = _effective_appointment_status(
+            getattr(app, "status", "pending"),
+            app.scheduled_at,
+            now_clinic,
+        )
+
+        if month_start <= app_time < next_month_start:
+            by_status_month[status_key] += 1
+
+        if week_start <= app_time < tomorrow_start:
+            day_key = app_time.strftime("%Y-%m-%d")
+            if day_key in week_counts:
+                week_counts[day_key] += 1
+
+    weekly_items = []
+    for offset in range(7):
+        day = week_start + timedelta(days=offset)
+        day_key = day.strftime("%Y-%m-%d")
+        weekly_items.append(
+            {
+                "date": day_key,
+                "day_label": _arabic_weekday_label(day),
+                "count": week_counts.get(day_key, 0),
+                "is_today": day.date() == today_start.date(),
+            }
+        )
+
+    counts = cards.get("counts") or {}
+    metrics = cards.get("metrics") or {}
+    insights = cards.get("patient_insights") or {}
+    gender = insights.get("gender") or {}
+    activity = insights.get("activity_status") or {}
+    age = insights.get("age") or {}
+    treatment = insights.get("treatment") or {}
+
+    male_count = int(gender.get("male") or 0)
+    female_count = int(gender.get("female") or 0)
+    gender_total = male_count + female_count
+
+    age_buckets_raw = age.get("buckets") or []
+    age_total = sum(int(bucket.get("count") or 0) for bucket in age_buckets_raw)
+    age_items = [
+        {
+            "label": bucket.get("label") or "",
+            "count": int(bucket.get("count") or 0),
+            "percent": _safe_percent(int(bucket.get("count") or 0), age_total),
+        }
+        for bucket in age_buckets_raw
+        if (bucket.get("label") or "").strip()
+    ]
+
+    treatment_distribution = treatment.get("distribution") or []
+    treatment_total = sum(int(item.get("count") or 0) for item in treatment_distribution)
+    treatment_items = [
+        {
+            "type": item.get("type") or "",
+            "count": int(item.get("count") or 0),
+            "percent": _safe_percent(int(item.get("count") or 0), treatment_total),
+        }
+        for item in treatment_distribution
+        if (item.get("type") or "").strip()
+    ]
+
+    active_count = int(activity.get("active") or 0)
+    pending_count = int(activity.get("pending") or 0)
+    inactive_count = int(activity.get("inactive") or 0)
+
+    appointment_status_rows = [
+        ("completed", "مكتملة", int(by_status_month.get("completed") or 0)),
+        ("pending", "قيد الانتظار", int(by_status_month.get("pending") or 0)),
+        ("late", "متأخرة", int(by_status_month.get("late") or 0)),
+    ]
+
+    return {
+        "doctor": cards.get("doctor") or {},
+        "generated_at": now_clinic.isoformat(),
+        "timezone": "clinic_local",
+        "patients": {
+            "total": int(counts.get("total_patients") or 0),
+            "new_today": int(metrics.get("transfers_today") or 0),
+            "new_month": int(metrics.get("transfers_month_unique") or 0),
+        },
+        "patient_status": _build_breakdown_items(
+            rows=[
+                ("active", "نشطون", active_count),
+                ("pending", "قيد المراجعة", pending_count),
+                ("inactive", "غير نشطين", inactive_count),
+            ]
+        ),
+        "demographics": {
+            "gender": _build_breakdown_items(
+                rows=[
+                    ("female", "إناث", female_count),
+                    ("male", "ذكور", male_count),
+                ],
+                total=gender_total,
+            ),
+            "age_buckets": age_items,
+            "age_total": age_total,
+        },
+        "weekly_appointments": {
+            "total": sum(item["count"] for item in weekly_items),
+            "items": weekly_items,
+        },
+        "appointment_status_month": _build_breakdown_items(
+            rows=appointment_status_rows,
+        ),
+        "treatment_distribution": {
+            "total": treatment_total,
+            "items": treatment_items,
+        },
     }

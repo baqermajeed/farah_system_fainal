@@ -111,6 +111,8 @@ class ApiConstants {
       '/stats/doctors/$doctorId/doctor-details-cards';
   static String statsDoctorAppointmentsBreakdown(String doctorId) =>
       '/stats/doctors/$doctorId/appointments-breakdown';
+  static String statsDoctorMobileDashboard(String doctorId) =>
+      '/stats/doctors/$doctorId/mobile-dashboard';
 
   // Dental Chart (FDI)
   static String patientDentalChart(String patientId) =>
