@@ -157,7 +157,6 @@ class PatientHomeController extends GetxController {
           (unreadByDoctorId[doctorUserId] ?? 0) + 1;
     }
     unreadByDoctorId.refresh();
-    unreadNotificationsCount.value = unreadNotificationsCount.value + 1;
   }
 
   void onIncomingChatMessage(dynamic data) {

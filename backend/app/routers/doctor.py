@@ -461,7 +461,12 @@ async def my_patients(
     pipeline.append(
         {
             "$addFields": {
-                "sort_date": {"$ifNull": ["$created_at", "$_id"]}
+                "sort_date": {
+                    "$ifNull": [
+                        f"$doctor_profiles.{doctor_id}.assigned_at",
+                        {"$ifNull": ["$created_at", "$_id"]},
+                    ]
+                }
             }
         }
     )

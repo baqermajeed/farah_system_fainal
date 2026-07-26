@@ -4,6 +4,8 @@ __pycache__/
 *.pyc
 .env
 firebase-credentials.json
+farah-notification-firebase-adminsdk*.json
+*-firebase-adminsdk-*.json
 
 # Flutter / Dart
 .dart_tool/

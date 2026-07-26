@@ -10,7 +10,6 @@ import '../core/routes/app_routes.dart';
 import '../core/utils/image_utils.dart';
 import '../models/doctor_model.dart';
 import '../models/patient_model.dart';
-import '../services/doctor_service.dart';
 import '../services/patient_service.dart';
 import 'auth_controller.dart';
 import 'patient_controller.dart';
@@ -75,9 +74,13 @@ class QrScannerController extends GetxController {
       if (isReceptionist) {
         _navigateToPatientDetails(patient);
       } else {
-        final isMyPatient = await _checkPatientAssignment(patient.id);
-        if (isMyPatient) {
-          _navigateToPatientDetails(patient);
+        // جلب بيانات المريض الكاملة من السيرفر مباشرة (مثل البحث)
+        final patientController = Get.find<PatientController>();
+        final fullPatient = await patientController.ensurePatientLoaded(
+          patient.id,
+        );
+        if (fullPatient != null) {
+          _navigateToPatientDetails(fullPatient);
         } else {
           final assignedDoctor = doctors.isNotEmpty ? doctors.first : null;
           _showPatientTransferredDialog(patient, assignedDoctor);
@@ -87,18 +90,6 @@ class QrScannerController extends GetxController {
       _hideLoadingDialog();
       _showErrorDialog('حدث خطأ أثناء البحث عن المريض: ${e.toString()}');
       _resumeScanning();
-    }
-  }
-
-  /// التحقق من ربط المريض بالطبيب الحالي
-  Future<bool> _checkPatientAssignment(String patientId) async {
-    try {
-      final doctorService = DoctorService();
-      final patients = await doctorService.getMyPatients(limit: 100);
-      return patients.any((p) => p.id == patientId);
-    } catch (e) {
-      print('❌ Error checking patient assignment: $e');
-      return false;
     }
   }
 

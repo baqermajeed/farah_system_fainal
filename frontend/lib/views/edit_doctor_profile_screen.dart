@@ -1,11 +1,11 @@
 import 'dart:ui' as ui;
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
 import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
+import 'package:farah_sys_final/widgets/profile_cached_image.dart';
 import 'package:farah_sys_final/views/doctor/widgets/doctor_back_button.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
@@ -523,33 +523,15 @@ class EditDoctorProfileScreen extends GetView<EditDoctorProfileController> {
 
     Widget avatar;
     if (hasImage) {
-      final url = '$validImageUrl?t=${controller.imageTimestamp.value}';
-      avatar = CircleAvatar(
-        radius: 52.r,
-        backgroundColor: const Color(0xFFE8ECF0),
-        child: ClipOval(
-          child: CachedNetworkImage(
-            imageUrl: url,
-            fit: BoxFit.cover,
-            width: 104.w,
-            height: 104.w,
-            fadeInDuration: Duration.zero,
-            fadeOutDuration: Duration.zero,
-            placeholder: (context, url) =>
-                Container(color: const Color(0xFFE8ECF0)),
-            errorWidget: (context, url, error) =>
-                Icon(Icons.person_rounded, size: 48.sp, color: _grayText),
-            memCacheWidth: 220,
-            memCacheHeight: 220,
-          ),
-        ),
+      avatar = ProfileCachedImage(
+        imageUrl: imageUrl,
+        size: 104.w,
+        cacheVersion: controller.imageTimestamp.value,
+        placeholder: _profilePlaceholder(),
+        errorWidget: _profilePlaceholder(),
       );
     } else {
-      avatar = CircleAvatar(
-        radius: 52.r,
-        backgroundColor: const Color(0xFFE8ECF0),
-        child: Icon(Icons.person_rounded, size: 48.sp, color: _grayText),
-      );
+      avatar = _profilePlaceholder();
     }
 
     return Stack(
@@ -566,7 +548,16 @@ class EditDoctorProfileScreen extends GetView<EditDoctorProfileController> {
               ],
             ),
           ),
-          child: avatar,
+          child: Container(
+            width: 104.w,
+            height: 104.w,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Color(0xFFE8ECF0),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: avatar,
+          ),
         ),
         if (isUploadingImage)
           SizedBox(
@@ -609,5 +600,9 @@ class EditDoctorProfileScreen extends GetView<EditDoctorProfileController> {
           ),
       ],
     );
+  }
+
+  Widget _profilePlaceholder() {
+    return Icon(Icons.person_rounded, size: 48.sp, color: _grayText);
   }
 }

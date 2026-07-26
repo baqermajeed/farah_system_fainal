@@ -5,6 +5,7 @@ import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/services/auth_service.dart';
 import 'package:farah_sys_final/core/utils/image_cropper_settings.dart';
+import 'package:farah_sys_final/widgets/profile_cached_image.dart';
 
 /// Controller لشاشة الملف الشخصي للطبيب — المنطق والحالة خارج الـ View.
 class DoctorProfileController extends GetxController {
@@ -13,7 +14,20 @@ class DoctorProfileController extends GetxController {
   final ImagePicker _imagePicker = ImagePicker();
 
   final RxBool isUploadingImage = false.obs;
-  final RxInt imageTimestamp = RxInt(DateTime.now().millisecondsSinceEpoch);
+  final RxInt imageTimestamp = RxInt(0);
+
+  @override
+  void onReady() {
+    super.onReady();
+    _prefetchProfileImage();
+  }
+
+  void _prefetchProfileImage() {
+    final context = Get.context;
+    if (context == null) return;
+    final imageUrl = authController.currentUser.value?.imageUrl;
+    ProfileCachedImage.prefetch(context, imageUrl, size: 104);
+  }
 
   Future<void> pickAndUploadImage() async {
     try {

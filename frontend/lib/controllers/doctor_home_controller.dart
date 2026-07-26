@@ -9,13 +9,20 @@ import 'package:farah_sys_final/controllers/appointment_controller.dart';
 import 'package:farah_sys_final/models/patient_model.dart';
 import 'package:farah_sys_final/models/appointment_model.dart';
 import 'package:farah_sys_final/services/chat_service.dart';
+import 'package:farah_sys_final/services/doctor_service.dart';
+import 'package:farah_sys_final/services/notification_service.dart';
 
 /// Controller لشاشة الرئيسية للطبيب — منطق البحث، الرسائل غير المقروءة، والتنقل خارج الـ View (نمط GetX MVC).
 class DoctorHomeController extends GetxController {
+  static const int recentPatientsLimit = 10;
+
   final TextEditingController searchController = TextEditingController();
   final RxString searchQuery = ''.obs;
   final ChatService chatService = ChatService();
+  final DoctorService _doctorService = DoctorService();
   final RxMap<String, int> unreadCounts = <String, int>{}.obs;
+  final RxInt unreadNotificationsCount = 0.obs;
+  final RxList<PatientModel> recentPatients = <PatientModel>[].obs;
   final RxList<AppointmentModel> todayAppointments = <AppointmentModel>[].obs;
   final RxInt todayAppointmentsCount = 0.obs;
   final RxBool isLoadingAppointments = false.obs;
@@ -56,9 +63,11 @@ class DoctorHomeController extends GetxController {
     _dashboardLoading = true;
     try {
       await Future.wait([
+        loadRecentPatients(),
         if (_patientController.patients.isEmpty)
           _patientController.loadPatients(isInitial: true, isRefresh: false),
         loadUnreadCounts(),
+        loadUnreadNotificationsCount(),
         loadTodayAppointments(),
       ]);
     } finally {
@@ -72,9 +81,9 @@ class DoctorHomeController extends GetxController {
     _dashboardLoading = true;
     try {
       await Future.wait([
-        // لا نعيد تحميل المرضى هنا لتجنب الضغط المزدوج عند التنقل.
-        // شاشة "جميع المرضى" مسؤولة عن pagination الخاص بها.
+        loadRecentPatients(),
         loadUnreadCounts(),
+        loadUnreadNotificationsCount(),
         loadTodayAppointments(),
       ]);
     } finally {
@@ -115,16 +124,17 @@ class DoctorHomeController extends GetxController {
     super.onClose();
   }
 
-  /// آخر 8 مرضى للعرض في الرئيسية — بدون ترتيب القائمة كاملة (السيرفر يرجّع الأحدث أولاً).
-  List<PatientModel> get recentPatients {
-    final pc = _patientController;
-    final source = pc.lastSearchQuery.value.trim().isNotEmpty
-        ? pc.searchResults
-        : pc.patients;
-    if (source.length <= 8) {
-      return source.toList(growable: false);
+  /// آخر 10 مرضى أُضيفوا أو حُوّلوا لهذا الطبيب — من السيرفر مباشرة (منفصل عن البحث).
+  Future<void> loadRecentPatients() async {
+    try {
+      final list = await _doctorService.getMyPatients(
+        skip: 0,
+        limit: recentPatientsLimit,
+      );
+      recentPatients.assignAll(list);
+    } catch (e) {
+      print('❌ [DoctorHomeController] Error loading recent patients: $e');
     }
-    return source.take(8).toList(growable: false);
   }
 
   Future<void> loadUnreadCounts() async {
@@ -148,7 +158,20 @@ class DoctorHomeController extends GetxController {
     return unreadCounts.values.fold(0, (sum, count) => sum + count);
   }
 
-  List<PatientModel> get filteredPatients => recentPatients;
+  Future<void> loadUnreadNotificationsCount() async {
+    try {
+      final count = await NotificationService().getUnreadCount();
+      unreadNotificationsCount.value = count;
+    } catch (e) {
+      print('❌ [DoctorHomeController] Error loading notification unread count: $e');
+      unreadNotificationsCount.value = 0;
+    }
+  }
+
+  Future<void> openNotificationsAndRefresh() async {
+    await Get.toNamed(AppRoutes.notifications);
+    await loadUnreadNotificationsCount();
+  }
 
   void openPatient(PatientModel patient) {
     _patientController.selectPatient(patient);

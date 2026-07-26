@@ -11,7 +11,7 @@ import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:farah_sys_final/views/doctor/widgets/doctor_back_button.dart';
 import 'package:farah_sys_final/controllers/doctor_profile_controller.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:farah_sys_final/widgets/profile_cached_image.dart';
 
 /// شاشة الملف الشخصي للطبيب — GetView؛ المنطق في DoctorProfileController.
 class DoctorProfileScreen extends GetView<DoctorProfileController> {
@@ -138,6 +138,10 @@ class DoctorProfileScreen extends GetView<DoctorProfileController> {
     );
   }
 
+  Widget _profilePlaceholder() {
+    return Icon(Icons.person_rounded, size: 48.sp, color: _grayText);
+  }
+
   Widget _buildRoleBadge() {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 6.h),
@@ -179,32 +183,15 @@ class DoctorProfileScreen extends GetView<DoctorProfileController> {
 
     Widget avatarChild;
     if (validImageUrl != null && ImageUtils.isValidImageUrl(validImageUrl)) {
-      final imageUrlWithTimestamp = '$validImageUrl?t=$imageTimestamp';
-      avatarChild = ClipOval(
-        child: CachedNetworkImage(
-          imageUrl: imageUrlWithTimestamp,
-          fit: BoxFit.cover,
-          width: 104.w,
-          height: 104.w,
-          fadeInDuration: Duration.zero,
-          fadeOutDuration: Duration.zero,
-          placeholder: (context, url) =>
-              Container(color: const Color(0xFFE8ECF0)),
-          errorWidget: (context, url, error) => Icon(
-            Icons.person_rounded,
-            size: 48.sp,
-            color: _grayText,
-          ),
-          memCacheWidth: 240,
-          memCacheHeight: 240,
-        ),
+      avatarChild = ProfileCachedImage(
+        imageUrl: imageUrl,
+        size: 104.w,
+        cacheVersion: imageTimestamp,
+        placeholder: _profilePlaceholder(),
+        errorWidget: _profilePlaceholder(),
       );
     } else {
-      avatarChild = Icon(
-        Icons.person_rounded,
-        size: 48.sp,
-        color: _grayText,
-      );
+      avatarChild = _profilePlaceholder();
     }
 
     return Stack(
@@ -238,9 +225,14 @@ class DoctorProfileScreen extends GetView<DoctorProfileController> {
               color: Colors.white,
             ),
             padding: EdgeInsets.all(3.w),
-            child: CircleAvatar(
-              radius: 52.r,
-              backgroundColor: const Color(0xFFE8ECF0),
+            child: Container(
+              width: 104.w,
+              height: 104.w,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: Color(0xFFE8ECF0),
+              ),
+              clipBehavior: Clip.antiAlias,
               child: avatarChild,
             ),
           ),

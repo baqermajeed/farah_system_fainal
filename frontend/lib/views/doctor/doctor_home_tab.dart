@@ -148,16 +148,13 @@ class DoctorHomeTab extends GetView<DoctorHomeController> {
               onTap: () => Get.toNamed(AppRoutes.qrScanner),
             ),
             SizedBox(width: 10.w),
-            Obx(() {
-              final unread = controller.unreadCounts.values.fold<int>(0, (s, c) => s + c);
-              return _headerIconButton(
-                assetPath: _notificationIconAsset,
-                assetWidth: 26.w,
-                assetHeight: 31.w,
-                onTap: () => Get.toNamed(AppRoutes.notifications),
-                hasBadge: unread > 0,
-              );
-            }),
+            Obx(() => _headerIconButton(
+                  assetPath: _notificationIconAsset,
+                  assetWidth: 26.w,
+                  assetHeight: 31.w,
+                  onTap: controller.openNotificationsAndRefresh,
+                  hasBadge: controller.unreadNotificationsCount.value > 0,
+                )),
           ],
         ),
       ),

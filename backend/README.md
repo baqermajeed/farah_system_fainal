@@ -35,8 +35,10 @@
    TWILIO_AUTH_TOKEN=
    TWILIO_FROM_NUMBER=
 
-   # Firebase (اختياري للإشعارات)
-   FIREBASE_CREDENTIALS_FILE=
+   # Firebase (لإشعارات Push)
+   # ضع ملف Service Account يدوياً على السيرفر داخل مجلد backend/ (لا ترفعه على GitHub):
+   # farah-notification-firebase-adminsdk-fbsvc-8bdffc9376.json
+   FIREBASE_CREDENTIALS_FILE=farah-notification-firebase-adminsdk-fbsvc-8bdffc9376.json
    ```
 
 3) تأكد من تشغيل MongoDB ثم شغّل الخادم:

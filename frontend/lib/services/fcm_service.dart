@@ -1,14 +1,23 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/foundation.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/services/api_service.dart';
 import 'package:farah_sys_final/services/auth_service.dart';
+import 'package:farah_sys_final/services/local_notification_service.dart';
 import 'package:farah_sys_final/core/routes/app_routes.dart';
+import 'package:farah_sys_final/controllers/auth_controller.dart';
+import 'package:farah_sys_final/controllers/doctor_home_controller.dart';
+import 'package:farah_sys_final/controllers/notifications_screen_controller.dart';
+import 'package:farah_sys_final/controllers/patient_home_controller.dart';
 import 'dart:io';
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // Background handler — keep lightweight; navigation handled on open.
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+  await LocalNotificationService.initialize();
+  await LocalNotificationService.showFromRemoteMessage(message);
   debugPrint(
     '📨 [FCM] Background message: ${message.notification?.title} type=${message.data['type']}',
   );
@@ -26,6 +35,8 @@ class FcmService extends GetxService {
   Future<void> initialize() async {
     if (_initialized) return;
     try {
+      await LocalNotificationService.initialize();
+
       final settings = await _firebaseMessaging.requestPermission(
         alert: true,
         badge: true,
@@ -33,28 +44,35 @@ class FcmService extends GetxService {
         provisional: false,
       );
 
-      if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-        debugPrint('✅ [FCM] User granted notification permission');
-      } else if (settings.authorizationStatus ==
-          AuthorizationStatus.provisional) {
-        debugPrint('⚠️ [FCM] User granted provisional notification permission');
-      } else {
+      final permissionGranted = settings.authorizationStatus ==
+              AuthorizationStatus.authorized ||
+          settings.authorizationStatus == AuthorizationStatus.provisional;
+
+      if (permissionGranted) {
+        debugPrint('✅ [FCM] Notification permission granted');
+      } else if (!Platform.isAndroid) {
         debugPrint(
-          '❌ [FCM] User declined or has not accepted notification permission',
+          '❌ [FCM] User declined notification permission (iOS)',
         );
         _initialized = true;
         return;
+      } else {
+        debugPrint(
+          '⚠️ [FCM] Android notification permission not granted — push may be limited',
+        );
       }
 
       final token = await _firebaseMessaging.getToken();
       if (token != null) {
         _currentToken = token;
-        debugPrint('📱 [FCM] Token obtained: ${token.substring(0, 20)}...');
+        debugPrint('📱 [FCM] Token: $token');
         await _registerToken(token);
+      } else {
+        debugPrint('❌ [FCM] Failed to obtain device token');
       }
 
       _firebaseMessaging.onTokenRefresh.listen((newToken) {
-        debugPrint('🔄 [FCM] Token refreshed: ${newToken.substring(0, 20)}...');
+        debugPrint('🔄 [FCM] Token refreshed');
         _currentToken = newToken;
         _registerToken(newToken);
       });
@@ -63,15 +81,7 @@ class FcmService extends GetxService {
         debugPrint(
           '📨 [FCM] Foreground message: ${message.notification?.title}',
         );
-        final title = message.notification?.title ?? 'إشعار جديد';
-        final body = message.notification?.body ?? '';
-        Get.snackbar(
-          title,
-          body,
-          snackPosition: SnackPosition.TOP,
-          duration: const Duration(seconds: 4),
-          onTap: (_) => handleNotificationNavigation(message.data),
-        );
+        _handleForegroundMessage(message);
       });
 
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
@@ -84,7 +94,6 @@ class FcmService extends GetxService {
         debugPrint(
           '📨 [FCM] App opened from notification: ${initialMessage.notification?.title}',
         );
-        // Delay so routes are ready
         Future.delayed(const Duration(milliseconds: 800), () {
           handleNotificationNavigation(initialMessage.data);
         });
@@ -96,32 +105,128 @@ class FcmService extends GetxService {
     }
   }
 
+  void _handleForegroundMessage(RemoteMessage message) {
+    final type = message.data['type']?.toString() ?? '';
+
+    if (type == 'message') {
+      _refreshChatUnreadCounts();
+    } else {
+      refreshHomeUnreadCounts();
+      if (Get.isRegistered<NotificationsScreenController>()) {
+        Get.find<NotificationsScreenController>()
+            .loadNotifications(forceRefresh: true);
+      }
+    }
+
+    LocalNotificationService.showFromRemoteMessage(message);
+  }
+
+  void _refreshChatUnreadCounts() {
+    try {
+      if (_isDoctor()) {
+        if (Get.isRegistered<DoctorHomeController>()) {
+          Get.find<DoctorHomeController>().loadUnreadCounts();
+        }
+      } else if (Get.isRegistered<PatientHomeController>()) {
+        Get.find<PatientHomeController>().loadUnreadCount();
+      }
+    } catch (e) {
+      debugPrint('❌ [FCM] Error refreshing chat unread: $e');
+    }
+  }
+
+  bool _isDoctor() {
+    if (!Get.isRegistered<AuthController>()) return false;
+    final type =
+        Get.find<AuthController>().currentUser.value?.userType.toLowerCase();
+    return type == 'doctor';
+  }
+
+  String? _activePatientId() {
+    if (!Get.isRegistered<AuthController>()) return null;
+    final id = Get.find<AuthController>().patientProfileId.value;
+    if (id == null || id.isEmpty) return null;
+    return id;
+  }
+
+  /// تحديث عداد الإشعارات غير المقروءة في الشاشة الرئيسية.
+  void refreshHomeUnreadCounts() {
+    try {
+      if (_isDoctor()) {
+        if (Get.isRegistered<DoctorHomeController>()) {
+          Get.find<DoctorHomeController>().loadUnreadNotificationsCount();
+        }
+      } else if (Get.isRegistered<PatientHomeController>()) {
+        Get.find<PatientHomeController>().loadUnreadNotificationsCount();
+      }
+    } catch (e) {
+      debugPrint('❌ [FCM] Error refreshing unread counts: $e');
+    }
+  }
+
   /// Navigate based on notification type / data payload.
   void handleNotificationNavigation(Map<String, dynamic> data) {
     final type = data['type']?.toString() ?? '';
+    final isDoctor = _isDoctor();
+
     switch (type) {
       case 'appointment_created':
       case 'appointment_reminder':
       case 'appointment_updated':
-        Get.toNamed(AppRoutes.patientAppointments);
+        Get.toNamed(
+          isDoctor ? AppRoutes.appointments : AppRoutes.patientAppointments,
+        );
         break;
       case 'message':
-        final patientId = data['patientId']?.toString();
-        if (patientId != null && patientId.isNotEmpty) {
-          Get.toNamed(
-            AppRoutes.chat,
-            arguments: {'patientId': patientId},
-          );
-        }
+        _navigateToMessageChat(data, isDoctor: isDoctor);
         break;
       case 'implant_stage':
-        Get.toNamed(AppRoutes.dentalImplantTimeline);
+        if (!isDoctor) {
+          Get.toNamed(AppRoutes.dentalImplantTimeline);
+        } else {
+          Get.toNamed(AppRoutes.notifications);
+        }
         break;
       case 'general':
       default:
         Get.toNamed(AppRoutes.notifications);
         break;
     }
+  }
+
+  void _navigateToMessageChat(
+    Map<String, dynamic> data, {
+    required bool isDoctor,
+  }) {
+    if (isDoctor) {
+      final patientId = data['patientId']?.toString();
+      if (patientId != null && patientId.isNotEmpty) {
+        Get.toNamed(
+          AppRoutes.chat,
+          arguments: {'patientId': patientId},
+        );
+      } else {
+        Get.toNamed(AppRoutes.doctorChats);
+      }
+      return;
+    }
+
+    final patientId =
+        data['patientId']?.toString() ?? _activePatientId();
+    if (patientId == null || patientId.isEmpty) {
+      Get.toNamed(AppRoutes.notifications);
+      return;
+    }
+
+    final doctorUserId = data['doctorUserId']?.toString();
+    Get.toNamed(
+      AppRoutes.chat,
+      arguments: {
+        'patientId': patientId,
+        if (doctorUserId != null && doctorUserId.isNotEmpty)
+          'doctorUserId': doctorUserId,
+      },
+    );
   }
 
   Future<void> _registerToken(String token) async {
@@ -161,6 +266,7 @@ class FcmService extends GetxService {
     final token = await _firebaseMessaging.getToken();
     if (token != null) {
       _currentToken = token;
+      debugPrint('📱 [FCM] Re-register token: $token');
       await _registerToken(token);
     }
   }

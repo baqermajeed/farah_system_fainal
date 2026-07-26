@@ -80,10 +80,6 @@ class DoctorStatsScreen extends GetView<DoctorStatsController> {
                     SizedBox(height: 12.h),
                     _WeekChart(controller: controller),
                     SizedBox(height: 24.h),
-                    _sectionTitle('حالة المواعيد هذا الشهر'),
-                    SizedBox(height: 12.h),
-                    _AppointmentStatusCard(controller: controller),
-                    SizedBox(height: 24.h),
                     _sectionTitle('توزيع أنواع العلاج'),
                     SizedBox(height: 12.h),
                     _TreatmentCard(controller: controller),
@@ -544,31 +540,6 @@ class _PatientStatusCard extends StatelessWidget {
       case 'active':
         return AppColors.doctorAccentGreen;
       case 'inactive':
-        return AppColors.error;
-      default:
-        return AppColors.primary;
-    }
-  }
-}
-
-class _AppointmentStatusCard extends StatelessWidget {
-  const _AppointmentStatusCard({required this.controller});
-
-  final DoctorStatsController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    return _StatusBreakdownCard(
-      items: controller.appointmentStatusItems,
-      colorForKey: _appointmentStatusColor,
-    );
-  }
-
-  Color _appointmentStatusColor(String key) {
-    switch (key) {
-      case 'completed':
-        return AppColors.doctorAccentGreen;
-      case 'late':
         return AppColors.error;
       default:
         return AppColors.primary;

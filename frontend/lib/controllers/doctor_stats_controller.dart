@@ -21,8 +21,6 @@ class DoctorStatsController extends GetxController {
   final RxList<DoctorStatsWeekDay> _weeklyAppointments =
       <DoctorStatsWeekDay>[].obs;
   final RxInt _weeklyAppointmentsTotal = 0.obs;
-  final RxList<DoctorStatsBreakdownItem> _appointmentStatusItems =
-      <DoctorStatsBreakdownItem>[].obs;
   final RxList<DoctorStatsTreatmentItem> _treatmentItems =
       <DoctorStatsTreatmentItem>[].obs;
 
@@ -35,8 +33,6 @@ class DoctorStatsController extends GetxController {
   List<DoctorStatsAgeBucket> get ageBuckets => _ageBuckets;
   List<DoctorStatsWeekDay> get weeklyAppointments => _weeklyAppointments;
   int get weeklyAppointmentsTotal => _weeklyAppointmentsTotal.value;
-  List<DoctorStatsBreakdownItem> get appointmentStatusItems =>
-      _appointmentStatusItems;
   List<DoctorStatsTreatmentItem> get treatmentItems => _treatmentItems;
 
   bool get showDemographics =>
@@ -110,10 +106,6 @@ class DoctorStatsController extends GetxController {
           .whereType<Map>()
           .map((item) => DoctorStatsWeekDay.fromJson(item.cast<String, dynamic>()))
           .toList(),
-    );
-
-    _appointmentStatusItems.assignAll(
-      _parseBreakdownItems(data['appointment_status_month']),
     );
 
     final treatment =

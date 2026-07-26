@@ -305,6 +305,13 @@ async def on_startup():
     print(f"   📖 Swagger UI (localhost): http://localhost:8000/docs")
     print(f"   📖 Swagger UI (network): http://{local_ip}:8000/docs")
     print(f"   💚 Health check: http://{local_ip}:8000/healthz")
+    from app.utils.firebase import is_firebase_ready, firebase_init_error
+    if is_firebase_ready():
+        print("   🔔 Firebase FCM: READY (push notifications enabled)")
+    else:
+        print("   ⚠️  Firebase FCM: NOT CONFIGURED — push will NOT reach mobile")
+        if firebase_init_error():
+            print(f"      Reason: {firebase_init_error()}")
     print(f"   🔐 Staff login: http://{local_ip}:8000/auth/staff-login")
     print("=" * 60)
     logger.info("Starting application...")

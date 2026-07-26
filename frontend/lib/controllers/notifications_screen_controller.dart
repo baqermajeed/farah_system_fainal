@@ -6,7 +6,6 @@ import 'package:get/get.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import 'package:farah_sys_final/controllers/auth_controller.dart';
-import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/services/fcm_service.dart';
 import 'package:farah_sys_final/services/notification_service.dart';
 
@@ -50,6 +49,7 @@ class NotificationsScreenController extends GetxController {
   }
 
   bool _notificationVisible(NotificationModel notification, String? activePatientId) {
+    if (!NotificationService.isInAppNotification(notification)) return false;
     if (!_isPatientAccount) return true;
     return notification.belongsToPatient(activePatientId);
   }
@@ -234,6 +234,7 @@ class NotificationsScreenController extends GetxController {
         notifications.map((n) => n.copyWith(isRead: true)).toList(),
       );
       await _writeCache(notifications.toList());
+      refreshHomeBadgeAfterRead();
     } catch (e) {
       if (kDebugMode) {
         debugPrint('❌ Error marking all as read: $e');
@@ -243,6 +244,7 @@ class NotificationsScreenController extends GetxController {
 
   Future<void> handleNotificationTap(NotificationModel notification) async {
     await markAsRead(notification);
+    refreshHomeBadgeAfterRead();
 
     try {
       final fcm = Get.find<FcmService>();
@@ -251,28 +253,16 @@ class NotificationsScreenController extends GetxController {
         ...notification.data,
       };
       fcm.handleNotificationNavigation(data);
-    } catch (_) {
-      switch (notification.type) {
-        case 'appointment_created':
-        case 'appointment_reminder':
-        case 'appointment_updated':
-          Get.toNamed(AppRoutes.patientAppointments);
-          break;
-        case 'message':
-          final patientId = notification.data['patientId']?.toString();
-          if (patientId != null && patientId.isNotEmpty) {
-            Get.toNamed(
-              AppRoutes.chat,
-              arguments: {'patientId': patientId},
-            );
-          }
-          break;
-        case 'implant_stage':
-          Get.toNamed(AppRoutes.dentalImplantTimeline);
-          break;
-        default:
-          break;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('❌ Error navigating from notification: $e');
       }
     }
+  }
+
+  void refreshHomeBadgeAfterRead() {
+    try {
+      Get.find<FcmService>().refreshHomeUnreadCounts();
+    } catch (_) {}
   }
 }

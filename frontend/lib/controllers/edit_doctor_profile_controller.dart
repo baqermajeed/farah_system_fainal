@@ -6,6 +6,7 @@ import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/services/auth_service.dart';
 import 'package:farah_sys_final/core/utils/image_cropper_settings.dart';
+import 'package:farah_sys_final/widgets/profile_cached_image.dart';
 
 /// Controller لشاشة تعديل الملف الشخصي للطبيب.
 class EditDoctorProfileController extends GetxController {
@@ -16,7 +17,7 @@ class EditDoctorProfileController extends GetxController {
   final phoneController = TextEditingController();
   final RxBool isLoading = false.obs;
   final RxBool isUploadingImage = false.obs;
-  final RxInt imageTimestamp = RxInt(DateTime.now().millisecondsSinceEpoch);
+  final RxInt imageTimestamp = RxInt(0);
 
   AuthController get authController => Get.find<AuthController>();
 
@@ -24,6 +25,24 @@ class EditDoctorProfileController extends GetxController {
   void onInit() {
     super.onInit();
     loadCurrentData();
+  }
+
+  @override
+  void onReady() {
+    super.onReady();
+    _prefetchProfileImage();
+  }
+
+  void _prefetchProfileImage() {
+    final context = Get.context;
+    if (context == null) return;
+    final imageUrl = authController.currentUser.value?.imageUrl;
+    ProfileCachedImage.prefetch(
+      context,
+      imageUrl,
+      size: 104,
+      cacheVersion: imageTimestamp.value,
+    );
   }
 
   void loadCurrentData() {

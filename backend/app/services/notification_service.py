@@ -15,6 +15,14 @@ NOTIFICATION_TYPES = {
     "general",
 }
 
+# الرسائل: Push فقط — لا تُحفظ ولا تُعرض في شاشة الإشعارات داخل التطبيق.
+PUSH_ONLY_TYPES = {"message"}
+
+
+def _is_in_app_notification(notif: Notification) -> bool:
+    notif_type = (getattr(notif, "type", None) or "general").lower()
+    return notif_type not in PUSH_ONLY_TYPES
+
 
 def _as_oid(value: str | OID | None) -> OID | None:
     if value is None:
@@ -88,6 +96,39 @@ async def register_device_token(*, user_id: str, token: str, platform: Optional[
     return dt
 
 
+async def _user_device_tokens(user_id: str | OID) -> list[str]:
+    uid = user_id if isinstance(user_id, OID) else OID(user_id)
+    tokens_docs = await DeviceToken.find(
+        DeviceToken.user_id == uid,
+        DeviceToken.active == True,  # noqa: E712
+    ).to_list()
+    return [dt.token for dt in tokens_docs]
+
+
+async def notify_push_only(
+    *,
+    user_id: str | OID,
+    title: str,
+    body: str,
+    type: str = "message",
+    data: Optional[dict[str, Any]] = None,
+) -> int:
+    """إرسال Push فقط بدون حفظ في شاشة الإشعارات (للرسائل)."""
+    uid = user_id if isinstance(user_id, OID) else OID(user_id)
+    notif_type = type if type in NOTIFICATION_TYPES else "message"
+    payload = dict(data or {})
+
+    tokens = await _user_device_tokens(uid)
+    if not tokens:
+        return 0
+
+    fcm_data = {
+        "type": notif_type,
+        **{k: str(v) for k, v in payload.items() if v is not None},
+    }
+    return await send_firebase_message(tokens, title, body, data=fcm_data)
+
+
 async def notify_user(
     *,
     user_id: str | OID,
@@ -119,11 +160,7 @@ async def notify_user(
     )
     await notif.insert()
 
-    tokens_docs = await DeviceToken.find(
-        DeviceToken.user_id == uid,
-        DeviceToken.active == True,  # noqa: E712
-    ).to_list()
-    tokens = [dt.token for dt in tokens_docs]
+    tokens = await _user_device_tokens(uid)
     if tokens:
         fcm_data = {
             "type": notif_type,
@@ -148,15 +185,20 @@ async def list_user_notifications(
     if unread_only:
         query = query.find(Notification.is_read == False)  # noqa: E712
 
-    # بدون تصفية عائلة: السلوك القديم
+    # بدون تصفية عائلة: السلوك القديم (مع استبعاد رسائل المحادثة)
     if not patient_id:
-        return await query.sort(-Notification.sent_at).skip(skip).limit(limit).to_list()
+        items = await query.sort(-Notification.sent_at).skip(skip).limit(limit).to_list()
+        return [n for n in items if _is_in_app_notification(n)]
 
     # تصفية موثوقة في Python (Beanie + dict $or قد تفشل بصمت)
     # نجلب دفعة أكبر ثم نقصّ حسب الفرد ثم نطبّق الصفحات
     batch_size = max((skip + limit) * 5, 100)
     raw = await query.sort(-Notification.sent_at).limit(batch_size).to_list()
-    scoped = [n for n in raw if notification_visible_to_patient(n, patient_id)]
+    scoped = [
+        n
+        for n in raw
+        if notification_visible_to_patient(n, patient_id) and _is_in_app_notification(n)
+    ]
     return scoped[skip : skip + limit]
 
 
@@ -171,10 +213,15 @@ async def unread_count(
         Notification.is_read == False,  # noqa: E712
     )
     if not patient_id:
-        return await query.count()
+        items = await query.to_list()
+        return sum(1 for n in items if _is_in_app_notification(n))
 
     items = await query.to_list()
-    return sum(1 for n in items if notification_visible_to_patient(n, patient_id))
+    return sum(
+        1
+        for n in items
+        if _is_in_app_notification(n) and notification_visible_to_patient(n, patient_id)
+    )
 
 
 async def mark_as_read(*, user_id: str | OID, notification_id: str) -> Notification | None:
@@ -202,7 +249,13 @@ async def mark_all_as_read(
         Notification.is_read == False,  # noqa: E712
     ).to_list()
     if patient_id:
-        unread = [n for n in unread if notification_visible_to_patient(n, patient_id)]
+        unread = [
+            n
+            for n in unread
+            if _is_in_app_notification(n) and notification_visible_to_patient(n, patient_id)
+        ]
+    else:
+        unread = [n for n in unread if _is_in_app_notification(n)]
     for n in unread:
         n.is_read = True
         await n.save()
@@ -270,12 +323,11 @@ async def notify_doctor_new_message(
         except Exception:
             pass
 
-    await notify_user(
+    await notify_push_only(
         user_id=doctor_user_id,
         title="رسالة جديدة",
         body=f"رسالة جديدة من {sender_name}",
         type="message",
-        patient_id=patient_id,
         data={
             k: v
             for k, v in {
@@ -309,12 +361,11 @@ async def notify_patient_new_message(
     except Exception:
         pass
 
-    await notify_user(
+    await notify_push_only(
         user_id=patient_user_id,
         title="رسالة جديدة",
         body=f"رسالة جديدة من الدكتور {doctor_name}",
         type="message",
-        patient_id=patient_id,
         data={
             k: v
             for k, v in {

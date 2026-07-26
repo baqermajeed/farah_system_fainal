@@ -113,6 +113,11 @@ class NotificationService {
   final ApiService _api = ApiService();
   final AuthService _authService = AuthService();
 
+  /// إشعارات المحادثة: Push فقط — لا تُعرض في شاشة الإشعارات.
+  static bool isInAppNotification(NotificationModel notification) {
+    return notification.type.toLowerCase() != 'message';
+  }
+
   bool get _isPatientAccount {
     if (!Get.isRegistered<AuthController>()) return false;
     final type =
@@ -169,6 +174,7 @@ class NotificationService {
     return list
         .whereType<Map>()
         .map((e) => NotificationModel.fromJson(Map<String, dynamic>.from(e)))
+        .where(isInAppNotification)
         .where((n) => !isPatient || n.belongsToPatient(pid))
         .toList();
   }
