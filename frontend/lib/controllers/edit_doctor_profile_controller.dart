@@ -3,8 +3,6 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
-import 'package:farah_sys_final/core/constants/app_strings.dart';
-import 'package:farah_sys_final/core/constants/iraq_governorates.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/services/auth_service.dart';
 import 'package:farah_sys_final/core/utils/image_cropper_settings.dart';
@@ -16,15 +14,9 @@ class EditDoctorProfileController extends GetxController {
 
   final nameController = TextEditingController();
   final phoneController = TextEditingController();
-  final ageController = TextEditingController();
-
-  final Rx<String?> selectedGender = Rx<String?>(null);
-  final Rx<String?> selectedCity = Rx<String?>(null);
   final RxBool isLoading = false.obs;
   final RxBool isUploadingImage = false.obs;
   final RxInt imageTimestamp = RxInt(DateTime.now().millisecondsSinceEpoch);
-
-  List<String> get cities => IraqGovernorates.arabicNames;
 
   AuthController get authController => Get.find<AuthController>();
 
@@ -38,34 +30,12 @@ class EditDoctorProfileController extends GetxController {
     final user = authController.currentUser.value;
     nameController.text = user?.name ?? '';
     phoneController.text = user?.phoneNumber ?? '';
-    final age = user?.age;
-    ageController.text = age != null && age > 0 ? '$age' : '';
-
-    final gender = user?.gender;
-    if (gender == 'male') {
-      selectedGender.value = AppStrings.male;
-    } else if (gender == 'female') {
-      selectedGender.value = AppStrings.female;
-    } else {
-      selectedGender.value = gender;
-    }
-
-    var city = IraqGovernorates.toArabic(user?.city);
-    if (city != null && !cities.contains(city)) {
-      city = null;
-    }
-    selectedCity.value = city;
   }
-
-  void setGender(String gender) => selectedGender.value = gender;
-
-  void setCity(String city) => selectedCity.value = city;
 
   @override
   void onClose() {
     nameController.dispose();
     phoneController.dispose();
-    ageController.dispose();
     super.onClose();
   }
 
@@ -112,27 +82,12 @@ class EditDoctorProfileController extends GetxController {
       throw Exception('يرجى إدخال الاسم');
     }
 
-    String? genderValue;
-    if (selectedGender.value == AppStrings.male) {
-      genderValue = 'male';
-    } else if (selectedGender.value == AppStrings.female) {
-      genderValue = 'female';
-    } else {
-      genderValue = selectedGender.value;
-    }
-
-    final cityValue = IraqGovernorates.toEnglish(selectedCity.value);
-    final parsedAge = int.tryParse(ageController.text.trim());
-
     isLoading.value = true;
 
     try {
       await _authService.updateProfile(
         name: nameController.text.trim(),
         phone: phoneController.text.trim(),
-        gender: genderValue,
-        age: parsedAge,
-        city: cityValue,
       );
 
       await authController.checkLoggedInUser(navigate: false);

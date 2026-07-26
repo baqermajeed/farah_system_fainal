@@ -28,6 +28,9 @@ class UserModel {
   @HiveField(7)
   final String? imageUrl;
 
+  @HiveField(8)
+  final String? username;
+
   UserModel({
     required this.id,
     required this.name,
@@ -37,6 +40,7 @@ class UserModel {
     this.age,
     this.city,
     this.imageUrl,
+    this.username,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -57,6 +61,7 @@ class UserModel {
       age: json['age'],
       city: json['city'],
       imageUrl: json['imageUrl'],
+      username: json['username']?.toString(),
     );
   }
 
@@ -89,6 +94,7 @@ class UserModel {
       'age': age,
       'city': city,
       'imageUrl': imageUrl,
+      'username': username,
     };
   }
 
@@ -102,6 +108,7 @@ class UserModel {
     int? age,
     String? city,
     String? imageUrl,
+    String? username,
   }) {
     return UserModel(
       id: id ?? this.id,
@@ -112,6 +119,7 @@ class UserModel {
       age: age ?? this.age,
       city: city ?? this.city,
       imageUrl: imageUrl ?? this.imageUrl,
+      username: username ?? this.username,
     );
   }
 }

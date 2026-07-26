@@ -91,38 +91,19 @@ class EditDoctorProfileScreen extends GetView<EditDoctorProfileController> {
                           ),
                           _fieldDivider(),
                           Obx(() {
-                            final phone = controller
+                            final username = controller
                                     .authController.currentUser.value
-                                    ?.phoneNumber ??
-                                controller.phoneController.text;
+                                    ?.username ??
+                                '';
                             return _buildReadOnlyField(
                               label: 'اسم المستخدم',
                               icon: Icons.alternate_email_rounded,
-                              value: phone,
+                              value: username.trim().isNotEmpty
+                                  ? username.trim()
+                                  : 'غير محدد',
                               hint: 'يُستخدم لتسجيل الدخول',
                             );
                           }),
-                        ],
-                      ),
-                      SizedBox(height: 20.h),
-                      _buildSectionTitle(
-                        'المعلومات الشخصية',
-                        icon: Icons.info_outline_rounded,
-                      ),
-                      SizedBox(height: 10.h),
-                      _buildFormCard(
-                        children: [
-                          _buildField(
-                            label: AppStrings.age,
-                            icon: Icons.calendar_month_outlined,
-                            fieldController: controller.ageController,
-                            hint: 'أدخل العمر',
-                            keyboardType: TextInputType.number,
-                          ),
-                          _fieldDivider(),
-                          _buildGenderSection(),
-                          _fieldDivider(),
-                          _buildCitySection(context),
                         ],
                       ),
                       SizedBox(height: 20.h),
@@ -179,7 +160,7 @@ class EditDoctorProfileScreen extends GetView<EditDoctorProfileController> {
                 ),
                 SizedBox(height: 4.h),
                 Text(
-                  'حدّث بياناتك الشخصية والمهنية',
+                  'حدّث بياناتك المهنية',
                   style: AppFonts.lamaSans(
                     fontSize: 12.sp,
                     fontWeight: FontWeight.w500,
@@ -364,265 +345,6 @@ class EditDoctorProfileScreen extends GetView<EditDoctorProfileController> {
                 ),
               ),
             ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGenderSection() {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
-      child: Directionality(
-        textDirection: ui.TextDirection.rtl,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.wc_outlined, color: _navy, size: 18.sp),
-                SizedBox(width: 8.w),
-                Text(
-                  'الجنس',
-                  style: AppFonts.lamaSans(
-                    fontSize: 12.sp,
-                    fontWeight: FontWeight.w600,
-                    color: _grayText,
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 10.h),
-            Obx(() {
-              final selectedGender = controller.selectedGender.value;
-              return Row(
-                children: [
-                  Expanded(
-                    child: _buildGenderChip(
-                      label: AppStrings.male,
-                      isSelected: selectedGender == AppStrings.male,
-                      onTap: () => controller.setGender(AppStrings.male),
-                    ),
-                  ),
-                  SizedBox(width: 10.w),
-                  Expanded(
-                    child: _buildGenderChip(
-                      label: AppStrings.female,
-                      isSelected: selectedGender == AppStrings.female,
-                      onTap: () => controller.setGender(AppStrings.female),
-                    ),
-                  ),
-                ],
-              );
-            }),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGenderChip({
-    required String label,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: EdgeInsets.symmetric(vertical: 12.h),
-        decoration: BoxDecoration(
-          color: isSelected ? _navy : _bg,
-          borderRadius: BorderRadius.circular(12.r),
-          border: Border.all(color: isSelected ? _navy : _border),
-        ),
-        child: Center(
-          child: Text(
-            label,
-            style: AppFonts.lamaSans(
-              fontSize: 14.sp,
-              fontWeight: FontWeight.w700,
-              color: isSelected ? Colors.white : _navy,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCitySection(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
-      child: Directionality(
-        textDirection: ui.TextDirection.rtl,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.location_on_outlined, color: _navy, size: 18.sp),
-                SizedBox(width: 8.w),
-                Text(
-                  AppStrings.governorate,
-                  style: AppFonts.lamaSans(
-                    fontSize: 12.sp,
-                    fontWeight: FontWeight.w600,
-                    color: _grayText,
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 8.h),
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () => _showCityPicker(context),
-                borderRadius: BorderRadius.circular(12.r),
-                child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: 4.h),
-                  child: Obx(() {
-                    final selectedCity = controller.selectedCity.value;
-                    return Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            selectedCity ?? 'اختر المحافظة',
-                            style: AppFonts.lamaSans(
-                              fontSize: 15.sp,
-                              fontWeight: FontWeight.w700,
-                              color: selectedCity != null ? _navy : _grayText,
-                            ),
-                          ),
-                        ),
-                        Container(
-                          width: 32.w,
-                          height: 32.w,
-                          decoration: BoxDecoration(
-                            color: _bg,
-                            borderRadius: BorderRadius.circular(10.r),
-                          ),
-                          child: Icon(
-                            Icons.keyboard_arrow_down_rounded,
-                            color: _navy,
-                            size: 20.sp,
-                          ),
-                        ),
-                      ],
-                    );
-                  }),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showCityPicker(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (sheetContext) {
-        return Container(
-          constraints: BoxConstraints(maxHeight: 0.72.sh),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24.r)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.12),
-                blurRadius: 24,
-                offset: const Offset(0, -4),
-              ),
-            ],
-          ),
-          child: SafeArea(
-            top: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(height: 12.h),
-                Container(
-                  width: 42.w,
-                  height: 4.h,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFD8DEE8),
-                    borderRadius: BorderRadius.circular(99.r),
-                  ),
-                ),
-                SizedBox(height: 18.h),
-                Text(
-                  'اختر المحافظة',
-                  style: AppFonts.lamaSans(
-                    fontSize: 18.sp,
-                    fontWeight: FontWeight.w800,
-                    color: _navy,
-                  ),
-                ),
-                SizedBox(height: 16.h),
-                Flexible(
-                  child: Obx(() {
-                    final selectedCity = controller.selectedCity.value;
-                    return ListView.separated(
-                      padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 20.h),
-                      shrinkWrap: true,
-                      itemCount: controller.cities.length,
-                      separatorBuilder: (_, __) => SizedBox(height: 8.h),
-                      itemBuilder: (context, index) {
-                        final city = controller.cities[index];
-                        final isSelected = city == selectedCity;
-                        return _buildCityOption(
-                          city: city,
-                          isSelected: isSelected,
-                          onTap: () {
-                            controller.setCity(city);
-                            Navigator.pop(sheetContext);
-                          },
-                        );
-                      },
-                    );
-                  }),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildCityOption({
-    required String city,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
-        decoration: BoxDecoration(
-          color: isSelected ? _navy : _bg,
-          borderRadius: BorderRadius.circular(14.r),
-          border: Border.all(color: isSelected ? _navy : _border),
-        ),
-        child: Row(
-          textDirection: ui.TextDirection.rtl,
-          children: [
-            Expanded(
-              child: Text(
-                city,
-                style: AppFonts.lamaSans(
-                  fontSize: 14.sp,
-                  fontWeight: FontWeight.w700,
-                  color: isSelected ? Colors.white : _navy,
-                ),
-              ),
-            ),
-            if (isSelected)
-              Icon(Icons.check_rounded, color: Colors.white, size: 20.sp),
           ],
         ),
       ),

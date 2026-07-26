@@ -253,6 +253,7 @@ async def route_me(current: User = Depends(get_current_user)):
         age=current.age,
         city=current.city,
         role=current.role,
+        username=current.username,
         imageUrl=current.imageUrl,
         doctor_manager=doctor_manager,
     )
@@ -305,6 +306,7 @@ async def route_update_me(
         age=current.age,
         city=current.city,
         role=current.role,
+        username=current.username,
         imageUrl=current.imageUrl,
         doctor_manager=doctor_manager,
     )
@@ -359,6 +361,7 @@ async def route_upload_profile_image(
         age=current.age,
         city=current.city,
         role=current.role,
+        username=current.username,
         imageUrl=current.imageUrl,
         doctor_manager=doctor_manager,
     )

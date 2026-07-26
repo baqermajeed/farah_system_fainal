@@ -7,7 +7,6 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
-import 'package:farah_sys_final/core/constants/iraq_governorates.dart';
 import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:farah_sys_final/views/doctor/widgets/doctor_back_button.dart';
 import 'package:farah_sys_final/controllers/doctor_profile_controller.dart';
@@ -42,9 +41,7 @@ class DoctorProfileScreen extends GetView<DoctorProfileController> {
           final displayName =
               name.startsWith('د.') ? name : 'د. $name';
           final phone = user?.phoneNumber ?? 'غير محدد';
-          final age = user?.age ?? 0;
-          final city = IraqGovernorates.toArabic(user?.city) ?? 'غير محدد';
-          final gender = _formatGender(user?.gender);
+          final username = _displayUsername(user?.username);
 
           return SingleChildScrollView(
             physics: const BouncingScrollPhysics(),
@@ -74,7 +71,7 @@ class DoctorProfileScreen extends GetView<DoctorProfileController> {
                       _buildContactCard(
                         name: name,
                         phone: phone,
-                        username: phone,
+                        username: username,
                       ),
                       SizedBox(height: 12.h),
                       Directionality(
@@ -100,51 +97,6 @@ class DoctorProfileScreen extends GetView<DoctorProfileController> {
                                 value: 'طبيب أسنان عام',
                               ),
                             ),
-                          ],
-                        ),
-                      ),
-                      SizedBox(height: 12.h),
-                      Directionality(
-                        textDirection: ui.TextDirection.rtl,
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: _buildInfoTile(
-                                icon: Icons.calendar_month_outlined,
-                                iconColor: AppColors.doctorAccentOrange,
-                                iconBg: const Color(0xFFFFF4E5),
-                                label: AppStrings.age,
-                                value: age > 0 ? '$age سنة' : 'غير محدد',
-                              ),
-                            ),
-                            SizedBox(width: 12.w),
-                            Expanded(
-                              child: _buildInfoTile(
-                                icon: Icons.location_on_outlined,
-                                iconColor: AppColors.doctorHeroStart,
-                                iconBg: const Color(0xFFE8F4FC),
-                                label: AppStrings.governorate,
-                                value: city,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      SizedBox(height: 12.h),
-                      Directionality(
-                        textDirection: ui.TextDirection.rtl,
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: _buildInfoTile(
-                                icon: Icons.wc_outlined,
-                                iconColor: AppColors.doctorAccentPurple,
-                                iconBg: const Color(0xFFF3EEFF),
-                                label: 'الجنس',
-                                value: gender,
-                              ),
-                            ),
-                            const Expanded(child: SizedBox.shrink()),
                           ],
                         ),
                       ),
@@ -599,15 +551,9 @@ class DoctorProfileScreen extends GetView<DoctorProfileController> {
     );
   }
 
-  String _formatGender(String? gender) {
-    if (gender == null || gender.isEmpty) return 'غير محدد';
-    final normalized = gender.toLowerCase();
-    if (normalized == 'male' || normalized == 'ذكر' || normalized == 'm') {
-      return 'ذكر';
-    }
-    if (normalized == 'female' || normalized == 'أنثى' || normalized == 'f') {
-      return 'أنثى';
-    }
-    return gender;
+  String _displayUsername(String? username) {
+    final value = username?.trim();
+    if (value != null && value.isNotEmpty) return value;
+    return 'غير محدد';
   }
 }

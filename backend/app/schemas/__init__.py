@@ -19,6 +19,7 @@ class UserBase(BaseModel):
 class UserOut(UserBase):
     id: str
     role: Role
+    username: Optional[str] = None
     doctor_manager: Optional[bool] = None  # يظهر فقط للطبيب (True/False)
 
     class Config:
