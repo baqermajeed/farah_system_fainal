@@ -513,6 +513,19 @@ async def my_patients(
     return out
 
 
+@router.get("/patients/{patient_id}", response_model=PatientOut)
+async def get_patient(
+    patient_id: str,
+    current=Depends(get_current_user),
+):
+    """جلب بيانات مريض واحد لملفه الطبي."""
+    doctor_id = await _get_current_doctor_id(current)
+    patient, user = await patient_service.get_patient_by_id(patient_id)
+    if OID(doctor_id) not in patient.doctor_ids:
+        raise HTTPException(status_code=403, detail="Patient not assigned to this doctor")
+    return _build_doctor_patient_out(patient, user, doctor_id)
+
+
 @router.get("/patients/inactive", response_model=List[PatientOut])
 async def my_inactive_patients(
     skip: int = Query(0, ge=0),

@@ -249,9 +249,21 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                       // Patient Information Card
                       SliverToBoxAdapter(
                         child: Obx(() {
-                          // تتبع selectedPatient ونتائج البحث لعرض الكارت عند الفتح من البحث
                           controller.patientController.selectedPatient.value;
                           controller.patientController.searchResults.length;
+                          controller.isLoadingPatientProfile.value;
+
+                          if (controller.isLoadingPatientProfile.value) {
+                            return Padding(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 16.w,
+                                vertical: 24.h,
+                              ),
+                              child: const Center(
+                                child: CircularProgressIndicator(),
+                              ),
+                            );
+                          }
 
                           final patient = controller.patientId != null
                               ? controller.patientController

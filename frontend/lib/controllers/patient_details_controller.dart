@@ -47,6 +47,8 @@ class PatientDetailsController extends GetxController
   bool didAutoScrollToSelected = false;
   bool didAutoScrollToSelectedImplantStage = false;
 
+  final RxBool isLoadingPatientProfile = false.obs;
+
   // Unread messages count
   final RxInt unreadCount = 0.obs;
 
@@ -137,13 +139,11 @@ class PatientDetailsController extends GetxController
   }
 
   Future<void> _ensurePatientLoaded(String id) async {
-    var patient = patientController.getPatientById(id);
-    if (patient == null) {
-      await patientController.reloadPatientsList();
-      patient = patientController.getPatientById(id);
-    }
-    if (patient != null) {
-      patientController.selectPatient(patient);
+    isLoadingPatientProfile.value = true;
+    try {
+      await patientController.ensurePatientLoaded(id);
+    } finally {
+      isLoadingPatientProfile.value = false;
     }
   }
 

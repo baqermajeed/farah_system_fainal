@@ -160,6 +160,25 @@ class DoctorHomeController extends GetxController {
     );
   }
 
+  void openAppointmentPatient(AppointmentModel appointment) {
+    final patientId = appointment.patientId.trim();
+    if (patientId.isEmpty) return;
+
+    final patient = patientForAppointment(appointment);
+    if (patient != null) {
+      _patientController.selectPatient(patient);
+    }
+
+    Get.toNamed(
+      AppRoutes.patientDetails,
+      arguments: {
+        'patientId': patientId,
+        'appointmentId': appointment.id,
+        'appointment': appointment,
+      },
+    );
+  }
+
   Future<void> openChatsAndRefresh() async {
     await Get.toNamed(AppRoutes.doctorChats);
     // Reload unread counts when returning from chats screen.

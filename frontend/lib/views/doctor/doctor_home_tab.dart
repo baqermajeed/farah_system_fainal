@@ -10,7 +10,6 @@ import 'package:farah_sys_final/core/utils/image_utils.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/controllers/doctor_home_controller.dart';
 import 'package:farah_sys_final/models/appointment_model.dart';
-import 'package:farah_sys_final/models/patient_model.dart';
 import 'package:farah_sys_final/widgets/app_avatar.dart';
 
 class DoctorHomeTab extends GetView<DoctorHomeController> {
@@ -703,7 +702,6 @@ class DoctorHomeTab extends GetView<DoctorHomeController> {
   }
 
   Widget _buildScheduleItem(AppointmentModel appointment) {
-    final patient = controller.patientForAppointment(appointment);
     return Container(
       margin: EdgeInsets.only(bottom: 16.h),
       decoration: BoxDecoration(
@@ -721,9 +719,7 @@ class DoctorHomeTab extends GetView<DoctorHomeController> {
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(24.r),
         child: InkWell(
-          onTap: () {
-            if (patient != null) controller.openPatient(patient);
-          },
+          onTap: () => controller.openAppointmentPatient(appointment),
           borderRadius: BorderRadius.circular(24.r),
           child: Padding(
             padding: EdgeInsets.all(16.w),

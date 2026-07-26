@@ -504,6 +504,47 @@ class PatientController extends GetxController {
     return null;
   }
 
+  void upsertPatient(PatientModel patient) {
+    final patientIndex = patients.indexWhere((p) => p.id == patient.id);
+    if (patientIndex >= 0) {
+      patients[patientIndex] = patient;
+    } else {
+      patients.add(patient);
+    }
+
+    final searchIndex = searchResults.indexWhere((p) => p.id == patient.id);
+    if (searchIndex >= 0) {
+      searchResults[searchIndex] = patient;
+    }
+  }
+
+  Future<PatientModel?> ensurePatientLoaded(String patientId) async {
+    final cached = getPatientById(patientId);
+    if (cached != null) {
+      selectPatient(cached);
+      return cached;
+    }
+
+    if (_isDoctorUser) {
+      try {
+        final patient = await _doctorService.fetchPatientById(patientId);
+        upsertPatient(patient);
+        selectPatient(patient);
+        return patient;
+      } catch (e) {
+        print('❌ [PatientController] ensurePatientLoaded error: $e');
+        return null;
+      }
+    }
+
+    await reloadPatientsList();
+    final reloaded = getPatientById(patientId);
+    if (reloaded != null) {
+      selectPatient(reloaded);
+    }
+    return reloaded;
+  }
+
   Future<void> reloadPatientsList() async {
     if (_isDoctorUser) {
       await refreshDoctorPatients();

@@ -205,6 +205,21 @@ class DoctorService {
     return patients;
   }
 
+  Future<PatientModel> fetchPatientById(String patientId) async {
+    try {
+      final response = await _api.get(ApiConstants.doctorGetPatient(patientId));
+      if (response.statusCode == 200) {
+        return _mapPatientOutToModel(
+          (response.data as Map).cast<String, dynamic>(),
+        );
+      }
+      throw ApiException('تعذر جلب بيانات المريض');
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      throw ApiException('تعذر جلب بيانات المريض: ${e.toString()}');
+    }
+  }
+
   // ⭐ البحث عن المرضى (للطبيب) — من السيرفر مباشرة
   Future<List<PatientModel>> searchMyPatients({
     required String searchQuery,
