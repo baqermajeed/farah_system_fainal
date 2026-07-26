@@ -258,11 +258,20 @@ class AuthService {
   Future<void> updateProfile({
     required String name,
     required String phone,
+    String? gender,
+    int? age,
+    String? city,
   }) async {
     try {
       final response = await _dio.put(
         ApiConstants.authUpdateProfile,
-        data: {'name': name, 'phone': phone},
+        data: {
+          'name': name,
+          'phone': phone,
+          if (gender != null) 'gender': gender,
+          if (age != null) 'age': age,
+          if (city != null) 'city': city,
+        },
       );
       final status = response.statusCode ?? 0;
       if (status >= 200 && status < 300) return;

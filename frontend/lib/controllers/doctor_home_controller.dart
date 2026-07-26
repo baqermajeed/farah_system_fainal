@@ -2,6 +2,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/core/routes/app_routes.dart';
+import 'package:farah_sys_final/core/utils/date_time_utils.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/controllers/patient_controller.dart';
 import 'package:farah_sys_final/controllers/appointment_controller.dart';
@@ -27,12 +28,7 @@ class DoctorHomeController extends GetxController {
 
   RxBool get isLoading => _patientController.isLoading;
 
-  String get greeting {
-    final hour = DateTime.now().hour;
-    if (hour < 12) return 'صباح الخير';
-    if (hour < 17) return 'مساء الخير';
-    return 'مساء الخير';
-  }
+  String get greeting => DateTimeUtils.iraqGreeting();
 
   String get doctorDisplayName {
     final name = _authController.currentUser.value?.name ?? 'دكتور';

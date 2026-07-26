@@ -1,6 +1,14 @@
 class DateTimeUtils {
   DateTimeUtils._();
 
+  /// Iraq (Asia/Baghdad) — fixed UTC+3, no daylight saving.
+  static DateTime get iraqNow =>
+      DateTime.now().toUtc().add(const Duration(hours: 3));
+
+  /// Morning before 12:00, evening from 12:00 onward (Iraq time).
+  static String iraqGreeting() =>
+      iraqNow.hour < 12 ? 'صباح الخير' : 'مساء الخير';
+
   /// Parses API datetime strings as UTC and converts them to local time.
   static DateTime? parseApiToLocal(String? raw) {
     if (raw == null || raw.trim().isEmpty) return null;

@@ -262,6 +262,9 @@ async def route_me(current: User = Depends(get_current_user)):
 async def route_update_me(
     name: str = Body(None),
     phone: str = Body(None),
+    gender: str = Body(None),
+    age: int = Body(None),
+    city: str = Body(None),
     current: User = Depends(get_current_user),
 ):
     """تحديث معلومات المستخدم الحالي."""
@@ -275,6 +278,12 @@ async def route_update_me(
                 status_code=400, detail="رقم الهاتف مستخدم من قبل"
             )
         current.phone = phone
+    if gender is not None:
+        current.gender = gender
+    if age is not None:
+        current.age = age
+    if city is not None:
+        current.city = city
     
     current.updated_at = datetime.now(timezone.utc)
     await current.save()

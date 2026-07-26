@@ -99,7 +99,7 @@ class DoctorHomeTab extends GetView<DoctorHomeController> {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: AppColors.primary.withValues(alpha: 0.3),
+                      color: const Color(0xFF315C83),
                       width: 2,
                     ),
                   ),
