@@ -10,7 +10,7 @@ import 'package:farah_sys_final/core/widgets/empty_state_widget.dart';
 import 'package:farah_sys_final/core/widgets/loading_widget.dart';
 import 'package:farah_sys_final/models/medical_record_model.dart';
 import 'package:farah_sys_final/controllers/medical_records_screen_controller.dart';
-import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
+import 'package:farah_sys_final/views/doctor/widgets/doctor_back_button.dart';
 
 class MedicalRecordsScreen extends GetView<MedicalRecordsScreenController> {
   const MedicalRecordsScreen({super.key});
@@ -26,7 +26,7 @@ class MedicalRecordsScreen extends GetView<MedicalRecordsScreenController> {
               child: Row(
                 textDirection: ui.TextDirection.ltr,
                 children: [
-                  const BackButtonWidget(),
+                  const DoctorBackButton(),
                   Expanded(
                     child: Center(
                       child: Text(

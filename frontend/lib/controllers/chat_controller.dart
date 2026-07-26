@@ -663,14 +663,59 @@ class ChatController extends GetxController {
   // إرسال رسالة نصية
   Future<void> sendMessage(String content) async {
     try {
-      if (currentRoomId == null) {
-        throw ApiException('لا توجد محادثة نشطة');
+      if (currentPatientId == null) {
+        throw ApiException('لا يوجد مريض محدد');
       }
 
       if (content.trim().isEmpty) {
         return;
       }
       stopTyping();
+
+      // أول رسالة: لا توجد غرفة بعد — نُنشئها عبر REST ثم ننضم للسوكيت
+      if (currentRoomId == null) {
+        final currentUser = _authController.currentUser.value;
+        final tempId = 'sending_${DateTime.now().millisecondsSinceEpoch}';
+        final tempMessage = MessageModel(
+          id: tempId,
+          senderId: currentUser?.id ?? '',
+          receiverId: '',
+          message: content,
+          timestamp: DateTime.now().toLocal(),
+          isRead: false,
+          roomId: null,
+          senderRole: currentUser?.userType,
+        );
+
+        sendingMessageIds.add(tempId);
+        messages.add(tempMessage);
+        messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+        try {
+          final message = await _chatService.sendTextMessage(
+            patientId: currentPatientId!,
+            content: content,
+            doctorId: currentDoctorId,
+          );
+
+          currentRoomId = message.roomId;
+          final tempIndex = messages.indexWhere((m) => m.id == tempId);
+          if (tempIndex >= 0) {
+            sendingMessageIds.remove(tempId);
+            messages[tempIndex] = message;
+            messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+          }
+
+          if (currentRoomId != null) {
+            await connectSocket(currentPatientId!, doctorId: currentDoctorId);
+          }
+        } catch (e) {
+          sendingMessageIds.remove(tempId);
+          messages.removeWhere((m) => m.id == tempId);
+          rethrow;
+        }
+        return;
+      }
 
       // Ensure socket is connected
       if (!_chatService.socketService.isConnected) {
@@ -794,6 +839,11 @@ class ChatController extends GetxController {
         image: image,
         doctorId: currentDoctorId,
       );
+
+      if (currentRoomId == null && message.roomId != null) {
+        currentRoomId = message.roomId;
+        await connectSocket(currentPatientId!, doctorId: currentDoctorId);
+      }
 
       // Find and replace temporary message with server message
       final tempIndex = messages.indexWhere((m) => m.id == tempId);

@@ -4,7 +4,7 @@ import 'package:get/get.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/controllers/qr_scanner_controller.dart';
-import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
+import 'package:farah_sys_final/views/doctor/widgets/doctor_back_button.dart';
 
 /// شاشة مسح رمز QR — GetView؛ المنطق في QrScannerController.
 class QrScannerScreen extends GetView<QrScannerController> {
@@ -67,7 +67,7 @@ class QrScannerScreen extends GetView<QrScannerController> {
         child: Row(
           textDirection: TextDirection.ltr,
           children: [
-            const BackButtonWidget(),
+            const DoctorBackButton(),
             Expanded(
               child: Center(
                 child: Text(

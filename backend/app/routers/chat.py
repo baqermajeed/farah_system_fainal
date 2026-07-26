@@ -7,7 +7,11 @@ from app.security import get_current_user
 from app.schemas import ChatMessageOut, ChatMessageIn, ChatListItemOut
 from app.models import ChatRoom, ChatMessage, Patient, User, Doctor
 from app.constants import Role
-from app.utils.chat_helpers import ensure_chat_room_user_ids, get_or_create_chat_room
+from app.utils.chat_helpers import (
+    ensure_chat_room_user_ids,
+    get_chat_room,
+    get_or_create_chat_room,
+)
 from app.utils.r2_clinic import upload_clinic_image
 from app.utils.patient_out import resolve_patient_identity, patient_name_hint_for_id
 from app.utils.logger import get_logger
@@ -20,8 +24,10 @@ class ChatMessageEditIn(BaseModel):
     content: str
     doctor_id: Optional[str] = None
 
-async def _get_or_room_for_user(*, patient_id: str, user: User, doctor_id: str | None = None) -> ChatRoom:
-    """الحصول على أو إنشاء غرفة محادثة بين الطبيب والمريض."""
+async def _resolve_chat_participants(
+    *, patient_id: str, user: User, doctor_id: str | None = None
+) -> tuple[Patient, Doctor]:
+    """التحقق من الصلاحيات وإرجاع المريض والطبيب للمحادثة."""
     try:
         patient = await Patient.get(OID(patient_id))
     except Exception:
@@ -66,6 +72,24 @@ async def _get_or_room_for_user(*, patient_id: str, user: User, doctor_id: str |
     else:
         raise HTTPException(status_code=403, detail="Forbidden")
 
+    return patient, selected_doctor
+
+
+async def _get_room_for_user(
+    *, patient_id: str, user: User, doctor_id: str | None = None
+) -> ChatRoom | None:
+    """الحصول على غرفة محادثة موجودة فقط (بدون إنشاء)."""
+    patient, selected_doctor = await _resolve_chat_participants(
+        patient_id=patient_id, user=user, doctor_id=doctor_id
+    )
+    return await get_chat_room(patient=patient, doctor=selected_doctor)
+
+
+async def _get_or_room_for_user(*, patient_id: str, user: User, doctor_id: str | None = None) -> ChatRoom:
+    """الحصول على أو إنشاء غرفة محادثة بين الطبيب والمريض."""
+    patient, selected_doctor = await _resolve_chat_participants(
+        patient_id=patient_id, user=user, doctor_id=doctor_id
+    )
     return await get_or_create_chat_room(patient=patient, doctor=selected_doctor)
 
 @router.get("/list", response_model=list[ChatListItemOut])
@@ -121,14 +145,16 @@ async def get_chat_list(current: User = Depends(get_current_user)):
                 ChatMessage.is_read == False,
             ).count()
 
+            if not last_message:
+                continue
+
             last_message_text = None
             last_message_time = None
-            if last_message:
-                if last_message.imageUrl:
-                    last_message_text = "صورة"
-                else:
-                    last_message_text = last_message.content
-                last_message_time = last_message.created_at.isoformat()
+            if last_message.imageUrl:
+                last_message_text = "صورة"
+            else:
+                last_message_text = last_message.content
+            last_message_time = last_message.created_at.isoformat()
 
             result.append(ChatListItemOut(
                 patient_id=str(patient.id),
@@ -196,14 +222,16 @@ async def get_chat_list(current: User = Depends(get_current_user)):
                 ChatMessage.is_read == False,
             ).count()
 
+            if not last_message:
+                continue
+
             last_message_text = None
             last_message_time = None
-            if last_message:
-                if last_message.imageUrl:
-                    last_message_text = "صورة"
-                else:
-                    last_message_text = last_message.content
-                last_message_time = last_message.created_at.isoformat()
+            if last_message.imageUrl:
+                last_message_text = "صورة"
+            else:
+                last_message_text = last_message.content
+            last_message_time = last_message.created_at.isoformat()
 
             doctor_profile_id = room.doctor_id
             if doctor_profile_id is None and room.doctor_user_id is not None:
@@ -240,9 +268,10 @@ async def get_messages(
     current: User = Depends(get_current_user)
 ):
     """استرجاع تاريخ الرسائل (أحدث أولاً) مع دعم before/limit."""
-    room = await _get_or_room_for_user(patient_id=patient_id, user=current, doctor_id=doctor_id)
-    
-    # بناء الاستعلام
+    room = await _get_room_for_user(patient_id=patient_id, user=current, doctor_id=doctor_id)
+    if not room:
+        return []
+
     query = ChatMessage.find(ChatMessage.room_id == room.id)
     
     if before:
@@ -451,11 +480,13 @@ async def edit_message(
     current: User = Depends(get_current_user),
 ):
     """تعديل نص رسالة موجودة (لصاحب الرسالة فقط)."""
-    room = await _get_or_room_for_user(
+    room = await _get_room_for_user(
         patient_id=patient_id,
         user=current,
         doctor_id=payload.doctor_id,
     )
+    if not room:
+        raise HTTPException(status_code=404, detail="Chat room not found")
 
     try:
         message = await ChatMessage.get(OID(message_id))

@@ -8,7 +8,7 @@ import 'package:farah_sys_final/core/utils/image_utils.dart';
 import 'package:farah_sys_final/core/widgets/empty_state_widget.dart';
 import 'package:farah_sys_final/core/widgets/loading_widget.dart';
 import 'package:farah_sys_final/core/utils/date_time_utils.dart';
-import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
+import 'package:farah_sys_final/views/doctor/widgets/doctor_back_button.dart';
 import 'package:farah_sys_final/controllers/doctor_chats_screen_controller.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
@@ -46,7 +46,7 @@ class DoctorChatsScreen extends GetView<DoctorChatsScreenController> {
               automaticallyImplyLeading: false,
               leading: Padding(
                 padding: EdgeInsets.only(left: 16.w),
-                child: Center(child: const BackButtonWidget()),
+                child: Center(child: const DoctorBackButton()),
               ),
               leadingWidth: 64.w,
               title: Directionality(

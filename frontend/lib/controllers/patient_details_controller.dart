@@ -47,7 +47,7 @@ class PatientDetailsController extends GetxController
   bool didAutoScrollToSelected = false;
   bool didAutoScrollToSelectedImplantStage = false;
 
-  final RxBool isLoadingPatientProfile = false.obs;
+  final RxBool isInitialLoading = true.obs;
 
   // Unread messages count
   final RxInt unreadCount = 0.obs;
@@ -107,43 +107,62 @@ class PatientDetailsController extends GetxController
   @override
   void onReady() {
     super.onReady();
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (patientId == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (patientId == null) {
+        isInitialLoading.value = false;
+        return;
+      }
+      _loadInitialData(patientId!);
+    });
+  }
 
+  Future<void> _loadInitialData(String id) async {
+    isInitialLoading.value = true;
+    try {
       final userType = authController.currentUser.value?.userType;
       final isReceptionist =
           userType != null && userType.toLowerCase() == 'receptionist';
 
       if (isReceptionist) {
-        // For receptionist, ensure patients list is loaded so getPatientById works
-        final patient = patientController.getPatientById(patientId!);
+        final patient = patientController.getPatientById(id);
         if (patient == null) {
           await patientController.reloadPatientsList();
         }
-        loadPatientDoctors(patientId!);
-      } else {
-        await _ensurePatientLoaded(patientId!);
-
-        appointmentController.loadPatientAppointmentsById(patientId!);
-        galleryController.loadGallery(patientId!);
-        medicalRecordController.loadPatientRecords(patientId!);
-        loadUnreadCount();
-        _loadImplantStagesIfNeeded(patientId!);
-
-        if (tabController.index == 3) {
-          _dentalChartBound = true;
-          dentalChartController.bindPatient(patientId!);
-        }
+        await loadPatientDoctors(id);
+        return;
       }
-    });
-  }
 
-  Future<void> _ensurePatientLoaded(String id) async {
-    isLoadingPatientProfile.value = true;
-    try {
       await patientController.ensurePatientLoaded(id);
+
+      final patient = patientController.getPatientById(id);
+      final needsImplantStages = patient != null &&
+          patient.treatmentHistory != null &&
+          patient.treatmentHistory!.isNotEmpty &&
+          patient.treatmentHistory!.first == 'زراعة';
+
+      final futures = <Future<void>>[
+        appointmentController.loadPatientAppointmentsById(id),
+        galleryController.loadGallery(id),
+        medicalRecordController.loadPatientRecords(id),
+        loadUnreadCount(),
+      ];
+
+      if (needsImplantStages) {
+        _implantStagesRequested = true;
+        if (!Get.isRegistered<ImplantStageController>()) {
+          Get.put(ImplantStageController());
+        }
+        futures.add(Get.find<ImplantStageController>().ensureStagesLoaded(id));
+      }
+
+      await Future.wait(futures);
+
+      if (tabController.index == 3) {
+        _dentalChartBound = true;
+        dentalChartController.bindPatient(id);
+      }
     } finally {
-      isLoadingPatientProfile.value = false;
+      isInitialLoading.value = false;
     }
   }
 

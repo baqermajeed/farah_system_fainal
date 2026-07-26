@@ -13,6 +13,7 @@ import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/models/appointment_model.dart';
 import 'package:farah_sys_final/core/widgets/loading_widget.dart';
 import 'package:farah_sys_final/core/widgets/empty_state_widget.dart';
+import 'package:farah_sys_final/views/doctor/widgets/doctor_back_button.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
 import 'package:farah_sys_final/widgets/appointment_list_card.dart';
 
@@ -59,12 +60,16 @@ class AppointmentsScreen extends GetView<AppointmentsScreenController> {
   }
 
   Widget _buildHeader(BuildContext context) {
+    final userType =
+        Get.find<AuthController>().currentUser.value?.userType?.toLowerCase();
+    final isDoctor = userType == 'doctor';
+
     return Padding(
       padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
       child: Row(
         textDirection: ui.TextDirection.ltr,
         children: [
-          const BackButtonWidget(),
+          isDoctor ? const DoctorBackButton() : const BackButtonWidget(),
           Expanded(
             child: Column(
               children: [

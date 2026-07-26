@@ -5,7 +5,7 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/widgets/custom_button.dart';
-import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
+import 'package:farah_sys_final/views/doctor/widgets/doctor_back_button.dart';
 import 'package:farah_sys_final/controllers/edit_implant_stage_date_controller.dart';
 
 /// شاشة تعديل تاريخ مرحلة الزراعة — GetView؛ المنطق في EditImplantStageDateController.
@@ -23,7 +23,7 @@ class EditImplantStageDateScreen extends GetView<EditImplantStageDateController>
           child: AppBar(
             backgroundColor: const Color(0xFFF4FEFF),
             elevation: 0,
-            leading: const BackButtonWidget(),
+            leading: const DoctorBackButton(),
             leadingWidth: 56.w,
             title: const Directionality(
               textDirection: ui.TextDirection.rtl,

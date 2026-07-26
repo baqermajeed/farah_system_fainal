@@ -18,6 +18,10 @@ class DoctorHomeTab extends GetView<DoctorHomeController> {
   static const Color _navy = Color(0xFF1E3A5F);
   static const Color _grayText = Color(0xFF8A97A8);
   static const Color _bgColor = Color(0xFFF8FAFC); // خلفية عصرية جداً فاتحة
+  static const String _notificationIconAsset =
+      'assets/icon/Frame 2609203.png';
+  static const String _barcodeIconAsset = 'assets/icon/Frame 2609218.png';
+  static const Color _headerIconColor = Color(0xFF5A7C99);
 
   @override
   Widget build(BuildContext context) {
@@ -137,17 +141,21 @@ class DoctorHomeTab extends GetView<DoctorHomeController> {
                 ],
               ),
             ),
-            _modernIconButton(
-              icon: Icons.qr_code_scanner_rounded,
+            _headerIconButton(
+              assetPath: _barcodeIconAsset,
+              assetWidth: 26.w,
+              assetHeight: 26.w,
               onTap: () => Get.toNamed(AppRoutes.qrScanner),
             ),
-            SizedBox(width: 12.w),
+            SizedBox(width: 10.w),
             Obx(() {
               final unread = controller.unreadCounts.values.fold<int>(0, (s, c) => s + c);
-              return _modernIconButton(
-                icon: Icons.notifications_none_rounded,
-                hasBadge: unread > 0,
+              return _headerIconButton(
+                assetPath: _notificationIconAsset,
+                assetWidth: 26.w,
+                assetHeight: 31.w,
                 onTap: () => Get.toNamed(AppRoutes.notifications),
+                hasBadge: unread > 0,
               );
             }),
           ],
@@ -156,48 +164,60 @@ class DoctorHomeTab extends GetView<DoctorHomeController> {
     );
   }
 
-  Widget _modernIconButton({
-    required IconData icon,
+  Widget _headerIconButton({
+    String? assetPath,
+    double? assetWidth,
+    double? assetHeight,
+    IconData? icon,
     required VoidCallback onTap,
     bool hasBadge = false,
   }) {
+    assert(assetPath != null || icon != null);
+
     return GestureDetector(
       onTap: onTap,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
           Container(
-            width: 44.w,
-            height: 44.w,
+            width: 50.w,
+            height: 50.w,
             decoration: BoxDecoration(
               color: Colors.white,
-              shape: BoxShape.circle,
+              borderRadius: BorderRadius.circular(16.r),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.02),
-                  blurRadius: 10,
-                  offset: const Offset(0, 2),
-                ),
-                BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.04),
-                  blurRadius: 20,
-                  offset: const Offset(0, 6),
+                  color: Colors.black.withValues(alpha: 0.25),
+                  blurRadius: 8,
+                  offset: Offset.zero,
                 ),
               ],
             ),
-            child: Icon(icon, color: _navy, size: 22.sp),
+            alignment: Alignment.center,
+            child: assetPath != null
+                ? Image.asset(
+                    assetPath,
+                    width: assetWidth ?? 22.w,
+                    height: assetHeight ?? 26.w,
+                    fit: BoxFit.contain,
+                  )
+                : Icon(
+                    icon,
+                    color: _headerIconColor,
+                    size: 24.sp,
+                  ),
           ),
           if (hasBadge)
             Positioned(
-              top: 0,
-              right: 0, // RTL adjustment
+              top: 2.h,
+              right: 2.w,
               child: Container(
-                width: 12.w,
-                height: 12.w,
+                width: 10.w,
+                height: 10.w,
                 decoration: BoxDecoration(
                   color: AppColors.error,
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 2),
+                  border: Border.all(color: Colors.white, width: 1.5),
                 ),
               ),
             ),

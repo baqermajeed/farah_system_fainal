@@ -6,7 +6,7 @@ import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
 import 'package:farah_sys_final/core/widgets/custom_text_field.dart';
 import 'package:farah_sys_final/core/widgets/gender_selector.dart';
-import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
+import 'package:farah_sys_final/views/doctor/widgets/doctor_back_button.dart';
 import 'package:farah_sys_final/controllers/add_patient_controller.dart';
 
 /// شاشة إضافة مريض — GetView؛ المنطق في AddPatientController.
@@ -229,7 +229,7 @@ class AddPatientScreen extends GetView<AddPatientController> {
               ),
             ),
             // Back button positioned at top left without padding
-            Positioned(top: 16.h, left: 16, child: BackButtonWidget()),
+            Positioned(top: 16.h, left: 16, child: DoctorBackButton()),
           ],
         ),
       ),

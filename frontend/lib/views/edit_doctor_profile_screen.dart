@@ -5,7 +5,7 @@ import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
 import 'package:farah_sys_final/core/widgets/custom_button.dart';
 import 'package:farah_sys_final/core/widgets/custom_text_field.dart';
-import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
+import 'package:farah_sys_final/views/doctor/widgets/doctor_back_button.dart';
 import 'package:farah_sys_final/controllers/edit_doctor_profile_controller.dart';
 
 /// شاشة تعديل الملف الشخصي للطبيب — GetView؛ المنطق في EditDoctorProfileController.
@@ -24,7 +24,7 @@ class EditDoctorProfileScreen extends GetView<EditDoctorProfileController> {
                 textDirection: TextDirection.ltr,
                 children: [
                   // Back button always on the LEFT
-                  const BackButtonWidget(),
+                  const DoctorBackButton(),
                   Expanded(
                     child: Center(
                       child: Text(

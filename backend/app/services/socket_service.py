@@ -6,7 +6,7 @@ from typing import Dict, Set
 from beanie import PydanticObjectId as OID
 from app.models import User, Patient, Doctor, ChatRoom, ChatMessage
 from app.constants import Role
-from app.utils.chat_helpers import ensure_chat_room_user_ids, get_or_create_chat_room
+from app.utils.chat_helpers import ensure_chat_room_user_ids, get_chat_room
 from jose import jwt, JWTError
 from app.config import get_settings
 
@@ -245,21 +245,28 @@ async def join_conversation(sid: str, data: dict):
             await sio.emit('error', {'message': 'غير مصرح', 'code': 'E403'}, room=sid)
             return
 
-        # غرفة منفصلة لكل فرد عائلة (patient_id + doctor_id) — لا نشارك غرفة عبر user_id فقط
-        room = await get_or_create_chat_room(patient=patient, doctor=selected_doctor)
+        # لا نُنشئ غرفة عند الفتح فقط — تُنشأ عند إرسال أول رسالة
+        room = await get_chat_room(patient=patient, doctor=selected_doctor)
 
-        room_key = f"room_{room.id}"
-        await sio.enter_room(sid, room_key)
-        
-        if sid not in socket_rooms:
-            socket_rooms[sid] = set()
-        socket_rooms[sid].add(str(room.id))
-        
-        print(f"👤 User {user_id} joined conversation {room.id} (patient={patient.id})")
-        await sio.emit('joined_conversation', {
-            'room_id': str(room.id),
-            'patient_id': str(patient.id),
-        }, room=sid)
+        if room:
+            room_key = f"room_{room.id}"
+            await sio.enter_room(sid, room_key)
+
+            if sid not in socket_rooms:
+                socket_rooms[sid] = set()
+            socket_rooms[sid].add(str(room.id))
+
+            print(f"👤 User {user_id} joined conversation {room.id} (patient={patient.id})")
+            await sio.emit('joined_conversation', {
+                'room_id': str(room.id),
+                'patient_id': str(patient.id),
+            }, room=sid)
+        else:
+            print(f"👤 User {user_id} opened chat preview (no room yet) patient={patient.id}")
+            await sio.emit('joined_conversation', {
+                'room_id': None,
+                'patient_id': str(patient.id),
+            }, room=sid)
     except Exception as e:
         print(f"❌ Error joining conversation: {e}")
         await sio.emit('error', {'message': f'خطأ في الانضمام للمحادثة: {str(e)}', 'code': 'E500'}, room=sid)

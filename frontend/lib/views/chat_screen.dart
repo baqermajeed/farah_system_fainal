@@ -11,6 +11,8 @@ import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
 import 'package:farah_sys_final/controllers/chat_screen_controller.dart';
 import 'package:farah_sys_final/core/widgets/loading_widget.dart';
+import 'package:farah_sys_final/controllers/auth_controller.dart';
+import 'package:farah_sys_final/views/doctor/widgets/doctor_back_button.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
 import 'package:farah_sys_final/models/message_model.dart';
@@ -87,6 +89,9 @@ class ChatScreen extends GetView<ChatScreenController> {
 
   Widget _buildHeader() {
     final imageUrl = controller.doctorImageUrl();
+    final userType =
+        Get.find<AuthController>().currentUser.value?.userType?.toLowerCase();
+    final isDoctor = userType == 'doctor';
 
     return Padding(
       padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 10.h),
@@ -107,7 +112,9 @@ class ChatScreen extends GetView<ChatScreenController> {
         child: Row(
           textDirection: ui.TextDirection.ltr,
           children: [
-            const BackButtonWidget(assetPath: _ChatAssets.back),
+            isDoctor
+                ? const DoctorBackButton()
+                : const BackButtonWidget(assetPath: _ChatAssets.back),
             Expanded(
               child: Directionality(
                 textDirection: ui.TextDirection.rtl,

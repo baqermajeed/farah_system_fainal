@@ -6,7 +6,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/theme/app_fonts.dart';
-import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
+import 'package:farah_sys_final/views/doctor/widgets/doctor_back_button.dart';
 import 'package:farah_sys_final/controllers/doctor_stats_controller.dart';
 import 'package:farah_sys_final/models/doctor_stats_model.dart';
 import 'package:farah_sys_final/views/doctor/widgets/doctor_glass_card.dart';
@@ -138,13 +138,7 @@ class _StatsHeader extends StatelessWidget {
               Row(
                 textDirection: ui.TextDirection.ltr,
                 children: [
-                  Transform.rotate(
-                    angle: math.pi,
-                    child: BackButtonWidget(
-                      backgroundColor: Colors.white.withValues(alpha: 0.12),
-                      assetPath: 'assets/images/back.png',
-                    ),
-                  ),
+                  const DoctorBackButton(),
                   Expanded(
                     child: Text(
                       'الإحصائيات',

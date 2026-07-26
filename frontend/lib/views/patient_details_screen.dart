@@ -15,6 +15,7 @@ import 'package:farah_sys_final/core/constants/iraq_governorates.dart';
 import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
 import 'package:farah_sys_final/core/utils/network_utils.dart';
+import 'package:farah_sys_final/views/doctor/widgets/doctor_back_button.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
 import 'package:farah_sys_final/controllers/working_hours_controller.dart';
 import 'package:farah_sys_final/controllers/implant_stage_controller.dart';
@@ -26,7 +27,7 @@ import 'package:farah_sys_final/models/doctor_model.dart';
 import 'package:farah_sys_final/models/patient_model.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:farah_sys_final/widgets/portrait_network_image.dart';
+import 'package:farah_sys_final/widgets/patient_profile_avatar.dart';
 import 'package:farah_sys_final/widgets/dental_chart/patient_dental_chart_tab.dart';
 
 // Shared shadow used in patient UI cards.
@@ -53,7 +54,7 @@ const LinearGradient _kPatientProfileGradient = LinearGradient(
 
 class _PatientDetailsAssets {
   static const back = 'assets/icon/backblack.png';
-  static const chat = 'assets/icon/chatddd.png';
+  static const chat = 'assets/icon/Frame 2609204.png';
 }
 
 const double _kPatientHeaderButtonSize = 50;
@@ -132,7 +133,9 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
           final isReceptionist =
               userType != null && userType.toLowerCase() == 'receptionist';
 
-          return Column(
+          return Stack(
+            children: [
+              Column(
             children: [
               Expanded(
                 child: NestedScrollView(
@@ -156,10 +159,14 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                             textDirection: ui.TextDirection.ltr,
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const BackButtonWidget(
-                                assetPath: _PatientDetailsAssets.back,
-                                size: _kPatientHeaderButtonSize,
-                              ),
+                              isReceptionist
+                                  ? const BackButtonWidget(
+                                      assetPath: _PatientDetailsAssets.back,
+                                      size: _kPatientHeaderButtonSize,
+                                    )
+                                  : const DoctorBackButton(
+                                      size: _kPatientHeaderButtonSize,
+                                    ),
                               Expanded(
                                 child: Text(
                                   'ملف المريض',
@@ -251,18 +258,9 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                         child: Obx(() {
                           controller.patientController.selectedPatient.value;
                           controller.patientController.searchResults.length;
-                          controller.isLoadingPatientProfile.value;
 
-                          if (controller.isLoadingPatientProfile.value) {
-                            return Padding(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 16.w,
-                                vertical: 24.h,
-                              ),
-                              child: const Center(
-                                child: CircularProgressIndicator(),
-                              ),
-                            );
+                          if (controller.isInitialLoading.value) {
+                            return const SizedBox.shrink();
                           }
 
                           final patient = controller.patientId != null
@@ -497,8 +495,38 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                 }),
               ),
             ],
+          ),
+              if (controller.isInitialLoading.value)
+                Positioned.fill(
+                  child: _buildInitialLoadingOverlay(),
+                ),
+            ],
           );
           }),
+        ),
+      ),
+    );
+  }
+
+  /// Scrollable wrapper required for TabBarView inside NestedScrollView.
+  Widget _buildInitialLoadingOverlay() {
+    return ColoredBox(
+      color: _kPatientProfileBg,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: AppColors.primary),
+            SizedBox(height: 16.h),
+            Text(
+              'جاري تحميل ملف المريض...',
+              style: AppFonts.lamaSans(
+                fontSize: 14.sp,
+                fontWeight: FontWeight.w600,
+                color: _kPatientProfileGray,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -588,17 +616,9 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                         GestureDetector(
                           onTap: () =>
                               _showPatientImageDialog(context, patient),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12.r),
-                            child: SizedBox(
-                              width: 56.w,
-                              height: 56.w,
-                              child: PortraitNetworkImage(
-                                imageUrl: patient.imageUrl,
-                                borderRadius: BorderRadius.zero,
-                                showSkeleton: true,
-                              ),
-                            ),
+                          child: PatientProfileAvatar(
+                            imageUrl: patient.imageUrl,
+                            size: 56,
                           ),
                         ),
                         SizedBox(width: 10.w),
@@ -823,6 +843,9 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
 
   Widget _buildRecordsTab() {
     return Obx(() {
+      if (controller.isInitialLoading.value) {
+        return _tabFillScroll(const SizedBox.shrink());
+      }
       if (controller.medicalRecordController.isLoading.value) {
         return _tabFillScroll(
           Container(
@@ -1097,6 +1120,11 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
   }
 
   Widget _buildAppointmentsTab() {
+    return Obx(() {
+      if (controller.isInitialLoading.value) {
+        return _tabFillScroll(const SizedBox.shrink());
+      }
+
     // التحقق من نوع العلاج
     final patient = controller.patientId != null
         ? controller.patientController.getPatientById(controller.patientId!)
@@ -1322,6 +1350,7 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
           },
         ),
       );
+    });
     });
   }
 
@@ -1874,6 +1903,9 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
         : Get.put(ImplantStageController());
 
     return Obx(() {
+      if (controller.isInitialLoading.value) {
+        return _tabFillScroll(const SizedBox.shrink());
+      }
       if (implantStageController.isLoading.value) {
         return _tabFillScroll(
           Container(
@@ -2115,7 +2147,7 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
         // Content - قابل للضغط للطبيب فقط لتعديل التاريخ (على اليمين)
         Expanded(
           child: GestureDetector(
-            onTap: isDoctor
+            onTap: isDoctor && !stage.isCompleted
                 ? () {
                     _showEditImplantStageDateDialog(
                       context,
@@ -2246,6 +2278,9 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
 
   Widget _buildGalleryTab() {
     return Obx(() {
+      if (controller.isInitialLoading.value) {
+        return const SizedBox.shrink();
+      }
       if (controller.galleryController.isLoading.value) {
         return CustomScrollView(
           slivers: [
@@ -2427,6 +2462,9 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
 
   Widget _buildDentalChartTab() {
     return Obx(() {
+      if (controller.isInitialLoading.value) {
+        return const SizedBox.shrink();
+      }
       final patientId = controller.patientId;
       if (patientId == null) {
         return const SizedBox.shrink();
@@ -2469,6 +2507,35 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
     }
   }
 
+  WorkingHoursController _resolveAppointmentWorkingHoursController() {
+    if (Get.isRegistered<WorkingHoursController>()) {
+      return Get.find<WorkingHoursController>();
+    }
+    return Get.put(WorkingHoursController(autoLoadOnInit: false));
+  }
+
+  Future<List<String>> _fetchAvailableSlotsForDoctorDate({
+    required String doctorId,
+    required DateTime date,
+  }) async {
+    final dateStr =
+        '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    final userType =
+        (controller.authController.currentUser.value?.userType ?? '')
+            .toLowerCase();
+    final isReceptionOrAdmin =
+        userType == 'receptionist' || userType == 'admin';
+    return isReceptionOrAdmin
+        ? await controller.workingHoursService.getAvailableSlotsForReception(
+            doctorId,
+            dateStr,
+          )
+        : await controller.workingHoursService.getAvailableSlots(
+            doctorId,
+            dateStr,
+          );
+  }
+
   void _showBookAppointmentDialog(BuildContext context) {
     int currentStep = 1;
     DateTime? selectedDate;
@@ -2484,16 +2551,13 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
     final doctorId = doctorIds.isNotEmpty ? doctorIds.first : null;
 
     // Working hours controller
-    final workingHoursController = Get.put(WorkingHoursController());
+    final workingHoursController = _resolveAppointmentWorkingHoursController();
 
     // Available slots (will be loaded from API)
     List<String> availableSlots = [];
     bool isLoadingSlots = false;
-
-    // Load working hours when dialog opens
-    if (doctorId != null) {
-      workingHoursController.loadWorkingHours(doctorId: doctorId);
-    }
+    int slotsRequestSeq = 0;
+    bool didBootstrapDialogData = false;
 
     showDialog(
       context: context,
@@ -2501,14 +2565,27 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            if (!didBootstrapDialogData && doctorId != null) {
+              didBootstrapDialogData = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) async {
+                await workingHoursController.loadWorkingHours(
+                  doctorId: doctorId,
+                );
+                if (dialogContext.mounted) {
+                  setDialogState(() {});
+                }
+              });
+            }
+
             return Dialog(
               backgroundColor: Colors.transparent,
+              insetPadding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 24.h),
               child: Container(
                 constraints: BoxConstraints(
                   maxHeight: MediaQuery.of(context).size.height * 0.9,
                 ),
-                width: double.infinity,
-                padding: EdgeInsets.all(24.w),
+                width: MediaQuery.of(context).size.width - 20.w,
+                padding: EdgeInsets.all(20.w),
                 decoration: BoxDecoration(
                   color: AppColors.white,
                   borderRadius: BorderRadius.circular(20.r),
@@ -2523,39 +2600,27 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                         workingHoursController,
                         doctorId,
                         (date) async {
+                          final requestId = ++slotsRequestSeq;
                           setDialogState(() {
                             selectedDate = date;
                             selectedTime = null; // Reset time when date changes
                             isLoadingSlots = true;
                           });
 
-                          // Load available slots for selected date
                           if (doctorId != null) {
                             try {
-                              final dateStr =
-                                  '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-                              final userType =
-                                  (controller.authController.currentUser.value?.userType ??
-                                          '')
-                                      .toLowerCase();
-                              final isReceptionOrAdmin =
-                                  userType == 'receptionist' ||
-                                      userType == 'admin';
-                              final slots = isReceptionOrAdmin
-                                  ? await controller.workingHoursService
-                                      .getAvailableSlotsForReception(
-                                        doctorId,
-                                        dateStr,
-                                      )
-                                  : await controller.workingHoursService.getAvailableSlots(
-                                      doctorId,
-                                      dateStr,
-                                    );
+                              final slots =
+                                  await _fetchAvailableSlotsForDoctorDate(
+                                doctorId: doctorId,
+                                date: date,
+                              );
+                              if (requestId != slotsRequestSeq) return;
                               setDialogState(() {
                                 availableSlots = slots;
                                 isLoadingSlots = false;
                               });
                             } catch (e) {
+                              if (requestId != slotsRequestSeq) return;
                               print(
                                 '❌ [PatientDetailsScreen] Error loading available slots: $e',
                               );
@@ -2805,66 +2870,64 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
               SizedBox(height: 20.h),
 
               // Week calendar (7 days in a row)
-              Obx(() {
-                return Container(
-                  padding: EdgeInsets.symmetric(
-                    vertical: 16.h,
-                    horizontal: 0.w,
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: List.generate(7, (index) {
-                      final day = weekStart.add(Duration(days: index));
-                      final isSelected =
-                          selectedDate != null &&
-                          day.day == selectedDate.day &&
-                          day.month == selectedDate.month &&
-                          day.year == selectedDate.year;
-                      final isPast = day.isBefore(
-                        DateTime.now().subtract(const Duration(days: 1)),
-                      );
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final cellWidth = constraints.maxWidth / 7;
+                  final hours = workingHoursController.workingHours;
+                  return Container(
+                    padding: EdgeInsets.symmetric(vertical: 16.h),
+                    child: Row(
+                      children: List.generate(7, (index) {
+                    final day = weekStart.add(Duration(days: index));
+                    final isSelected =
+                        selectedDate != null &&
+                        day.day == selectedDate.day &&
+                        day.month == selectedDate.month &&
+                        day.year == selectedDate.year;
+                    final isPast = day.isBefore(
+                      DateTime.now().subtract(const Duration(days: 1)),
+                    );
 
-                      // Check if this day is a holiday (not working)
-                      bool isHoliday = false;
-                      if (workingHoursController.workingHours.isNotEmpty) {
-                        final weekday = day.weekday % 7; // 0=Sunday, 6=Saturday
-                        if (weekday <
-                            workingHoursController.workingHours.length) {
-                          final dayWorkingHours =
-                              workingHoursController.workingHours[weekday];
-                          isHoliday = dayWorkingHours['isWorking'] == false;
-                        }
+                    // Check if this day is a holiday (not working)
+                    bool isHoliday = false;
+                    if (hours.isNotEmpty) {
+                      final weekday = day.weekday % 7; // 0=Sunday, 6=Saturday
+                      if (weekday < hours.length) {
+                        final dayWorkingHours = hours[weekday];
+                        isHoliday = dayWorkingHours['isWorking'] == false;
                       }
+                    }
 
-                      return Expanded(
-                        child: GestureDetector(
-                          onTap: (isPast || isHoliday)
-                              ? null
-                              : () {
-                                  onDateSelected(day);
-                                  setCalendarState(() {});
-                                },
-                          child: Container(
-                            margin: EdgeInsets.symmetric(horizontal: 2.w),
-                            padding: EdgeInsets.symmetric(vertical: 12.h),
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? const Color(0xFF7FC8D6)
-                                  : (isPast || isHoliday)
-                                  ? Colors.grey[100]
-                                  : Colors.transparent,
-                              borderRadius: BorderRadius.circular(12.r),
-                              border: isSelected
-                                  ? Border.all(
-                                      color: const Color(0xFF7FC8D6),
-                                      width: 2,
-                                    )
-                                  : null,
-                            ),
-                            child: Column(
-                              children: [
-                                Text(
+                    return SizedBox(
+                      width: cellWidth,
+                      child: GestureDetector(
+                        onTap: (isPast || isHoliday)
+                            ? null
+                            : () {
+                                onDateSelected(day);
+                                setCalendarState(() {});
+                              },
+                        child: Container(
+                          margin: EdgeInsets.symmetric(horizontal: 1.w),
+                          padding: EdgeInsets.symmetric(
+                            vertical: 12.h,
+                            horizontal: 2.w,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? const Color(0xFF7FC8D6)
+                                : (isPast || isHoliday)
+                                ? Colors.grey[100]
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(12.r),
+                          ),
+                          child: Column(
+                            children: [
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
                                   weekDays[day.weekday % 7],
+                                  maxLines: 1,
                                   style: TextStyle(
                                     fontSize: 11.sp,
                                     fontWeight: FontWeight.w500,
@@ -2875,31 +2938,33 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                                         : Colors.black87,
                                   ),
                                 ),
-                                SizedBox(height: 6.h),
-                                Text(
-                                  '${day.day}',
-                                  style: TextStyle(
-                                    fontSize: 16.sp,
-                                    fontWeight: FontWeight.w700,
-                                    color: isSelected
-                                        ? Colors.white
-                                        : (isPast || isHoliday)
-                                        ? Colors.grey[400]
-                                        : Colors.black87,
-                                    decoration: isHoliday
-                                        ? TextDecoration.lineThrough
-                                        : null,
-                                  ),
+                              ),
+                              SizedBox(height: 6.h),
+                              Text(
+                                '${day.day}',
+                                style: TextStyle(
+                                  fontSize: 16.sp,
+                                  fontWeight: FontWeight.w700,
+                                  color: isSelected
+                                      ? Colors.white
+                                      : (isPast || isHoliday)
+                                      ? Colors.grey[400]
+                                      : Colors.black87,
+                                  decoration: isHoliday
+                                      ? TextDecoration.lineThrough
+                                      : null,
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ),
-                      );
-                    }),
-                  ),
-                );
-              }),
+                      ),
+                    );
+                  }),
+                    ),
+                  );
+                },
+              ),
 
               SizedBox(height: 24.h),
 
@@ -3801,7 +3866,7 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                   top: 40.h,
                   right: 20.w,
                   child: GestureDetector(
-                    onTap: () => Navigator.of(context).pop(),
+                    onTap: () => Navigator.of(dialogContext).pop(),
                     child: Container(
                       padding: EdgeInsets.all(12.w),
                       decoration: BoxDecoration(
@@ -3821,7 +3886,7 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                   top: 40.h,
                   left: 20.w,
                   child: GestureDetector(
-                    onTap: () => _saveImage(context, imageUrl),
+                    onTap: () => _saveImage(dialogContext, imageUrl),
                     child: Container(
                       padding: EdgeInsets.all(12.w),
                       decoration: BoxDecoration(
@@ -3844,7 +3909,7 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
     );
   }
 
-  void _showImageDetailsDialog(BuildContext context, dynamic galleryImage) {
+  void _showImageDetailsDialog(BuildContext screenContext, dynamic galleryImage) {
     // Parse date
     String formattedDate = '';
     try {
@@ -3857,7 +3922,7 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
     bool isDeleting = false;
 
     showDialog(
-      context: context,
+      context: screenContext,
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
@@ -3877,7 +3942,7 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         GestureDetector(
-                          onTap: () => Navigator.of(context).pop(),
+                          onTap: () => Navigator.of(dialogContext).pop(),
                           child: Container(
                             padding: EdgeInsets.all(8.w),
                             decoration: BoxDecoration(
@@ -3898,13 +3963,20 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                     // Image with zoom
                     GestureDetector(
                       onTap: () {
-                        Navigator.of(context).pop();
                         final imageUrl = ImageUtils.convertToValidUrl(
                           galleryImage.imagePath,
                         );
+                        Navigator.of(dialogContext).pop();
                         if (imageUrl != null &&
                             ImageUtils.isValidImageUrl(imageUrl)) {
-                          _showAppointmentImageDialog(context, imageUrl);
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (screenContext.mounted) {
+                              _showAppointmentImageDialog(
+                                screenContext,
+                                imageUrl,
+                              );
+                            }
+                          });
                         }
                       },
                       child: ClipRRect(
@@ -4043,8 +4115,8 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                           : () async {
                               // Show confirmation dialog
                               final confirm = await showDialog<bool>(
-                                context: context,
-                                builder: (context) => AlertDialog(
+                                context: dialogContext,
+                                builder: (confirmContext) => AlertDialog(
                                   title: Text('تأكيد الحذف'),
                                   content: Text(
                                     'هل أنت متأكد من حذف هذه الصورة؟',
@@ -4052,12 +4124,12 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                                   actions: [
                                     TextButton(
                                       onPressed: () =>
-                                          Navigator.of(context).pop(false),
+                                          Navigator.of(confirmContext).pop(false),
                                       child: Text('إلغاء'),
                                     ),
                                     TextButton(
                                       onPressed: () =>
-                                          Navigator.of(context).pop(true),
+                                          Navigator.of(confirmContext).pop(true),
                                       child: Text(
                                         'حذف',
                                         style: TextStyle(color: Colors.red),
@@ -4075,9 +4147,9 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                                 final success = await controller.galleryController
                                     .deleteImage(controller.patientId!, galleryImage.id);
 
-                                if (context.mounted) {
+                                if (dialogContext.mounted) {
                                   if (success) {
-                                    Navigator.of(context).pop(); // Close dialog
+                                    Navigator.of(dialogContext).pop(); // Close dialog
                                     Get.snackbar(
                                       'نجح',
                                       'تم حذف الصورة بنجاح',
@@ -4468,16 +4540,13 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
     final doctorId = doctorIds.isNotEmpty ? doctorIds.first : null;
 
     // Working hours controller
-    final workingHoursController = Get.put(WorkingHoursController());
+    final workingHoursController = _resolveAppointmentWorkingHoursController();
 
     // Available slots
     List<String> availableSlots = [];
     bool isLoadingSlots = false;
-
-    // Load working hours when dialog opens
-    if (doctorId != null) {
-      workingHoursController.loadWorkingHours(doctorId: doctorId);
-    }
+    int slotsRequestSeq = 0;
+    bool didBootstrapDialogData = false;
 
     final implantStageController = Get.put(ImplantStageController());
 
@@ -4487,14 +4556,49 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            if (!didBootstrapDialogData && doctorId != null) {
+              didBootstrapDialogData = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) async {
+                await workingHoursController.loadWorkingHours(
+                  doctorId: doctorId,
+                );
+                final requestId = ++slotsRequestSeq;
+                setDialogState(() {
+                  isLoadingSlots = true;
+                });
+                try {
+                  final slots = await _fetchAvailableSlotsForDoctorDate(
+                    doctorId: doctorId,
+                    date: selectedDate!,
+                  );
+                  if (requestId != slotsRequestSeq) return;
+                  if (dialogContext.mounted) {
+                    setDialogState(() {
+                      availableSlots = slots;
+                      isLoadingSlots = false;
+                    });
+                  }
+                } catch (e) {
+                  if (requestId != slotsRequestSeq) return;
+                  if (dialogContext.mounted) {
+                    setDialogState(() {
+                      availableSlots = [];
+                      isLoadingSlots = false;
+                    });
+                  }
+                }
+              });
+            }
+
             return Dialog(
               backgroundColor: Colors.transparent,
+              insetPadding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 24.h),
               child: Container(
                 constraints: BoxConstraints(
                   maxHeight: MediaQuery.of(context).size.height * 0.9,
                 ),
-                width: double.infinity,
-                padding: EdgeInsets.all(24.w),
+                width: MediaQuery.of(context).size.width - 20.w,
+                padding: EdgeInsets.all(20.w),
                 decoration: BoxDecoration(
                   color: AppColors.white,
                   borderRadius: BorderRadius.circular(20.r),
@@ -4508,37 +4612,26 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                   workingHoursController,
                   doctorId,
                   (date) async {
+                    final requestId = ++slotsRequestSeq;
                     setDialogState(() {
                       selectedDate = date;
                       selectedTime = null; // Reset time when date changes
                       isLoadingSlots = true;
                     });
 
-                    // Load available slots for selected date
                     if (doctorId != null) {
                       try {
-                        final dateStr =
-                            '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-                        final userType =
-                            (controller.authController.currentUser.value?.userType ?? '')
-                                .toLowerCase();
-                        final isReceptionOrAdmin =
-                            userType == 'receptionist' || userType == 'admin';
-                        final slots = isReceptionOrAdmin
-                            ? await controller.workingHoursService
-                                .getAvailableSlotsForReception(
-                                  doctorId,
-                                  dateStr,
-                                )
-                            : await controller.workingHoursService.getAvailableSlots(
-                                doctorId,
-                                dateStr,
-                              );
+                        final slots = await _fetchAvailableSlotsForDoctorDate(
+                          doctorId: doctorId,
+                          date: date,
+                        );
+                        if (requestId != slotsRequestSeq) return;
                         setDialogState(() {
                           availableSlots = slots;
                           isLoadingSlots = false;
                         });
                       } catch (e) {
+                        if (requestId != slotsRequestSeq) return;
                         print(
                           '❌ [PatientDetailsScreen] Error loading available slots: $e',
                         );
@@ -4597,7 +4690,7 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                           );
 
                       if (success) {
-                        Navigator.of(context).pop();
+                        Navigator.of(dialogContext).pop();
                         // إعادة تحميل المراحل بعد التعديل
                         implantStageController.loadStages(stagePatientId);
                         // إظهار دايلوج النجاح بعد إغلاق الدايلوج الحالي
@@ -4630,7 +4723,7 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
                       );
                     }
                   },
-                  () => Navigator.of(context).pop(),
+                  () => Navigator.of(dialogContext).pop(),
                   setDialogState,
                 ),
               ),
@@ -5870,12 +5963,13 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
           builder: (context, setDialogState) {
             return Dialog(
               backgroundColor: Colors.transparent,
+              insetPadding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 24.h),
               child: Container(
                 constraints: BoxConstraints(
                   maxHeight: MediaQuery.of(context).size.height * 0.9,
                 ),
-                width: double.infinity,
-                padding: EdgeInsets.all(24.w),
+                width: MediaQuery.of(context).size.width - 20.w,
+                padding: EdgeInsets.all(20.w),
                 decoration: BoxDecoration(
                   color: AppColors.white,
                   borderRadius: BorderRadius.circular(20.r),
@@ -6160,12 +6254,13 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
           builder: (context, setDialogState) {
             return Dialog(
               backgroundColor: Colors.transparent,
+              insetPadding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 24.h),
               child: Container(
                 constraints: BoxConstraints(
                   maxHeight: MediaQuery.of(context).size.height * 0.9,
                 ),
-                width: double.infinity,
-                padding: EdgeInsets.all(24.w),
+                width: MediaQuery.of(context).size.width - 20.w,
+                padding: EdgeInsets.all(20.w),
                 decoration: BoxDecoration(
                   color: AppColors.white,
                   borderRadius: BorderRadius.circular(20.r),
@@ -6559,18 +6654,9 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
 
   Widget _buildDoctorsSection(PatientModel patient) {
     return Obx(() {
-      if (controller.isLoadingDoctors.value) {
-        return Container(
-          margin: EdgeInsets.symmetric(horizontal: 24.w),
-          padding: EdgeInsets.all(16.w),
-          decoration: BoxDecoration(
-            color: AppColors.white,
-            borderRadius: BorderRadius.circular(16.r),
-          ),
-          child: Center(
-            child: CircularProgressIndicator(color: AppColors.primary),
-          ),
-        );
+      if (controller.isInitialLoading.value ||
+          controller.isLoadingDoctors.value) {
+        return const SizedBox.shrink();
       }
 
       return Container(

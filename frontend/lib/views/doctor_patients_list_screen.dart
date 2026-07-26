@@ -6,7 +6,7 @@ import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:farah_sys_final/core/widgets/empty_state_widget.dart';
 import 'package:farah_sys_final/core/widgets/loading_widget.dart';
-import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
+import 'package:farah_sys_final/views/doctor/widgets/doctor_back_button.dart';
 import 'package:farah_sys_final/controllers/doctor_patients_list_controller.dart';
 import 'package:farah_sys_final/models/patient_model.dart';
 import 'package:farah_sys_final/views/doctor/widgets/doctor_glass_card.dart';
@@ -38,7 +38,7 @@ class DoctorPatientsListScreen extends GetView<DoctorPatientsListController> {
       child: Row(
         textDirection: TextDirection.ltr,
         children: [
-          BackButtonWidget(
+          DoctorBackButton(
             onTap: () {
               final nav = Navigator.of(context);
               if (nav.canPop()) {

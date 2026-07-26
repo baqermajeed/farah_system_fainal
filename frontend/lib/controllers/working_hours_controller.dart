@@ -5,6 +5,9 @@ import 'package:farah_sys_final/core/network/api_exception.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 
 class WorkingHoursController extends GetxController {
+  WorkingHoursController({this.autoLoadOnInit = true});
+
+  final bool autoLoadOnInit;
   final _service = WorkingHoursService();
   final _authController = Get.find<AuthController>();
 
@@ -16,6 +19,10 @@ class WorkingHoursController extends GetxController {
 
   // حالة التوسع لكل يوم
   RxMap<int, bool> expandedDays = <int, bool>{}.obs;
+
+  String? _loadedDoctorId;
+  bool _hasFetchedFromApi = false;
+  Future<void>? _loadInFlight;
 
   // أسماء الأيام
   final List<String> dayNames = [
@@ -34,7 +41,9 @@ class WorkingHoursController extends GetxController {
     // تهيئة أوقات العمل الافتراضية
     _initializeDefaultWorkingHours();
     // جلب أوقات العمل من الـ API
-    loadWorkingHours();
+    if (autoLoadOnInit) {
+      loadWorkingHours();
+    }
   }
 
   /// تهيئة أوقات العمل الافتراضية
@@ -53,10 +62,39 @@ class WorkingHoursController extends GetxController {
   }
 
   /// جلب أوقات العمل من الـ API
-  Future<void> loadWorkingHours({String? doctorId}) async {
+  Future<void> loadWorkingHours({String? doctorId, bool force = false}) async {
     final resolvedDoctorId = doctorId ?? _authController.currentUser.value?.id;
     if (resolvedDoctorId == null || resolvedDoctorId.isEmpty) return;
 
+    if (!force &&
+        _hasFetchedFromApi &&
+        _loadedDoctorId == resolvedDoctorId &&
+        _loadInFlight == null) {
+      return;
+    }
+
+    if (_loadInFlight != null) {
+      await _loadInFlight;
+      if (!force &&
+          _hasFetchedFromApi &&
+          _loadedDoctorId == resolvedDoctorId) {
+        return;
+      }
+    }
+
+    final loadFuture = _loadWorkingHoursInternal(resolvedDoctorId, doctorId);
+    _loadInFlight = loadFuture;
+    try {
+      await loadFuture;
+    } finally {
+      _loadInFlight = null;
+    }
+  }
+
+  Future<void> _loadWorkingHoursInternal(
+    String resolvedDoctorId,
+    String? doctorId,
+  ) async {
     isLoading.value = true;
     try {
       final userType =
@@ -67,9 +105,7 @@ class WorkingHoursController extends GetxController {
       final hours = (isReceptionOrAdmin && doctorId != null)
           ? await _service.getDoctorWorkingHoursForReception(resolvedDoctorId)
           : await _service.getDoctorWorkingHours(resolvedDoctorId);
-      
-      // تحديث أوقات العمل من البيانات المسترجعة
-      // تأكد من وجود جميع الأيام السبعة
+
       final Map<int, Map<String, dynamic>> hoursMap = {};
       for (var hour in hours) {
         final dayIndex = hour.dayOfWeek;
@@ -85,25 +121,25 @@ class WorkingHoursController extends GetxController {
           };
         }
       }
-      
-      // ضمان وجود جميع الأيام السبعة (استخدم القيم الافتراضية للأيام المفقودة)
-      for (int i = 0; i < 7; i++) {
+
+      final nextHours = List<Map<String, dynamic>>.generate(7, (i) {
         if (hoursMap.containsKey(i)) {
-          workingHours[i] = hoursMap[i]!;
-        } else {
-          // إذا لم يكن اليوم موجوداً في قاعدة البيانات، استخدم القيم الافتراضية
-          workingHours[i] = {
-            'dayOfWeek': i,
-            'dayName': dayNames[i],
-            'startTime': '09:00',
-            'endTime': '17:00',
-            'isWorking': i != 5, // الجمعة عطلة افتراضياً
-            'slotDuration': 30,
-            'id': null,
-          };
+          return hoursMap[i]!;
         }
-      }
-      workingHours.refresh();
+        return {
+          'dayOfWeek': i,
+          'dayName': dayNames[i],
+          'startTime': '09:00',
+          'endTime': '17:00',
+          'isWorking': i != 5,
+          'slotDuration': 30,
+          'id': null,
+        };
+      });
+
+      workingHours.value = nextHours;
+      _loadedDoctorId = resolvedDoctorId;
+      _hasFetchedFromApi = true;
     } catch (e) {
       print('❌ [WorkingHoursController] Error loading working hours: $e');
       // Keep default values on error

@@ -27,11 +27,8 @@ async def ensure_chat_room_user_ids(room: ChatRoom) -> ChatRoom:
     return room
 
 
-async def get_or_create_chat_room(*, patient: Patient, doctor: Doctor) -> ChatRoom:
-    """
-    غرفة واحدة لكل (patient_id + doctor_id).
-    مهم للعائلة: نفس user_id لا يكفي — كل فرد له غرفة مستقلة.
-    """
+async def _find_chat_room(*, patient: Patient, doctor: Doctor) -> ChatRoom | None:
+    """البحث عن غرفة موجودة دون إنشاء غرفة جديدة."""
     patient_user_id = patient.user_id
     doctor_user_id = doctor.user_id
 
@@ -51,18 +48,47 @@ async def get_or_create_chat_room(*, patient: Patient, doctor: Doctor) -> ChatRo
         ):
             room = legacy_room
 
+    return room
+
+
+async def _sync_chat_room_ids(
+    room: ChatRoom, *, patient: Patient, doctor: Doctor
+) -> ChatRoom:
+    room = await ensure_chat_room_user_ids(room)
+    updated = False
+    if room.patient_id is None:
+        room.patient_id = patient.id
+        updated = True
+    if room.doctor_id is None:
+        room.doctor_id = doctor.id
+        updated = True
+    if updated:
+        await room.save()
+    return room
+
+
+async def get_chat_room(*, patient: Patient, doctor: Doctor) -> ChatRoom | None:
+    """
+    غرفة واحدة لكل (patient_id + doctor_id) — للقراءة فقط.
+    يُرجع None إذا لم تُنشأ غرفة بعد (لا توجد رسائل).
+    """
+    room = await _find_chat_room(patient=patient, doctor=doctor)
+    if not room:
+        return None
+    return await _sync_chat_room_ids(room, patient=patient, doctor=doctor)
+
+
+async def get_or_create_chat_room(*, patient: Patient, doctor: Doctor) -> ChatRoom:
+    """
+    غرفة واحدة لكل (patient_id + doctor_id).
+    مهم للعائلة: نفس user_id لا يكفي — كل فرد له غرفة مستقلة.
+    """
+    patient_user_id = patient.user_id
+    doctor_user_id = doctor.user_id
+
+    room = await _find_chat_room(patient=patient, doctor=doctor)
     if room:
-        room = await ensure_chat_room_user_ids(room)
-        updated = False
-        if room.patient_id is None:
-            room.patient_id = patient.id
-            updated = True
-        if room.doctor_id is None:
-            room.doctor_id = doctor.id
-            updated = True
-        if updated:
-            await room.save()
-        return room
+        return await _sync_chat_room_ids(room, patient=patient, doctor=doctor)
 
     room = ChatRoom(
         patient_user_id=patient_user_id,

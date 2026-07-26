@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
-import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
+import 'package:farah_sys_final/views/doctor/widgets/doctor_back_button.dart';
 import 'package:farah_sys_final/controllers/working_hours_controller.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
@@ -47,7 +47,7 @@ class WorkingHoursPage extends StatelessWidget {
               child: Row(
                 textDirection: TextDirection.ltr,
                 children: [
-                  const BackButtonWidget(),
+                  const DoctorBackButton(),
                   Expanded(
                     child: Center(
                       child: Text(

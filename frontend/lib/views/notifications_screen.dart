@@ -6,6 +6,8 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:farah_sys_final/core/widgets/empty_state_widget.dart';
+import 'package:farah_sys_final/controllers/auth_controller.dart';
+import 'package:farah_sys_final/views/doctor/widgets/doctor_back_button.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
 import 'package:farah_sys_final/controllers/notifications_screen_controller.dart';
 import 'package:farah_sys_final/services/notification_service.dart';
@@ -148,12 +150,18 @@ class NotificationsScreen extends GetView<NotificationsScreenController> {
   }
 
   Widget _buildHeader() {
+    final userType =
+        Get.find<AuthController>().currentUser.value?.userType?.toLowerCase();
+    final isDoctor = userType == 'doctor';
+
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
       child: Row(
         textDirection: ui.TextDirection.ltr,
         children: [
-          const BackButtonWidget(assetPath: _NotifAssets.back),
+          isDoctor
+              ? const DoctorBackButton()
+              : const BackButtonWidget(assetPath: _NotifAssets.back),
           Expanded(
             child: Column(
               children: [
