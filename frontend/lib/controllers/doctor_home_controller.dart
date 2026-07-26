@@ -16,6 +16,7 @@ class DoctorHomeController extends GetxController {
   final ChatService chatService = ChatService();
   final RxMap<String, int> unreadCounts = <String, int>{}.obs;
   final RxList<AppointmentModel> todayAppointments = <AppointmentModel>[].obs;
+  final RxInt todayAppointmentsCount = 0.obs;
   final RxBool isLoadingAppointments = false.obs;
   bool _dashboardLoading = false;
 
@@ -94,6 +95,7 @@ class DoctorHomeController extends GetxController {
         filter: 'اليوم',
       );
       todayAppointments.assignAll(_appointmentController.appointments);
+      todayAppointmentsCount.value = _appointmentController.appointmentsTotalCount.value;
       todayAppointments.sort((a, b) => a.time.compareTo(b.time));
     } catch (e) {
       print('❌ [DoctorHomeController] Error loading today appointments: $e');

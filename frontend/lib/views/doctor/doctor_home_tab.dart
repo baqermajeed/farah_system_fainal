@@ -298,7 +298,7 @@ class DoctorHomeTab extends GetView<DoctorHomeController> {
                             textBaseline: TextBaseline.alphabetic,
                             children: [
                               Text(
-                                '${controller.todayAppointments.length}',
+                                '${controller.todayAppointmentsCount.value}',
                                 style: AppFonts.lamaSans(
                                   fontSize: 48.sp,
                                   fontWeight: FontWeight.w800,

@@ -18,6 +18,7 @@ class AppointmentController extends GetxController {
   final RxList<AppointmentModel> secondaryAppointments =
       <AppointmentModel>[].obs;
   final RxBool isLoading = false.obs;
+  final RxInt appointmentsTotalCount = 0.obs;
 
   // Pagination — نفس frontend_desktop
   int currentPage = 1;
@@ -82,11 +83,12 @@ class AppointmentController extends GetxController {
       if (userType == 'receptionist') {
         // موظف الاستقبال: يجلب جميع المواعيد من /reception/appointments
         print('📅 [AppointmentController] Loading appointments for receptionist');
-        final list = await _doctorService.getAllAppointmentsForReception();
-        appointments.value = list;
+        final result = await _doctorService.getAllAppointmentsForReception();
+        appointments.value = result.items;
+        appointmentsTotalCount.value = result.total;
         primaryAppointments.clear();
         secondaryAppointments.clear();
-        print('📅 [AppointmentController] Loaded ${list.length} appointments for receptionist');
+        print('📅 [AppointmentController] Loaded ${result.items.length} appointments for receptionist');
       } else {
         // المريض: يجلب مواعيده الخاصة من /patient/appointments
         print('📅 [AppointmentController] Loading appointments for patient');
@@ -186,9 +188,9 @@ class AppointmentController extends GetxController {
       final userType = authController.currentUser.value?.userType;
       final skip = (currentPage - 1) * pageLimit;
 
-      List<AppointmentModel> appointmentsList;
+      AppointmentsQueryResult queryResult;
       if (userType == 'receptionist') {
-        appointmentsList = await _doctorService.getAllAppointmentsForReception(
+        queryResult = await _doctorService.getAllAppointmentsForReception(
           day: calculatedDay ?? day,
           dateFrom: calculatedDateFrom,
           dateTo: calculatedDateTo,
@@ -197,7 +199,7 @@ class AppointmentController extends GetxController {
           limit: pageLimit,
         );
       } else {
-        appointmentsList = await _doctorService.getMyAppointments(
+        queryResult = await _doctorService.getMyAppointments(
           day: calculatedDay ?? day,
           dateFrom: calculatedDateFrom,
           dateTo: calculatedDateTo,
@@ -206,9 +208,11 @@ class AppointmentController extends GetxController {
           limit: pageLimit,
         );
       }
+      final appointmentsList = queryResult.items;
 
       if (isRefresh || isInitial) {
         appointments.assignAll(appointmentsList);
+        appointmentsTotalCount.value = queryResult.total;
       } else {
         appointments.addAll(appointmentsList);
       }

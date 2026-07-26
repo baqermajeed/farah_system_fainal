@@ -921,6 +921,72 @@ async def _date_bounds(day: Optional[str], date_from: Optional[datetime], date_t
         return start, end
     return date_from, date_to
 
+
+def _apply_appointment_list_filters(
+    query,
+    *,
+    start: Optional[datetime] = None,
+    end: Optional[datetime] = None,
+    status: Optional[str] = None,
+):
+    """تطبيق فلاتر التاريخ والحالة المشتركة لقوائم المواعيد."""
+    if start:
+        query = query.find(Appointment.scheduled_at >= start)
+    if end:
+        query = query.find(Appointment.scheduled_at < end)
+
+    normalized_status = (status or "").strip().lower()
+    if normalized_status == "late":
+        now = datetime.now(timezone.utc)
+        query = query.find(
+            Appointment.scheduled_at < now,
+            In(Appointment.status, ["pending", "scheduled", "late"]),
+        )
+    elif normalized_status:
+        if normalized_status == "pending":
+            query = query.find(In(Appointment.status, ["pending", "scheduled", "late"]))
+        else:
+            query = query.find(Appointment.status == normalized_status)
+    else:
+        query = query.find(
+            And(
+                Appointment.status != "completed",
+                Appointment.status != "cancelled",
+            )
+        )
+    return query
+
+
+async def count_appointments_for_doctor(
+    *,
+    doctor_id: str,
+    day: Optional[str] = None,
+    date_from: Optional[datetime] = None,
+    date_to: Optional[datetime] = None,
+    status: Optional[str] = None,
+) -> int:
+    """عدّ مواعيد الطبيب بنفس فلاتر list_appointments_for_doctor."""
+    start, end = await _date_bounds(day, date_from, date_to)
+    did = OID(doctor_id)
+    query = Appointment.find(Appointment.doctor_id == did)
+    query = _apply_appointment_list_filters(query, start=start, end=end, status=status)
+    return await query.count()
+
+
+async def count_appointments_for_all(
+    *,
+    day: Optional[str] = None,
+    date_from: Optional[datetime] = None,
+    date_to: Optional[datetime] = None,
+    status: Optional[str] = None,
+) -> int:
+    """عدّ جميع المواعيد بنفس فلاتر list_appointments_for_all."""
+    start, end = await _date_bounds(day, date_from, date_to)
+    query = Appointment.find()
+    query = _apply_appointment_list_filters(query, start=start, end=end, status=status)
+    return await query.count()
+
+
 async def list_appointments_for_doctor(
     *,
     doctor_id: str,
@@ -943,34 +1009,8 @@ async def list_appointments_for_doctor(
     skip, limit = _normalize_pagination(skip, limit)
     did = OID(doctor_id)
     query = Appointment.find(Appointment.doctor_id == did)
-    
-    if start:
-        query = query.find(Appointment.scheduled_at >= start)
-    if end:
-        query = query.find(Appointment.scheduled_at < end)
-    
-    normalized_status = (status or "").strip().lower()
-    if normalized_status == "late":
-        now = datetime.now(timezone.utc)
-        query = query.find(
-            Appointment.scheduled_at < now,
-            In(Appointment.status, ["pending", "scheduled", "late"]),
-        )
-    elif normalized_status:
-        # للتوافق مع البيانات القديمة: pending يعرض pending + scheduled + late legacy
-        if normalized_status == "pending":
-            query = query.find(In(Appointment.status, ["pending", "scheduled", "late"]))
-        else:
-            query = query.find(Appointment.status == normalized_status)
-    else:
-        # الافتراضي: إخفاء المكتمل والملغي من الجداول
-        query = query.find(
-            And(
-                Appointment.status != "completed",
-                Appointment.status != "cancelled"
-            )
-        )
-    
+    query = _apply_appointment_list_filters(query, start=start, end=end, status=status)
+
     # ترتيب تصاعدي: من الأقدم للأحدث
     query = query.sort(+Appointment.scheduled_at).skip(skip)
     if limit is not None:
@@ -1000,32 +1040,8 @@ async def list_appointments_for_all(
     start, end = await _date_bounds(day, date_from, date_to)
     skip, limit = _normalize_pagination(skip, limit)
     query = Appointment.find()
-    
-    if start:
-        query = query.find(Appointment.scheduled_at >= start)
-    if end:
-        query = query.find(Appointment.scheduled_at < end)
-    
-    normalized_status = (status or "").strip().lower()
-    if normalized_status == "late":
-        now = datetime.now(timezone.utc)
-        query = query.find(
-            Appointment.scheduled_at < now,
-            In(Appointment.status, ["pending", "scheduled", "late"]),
-        )
-    elif normalized_status:
-        if normalized_status == "pending":
-            query = query.find(In(Appointment.status, ["pending", "scheduled", "late"]))
-        else:
-            query = query.find(Appointment.status == normalized_status)
-    else:
-        query = query.find(
-            And(
-                Appointment.status != "completed",
-                Appointment.status != "cancelled"
-            )
-        )
-    
+    query = _apply_appointment_list_filters(query, start=start, end=end, status=status)
+
     # ترتيب تصاعدي: من الأقدم للأحدث
     query = query.sort(+Appointment.scheduled_at).skip(skip)
     if limit is not None:

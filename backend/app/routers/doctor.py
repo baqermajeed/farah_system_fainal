@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, UploadFile, File, Query, Form, HTTPException, Request, Header
+from fastapi import APIRouter, Depends, UploadFile, File, Query, Form, HTTPException, Request, Header, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional, Dict
 from datetime import datetime, timezone
@@ -926,6 +926,7 @@ async def list_my_appointments(
     status: str | None = Query(None, description="late (المواعيد المتأخرة) | pending | completed | cancelled"),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1),
+    response: Response,
     current=Depends(get_current_user),
 ):
     """
@@ -969,7 +970,14 @@ async def list_my_appointments(
                 raise HTTPException(status_code=400, detail=f"Invalid date_to format: {date_to}")
         
         doctor_id = await _get_current_doctor_id(current)
-        # ✅ احترام skip/limit القادمة من العميل بدلاً من جلب جميع المواعيد دفعة واحدة
+        total_count = await patient_service.count_appointments_for_doctor(
+            doctor_id=doctor_id,
+            day=day,
+            date_from=df,
+            date_to=dt,
+            status=status,
+        )
+        response.headers["X-Total-Count"] = str(total_count)
         # هذا يحسن الأداء بشكل كبير ويمنع تجمّد الواجهة الأمامية (frontend)
         apps = await patient_service.list_appointments_for_doctor(
             doctor_id=doctor_id,

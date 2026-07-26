@@ -10,8 +10,24 @@ import 'package:farah_sys_final/models/medical_record_model.dart';
 import 'package:farah_sys_final/models/gallery_image_model.dart';
 import 'package:http_parser/http_parser.dart';
 
+class AppointmentsQueryResult {
+  final List<AppointmentModel> items;
+  final int total;
+
+  const AppointmentsQueryResult({
+    required this.items,
+    required this.total,
+  });
+}
+
 class DoctorService {
   final _api = ApiService();
+
+  int _totalFromResponse(dio.Response response, int fallback) {
+    final raw = response.headers.value('x-total-count');
+    if (raw == null || raw.isEmpty) return fallback;
+    return int.tryParse(raw) ?? fallback;
+  }
 
   MediaType? _guessImageContentType(String path) {
     final lower = path.toLowerCase();
@@ -534,7 +550,7 @@ class DoctorService {
   }
 
   // جلب مواعيد الطبيب
-  Future<List<AppointmentModel>> getMyAppointments({
+  Future<AppointmentsQueryResult> getMyAppointments({
     String? day,
     String? dateFrom,
     String? dateTo,
@@ -560,9 +576,13 @@ class DoctorService {
 
       if (response.statusCode == 200) {
         final data = response.data as List;
-        return data
+        final items = data
             .map((json) => AppointmentModel.fromJson(json))
             .toList();
+        return AppointmentsQueryResult(
+          items: items,
+          total: _totalFromResponse(response, items.length),
+        );
       } else {
         throw ApiException('فشل جلب المواعيد');
       }
@@ -575,7 +595,7 @@ class DoctorService {
   }
 
   // جلب جميع مواعيد المرضى (للاستقبال)
-  Future<List<AppointmentModel>> getAllAppointmentsForReception({
+  Future<AppointmentsQueryResult> getAllAppointmentsForReception({
     String? day,
     String? dateFrom,
     String? dateTo,
@@ -601,7 +621,11 @@ class DoctorService {
 
       if (response.statusCode == 200) {
         final data = response.data as List;
-        return data.map((json) => AppointmentModel.fromJson(json)).toList();
+        final items = data.map((json) => AppointmentModel.fromJson(json)).toList();
+        return AppointmentsQueryResult(
+          items: items,
+          total: _totalFromResponse(response, items.length),
+        );
       } else {
         throw ApiException('فشل جلب المواعيد');
       }
