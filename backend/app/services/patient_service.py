@@ -1154,6 +1154,10 @@ async def update_appointment_datetime(
         # تحديث التاريخ الجديد
         appointment.scheduled_at = scheduled_at
         appointment.updated_at = datetime.now(timezone.utc)
+
+        from app.services.appointment_reminder_service import reset_appointment_reminder_flags
+
+        reset_appointment_reminder_flags(appointment)
         
         # إلغاء late المخزّن (legacy)
         appointment.status = _normalize_appointment_status(appointment.status)

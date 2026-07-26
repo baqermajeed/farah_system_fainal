@@ -326,14 +326,18 @@ async def on_startup():
         scheduler.add_job(
             check_and_send_reminders,
             trigger="cron",
-            hour="*",  # Every hour
-            minute=0,  # At minute 0 (top of the hour)
+            hour="*",
+            minute=0,
+            timezone="Asia/Baghdad",
             id="appointment_reminders",
-            replace_existing=True
+            replace_existing=True,
         )
         scheduler.start()
         logger.info("Appointment reminder scheduler started")
-        print("✅ [STARTUP] Appointment reminder scheduler started (runs every hour)")
+        print(
+            "✅ [STARTUP] Appointment reminder scheduler started "
+            "(1 day before + same day at 9:00 AM Iraq time)"
+        )
     except Exception as e:
         logger.error(f"Failed to start appointment reminder scheduler: {e}")
         print(f"⚠️ [STARTUP] Failed to start appointment reminder scheduler: {e}")
