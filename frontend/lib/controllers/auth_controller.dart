@@ -14,6 +14,7 @@ import 'package:farah_sys_final/controllers/appointment_controller.dart';
 import 'package:farah_sys_final/controllers/notifications_screen_controller.dart';
 import 'package:farah_sys_final/controllers/presence_controller.dart';
 import 'package:farah_sys_final/core/utils/network_utils.dart';
+import 'package:farah_sys_final/core/utils/user_error_messages.dart';
 
 class AuthController extends GetxController {
   final AuthService _authService;
@@ -310,11 +311,17 @@ class AuthController extends GetxController {
   }
 
   // طلب إرسال OTP
-  Future<void> requestOtp(String phoneNumber) async {
-
+  /// يعيد `null` عند النجاح، أو رسالة الخطأ عند الفشل.
+  Future<String?> requestOtp(
+    String phoneNumber, {
+    bool showErrorUi = true,
+  }) async {
     if (phoneNumber.trim().isEmpty) {
-      Get.snackbar('خطأ', 'يرجى إدخال رقم الهاتف');
-      return;
+      const msg = 'يرجى إدخال رقم الهاتف';
+      if (showErrorUi) {
+        Get.snackbar('خطأ', msg);
+      }
+      return msg;
     }
 
     try {
@@ -323,18 +330,43 @@ class AuthController extends GetxController {
       final res = await _authService.requestOtp(phoneNumber.trim());
 
       if (res['ok'] == true) {
-        Get.snackbar('نجح', 'تم إرسال رمز التحقق');
+        if (showErrorUi) {
+          Get.snackbar('نجح', 'تم إرسال رمز التحقق');
+        }
+        return null;
       } else {
-        await NetworkUtils.showError(
-          res['error']?.toString() ?? 'فشل إرسال رمز التحقق',
+        final rawError = res['error']?.toString();
+        final statusCode = res['statusCode'] as int?;
+        final errorMsg = UserErrorMessages.otpRequestMessage(
+          raw: rawError,
+          statusCode: statusCode,
         );
+
+        if (showErrorUi) {
+          if (rawError != null &&
+              (NetworkUtils.isNetworkError(rawError) ||
+                  NetworkUtils.hasForbiddenConnectionText(rawError))) {
+            await NetworkUtils.showError(rawError);
+          } else {
+            Get.snackbar('خطأ', errorMsg);
+          }
+        } else if (rawError != null &&
+            (NetworkUtils.isNetworkError(rawError) ||
+                NetworkUtils.hasForbiddenConnectionText(rawError))) {
+          await NetworkUtils.showNetworkErrorDialog();
+        }
+        return errorMsg;
       }
     } catch (e) {
       _logError(e, 'requestOtp');
-      await NetworkUtils.showError(
-        e,
-        fallbackMessage: 'حدث خطأ أثناء إرسال رمز التحقق',
-      );
+      final errorMsg = UserErrorMessages.otpRequestMessage(raw: e.toString());
+      if (showErrorUi || NetworkUtils.isNetworkError(e)) {
+        await NetworkUtils.showError(
+          e,
+          fallbackMessage: UserErrorMessages.otpSendFailed,
+        );
+      }
+      return errorMsg;
     } finally {
       isLoading.value = false;
     }

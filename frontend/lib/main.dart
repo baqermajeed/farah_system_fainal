@@ -78,6 +78,8 @@ import 'package:farah_sys_final/controllers/select_doctor_controller.dart';
 import 'package:farah_sys_final/controllers/edit_implant_stage_date_controller.dart';
 import 'package:farah_sys_final/controllers/qr_scanner_controller.dart';
 import 'package:farah_sys_final/controllers/add_patient_controller.dart';
+import 'package:farah_sys_final/core/utils/app_upgrader.dart';
+import 'package:upgrader/upgrader.dart';
 import 'package:farah_sys_final/controllers/doctor_patients_list_controller.dart';
 import 'package:farah_sys_final/controllers/doctor_chats_screen_controller.dart';
 import 'package:farah_sys_final/controllers/notifications_screen_controller.dart';
@@ -506,7 +508,15 @@ class MyApp extends StatelessWidget {
           builder: (context, widget) {
             return Directionality(
               textDirection: TextDirection.rtl,
-              child: widget!,
+              child: UpgradeAlert(
+                upgrader: AppUpgrader.instance,
+                showIgnore: false,
+                showLater: false,
+                showPrompt: false,
+                barrierDismissible: false,
+                shouldPopScope: () => false,
+                child: widget ?? const SizedBox.shrink(),
+              ),
             );
           },
         );

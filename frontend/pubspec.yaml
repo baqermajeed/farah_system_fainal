@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+1
+version: 1.0.0+2
 
 environment:
   sdk: ^3.9.2
@@ -63,7 +63,7 @@ dependencies:
   qr_flutter: ^4.1.0
   
   # QR Code scanner
-  mobile_scanner: ^5.2.3
+  mobile_scanner: 7.4.0
 
   # Page Indicator for Onboarding
   smooth_page_indicator: ^1.1.0
@@ -94,6 +94,7 @@ dependencies:
   flutter_local_notifications: ^18.0.1
   path_provider: ^2.1.6
   crop_your_image: 2.0.0
+  upgrader: ^13.6.0
 
 dev_dependencies:
   flutter_test:
@@ -156,11 +157,9 @@ flutter:
         - asset: assets/font/LamaSans-ExtraBold.otf
           weight: 800
 # Launcher icon configuration
-flutter_icons:
+flutter_launcher_icons:
   android: true
   ios: true
-  image_path: assets/images/app-icon.png
+  image_path: assets/icon/frhlogoapp.png
   adaptive_icon_background: "#ffffff"
   remove_alpha_ios: true
-  # For details regarding fonts from package dependencies,
-  # see https://flutter.dev/to/font-from-package

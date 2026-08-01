@@ -6,6 +6,7 @@ import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
 import 'package:farah_sys_final/core/widgets/custom_text_field.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
+import 'package:farah_sys_final/core/widgets/login_error_banner.dart';
 import 'package:farah_sys_final/controllers/patient_login_controller.dart';
 
 class _LoginAssets {
@@ -84,11 +85,33 @@ class PatientLoginScreen extends GetView<PatientLoginController> {
                       ),
                     ),
                     SizedBox(height: 24.h),
-                    CustomTextField(
-                      labelText: AppStrings.phoneNumber,
-                      hintText: '0000 000 0000',
-                      controller: controller.phoneController,
-                      keyboardType: TextInputType.phone,
+                    Obx(
+                      () => Column(
+                        children: [
+                          if (controller.bannerError.value != null) ...[
+                            LoginErrorBanner(
+                              message: controller.bannerError.value!,
+                            ),
+                            SizedBox(height: 16.h),
+                          ],
+                          CustomTextField(
+                            labelText: AppStrings.phoneNumber,
+                            hintText: '07XX XXX XXXX',
+                            focusColor: PatientLoginController.actionNavy,
+                            keyboardType: TextInputType.phone,
+                            prefixIcon: Icon(
+                              Icons.phone_outlined,
+                              color: controller.phoneError.value != null
+                                  ? AppColors.error
+                                  : PatientLoginController.actionNavy,
+                              size: 22.sp,
+                            ),
+                            controller: controller.phoneController,
+                            onChanged: controller.onPhoneChanged,
+                            errorText: controller.phoneError.value,
+                          ),
+                        ],
+                      ),
                     ),
                     SizedBox(height: 24.h),
                     Obx(

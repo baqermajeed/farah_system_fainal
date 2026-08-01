@@ -2,14 +2,29 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../core/routes/app_routes.dart';
+import '../core/utils/network_utils.dart';
+import '../core/utils/user_error_messages.dart';
 import 'auth_controller.dart';
 
 /// Controller لشاشة تسجيل دخول المريض.
 class PatientLoginController extends GetxController {
   final phoneController = TextEditingController();
   static const Color actionNavy = Color(0xFF032252);
+  static const String emptyPhoneMessage = 'يرجى إدخال رقم الهاتف';
+  static const String invalidPhoneMessage =
+      'رقم الهاتف يجب أن يبدأ بـ 07 ويتكون من 11 رقماً';
+
+  final RxnString phoneError = RxnString();
+  final RxnString bannerError = RxnString();
 
   AuthController get auth => Get.find<AuthController>();
+
+  void clearFieldErrors() {
+    phoneError.value = null;
+    bannerError.value = null;
+  }
+
+  void onPhoneChanged(String _) => clearFieldErrors();
 
   bool isPhoneValid(String phone) {
     final cleaned = phone.trim();
@@ -19,25 +34,34 @@ class PatientLoginController extends GetxController {
   Future<void> submit() async {
     if (auth.isLoading.value) return;
 
+    clearFieldErrors();
+
     final phone = phoneController.text.trim();
     if (phone.isEmpty) {
-      Get.snackbar('خطأ', 'يرجى إدخال رقم الهاتف', snackPosition: SnackPosition.TOP);
+      phoneError.value = emptyPhoneMessage;
       return;
     }
     if (!isPhoneValid(phone)) {
-      Get.snackbar(
-        'خطأ',
-        'رقم الهاتف يجب أن يبدأ بـ 07 ويتكون من 11 رقماً',
-        snackPosition: SnackPosition.TOP,
+      phoneError.value = invalidPhoneMessage;
+      return;
+    }
+
+    final error = await auth.requestOtp(phone, showErrorUi: false);
+    if (error == null) {
+      Get.toNamed(
+        AppRoutes.otpVerification,
+        arguments: {'phoneNumber': phone},
       );
       return;
     }
 
-    await auth.requestOtp(phone);
-    Get.toNamed(
-      AppRoutes.otpVerification,
-      arguments: {'phoneNumber': phone},
-    );
+    if (NetworkUtils.isNetworkError(error) ||
+        NetworkUtils.hasForbiddenConnectionText(error)) {
+      return;
+    }
+
+    bannerError.value = UserErrorMessages.otpRequestMessage(raw: error);
+    phoneError.value = '';
   }
 
   @override
