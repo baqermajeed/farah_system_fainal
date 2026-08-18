@@ -292,7 +292,7 @@ class _ChatTile extends StatelessWidget {
     final name = chat['patient_name'] ?? 'مريض';
     final rawLast = chat['last_message'] ?? 'لا توجد رسائل';
     final last = _stripReplyMeta(rawLast.toString());
-    final unread = chat['unread_count'] as int? ?? 0;
+    final unread = chatUnreadCount(chat);
     final hasUnread = unread > 0;
     final imageUrl = ImageUtils.convertToValidUrl(chat['patient_image_url']);
     final timeText = _formatTime(chat['last_message_time']?.toString());
@@ -340,6 +340,17 @@ class _ChatTile extends StatelessWidget {
                     children: [
                       Row(
                         children: [
+                          if (hasUnread) ...[
+                            Container(
+                              width: 8.w,
+                              height: 8.w,
+                              decoration: const BoxDecoration(
+                                color: AppColors.error,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            SizedBox(width: 6.w),
+                          ],
                           Expanded(
                             child: Text(
                               name,
@@ -364,7 +375,7 @@ class _ChatTile extends StatelessWidget {
                                     ? FontWeight.w600
                                     : FontWeight.w500,
                                 color: hasUnread
-                                    ? AppColors.primary
+                                    ? AppColors.error
                                     : _subtitleColor,
                               ),
                             ),
@@ -393,11 +404,13 @@ class _ChatTile extends StatelessWidget {
                           if (hasUnread) ...[
                             SizedBox(width: 8.w),
                             Container(
-                              constraints: BoxConstraints(minWidth: 22.w),
-                              height: 22.w,
+                              constraints: BoxConstraints(
+                                minWidth: 22.w,
+                                minHeight: 22.w,
+                              ),
                               padding: EdgeInsets.symmetric(horizontal: 6.w),
                               decoration: BoxDecoration(
-                                color: AppColors.primary,
+                                color: AppColors.error,
                                 borderRadius: BorderRadius.circular(99.r),
                               ),
                               child: Center(

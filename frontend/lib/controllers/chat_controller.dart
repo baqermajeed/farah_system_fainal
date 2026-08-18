@@ -7,6 +7,8 @@ import 'package:farah_sys_final/services/socket_service.dart';
 import 'package:farah_sys_final/core/network/api_exception.dart';
 import 'package:farah_sys_final/core/utils/network_utils.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
+import 'package:farah_sys_final/controllers/doctor_chats_screen_controller.dart';
+import 'package:farah_sys_final/controllers/doctor_home_controller.dart';
 
 class ChatController extends GetxController {
   final _chatService = ChatService();
@@ -320,7 +322,7 @@ class ChatController extends GetxController {
       final socketService = _chatService.socketService;
 
       // Remove old event listeners to prevent duplicates
-      socketService.off('message_received');
+      socketService.off('message_received', _handleIncomingSocketMessage);
       socketService.off('message_sent');
       socketService.off('joined_conversation');
       socketService.off('message_updated');
@@ -401,83 +403,7 @@ class ChatController extends GetxController {
       _isConnecting = false;
 
       // Listen for messages (only once)
-      socketService.on('message_received', (data) {
-        try {
-          print('📩 [ChatController] Received message via Socket.IO: $data');
-          final messageData = data['message'] as Map<String, dynamic>? ?? data;
-          final message = MessageModel.fromJson(messageData);
-
-          // Skip while switching conversations, or when no chat is open (home screen).
-          if (isLoading.value || currentRoomId == null) {
-            return;
-          }
-          if (message.roomId != null && message.roomId != currentRoomId) {
-            print(
-              '⏭️ [ChatController] Ignoring message for other room: ${message.roomId}',
-            );
-            return;
-          }
-
-          final currentUser = _authController.currentUser.value;
-          print(
-            '📩 [ChatController] Parsed message: id=${message.id}, senderId=${message.senderId}, currentUserId=${currentUser?.id}, imageUrl=${message.imageUrl}, content=${message.message}',
-          );
-
-          // Check if message already exists by ID (might have been added by message_sent)
-          final existingIndex = messages.indexWhere((m) => m.id == message.id);
-          if (existingIndex >= 0) {
-            // Message already exists, just update it and remove from sending list
-            print(
-              '🔄 [ChatController] Message already exists, updating at index $existingIndex',
-            );
-            sendingMessageIds.remove(message.id);
-            messages[existingIndex] = message;
-            messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
-            return;
-          }
-
-          // Check if this is a message we sent (to avoid duplicates)
-          final isFromCurrentUser = isMessageFromCurrentUser(message);
-          print(
-            '📩 [ChatController] isFromCurrentUser: $isFromCurrentUser (senderId: ${message.senderId}, currentUserId: ${currentUser?.id})',
-          );
-
-          if (isFromCurrentUser) {
-            // This is our own message - check if we have a temp message to replace
-            final tempIndex = messages.indexWhere(
-              (m) =>
-                  sendingMessageIds.contains(m.id) &&
-                  m.message == message.message &&
-                  m.senderId == message.senderId &&
-                  (m.timestamp.difference(message.timestamp).inSeconds.abs() <
-                      10),
-            );
-
-            if (tempIndex >= 0) {
-              // Replace temp message with server message
-              print(
-                '🔄 [ChatController] Replacing temp message at index $tempIndex with server message',
-              );
-              sendingMessageIds.remove(messages[tempIndex].id);
-              messages[tempIndex] = message;
-              messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
-              return; // Don't add again
-            }
-            // If no temp message found, message_sent will handle it
-            // Don't add it here to avoid duplicates
-            print(
-              '⚠️ [ChatController] Own message received but no temp message found, waiting for message_sent',
-            );
-            return;
-          }
-
-          // For messages from others, add/update normally
-          _addOrUpdateMessage(message);
-        } catch (e) {
-          print('❌ [ChatController] Error parsing message: $e');
-          print('❌ [ChatController] Data: $data');
-        }
-      });
+      socketService.on('message_received', _handleIncomingSocketMessage);
 
       // Listen for sent confirmation (only once)
       socketService.on('message_sent', (data) {
@@ -609,7 +535,111 @@ class ChatController extends GetxController {
         );
         _isConnecting = false;
       }
+      _bindInboxListener();
     }
+  }
+
+  void _handleIncomingSocketMessage(dynamic data) {
+    try {
+      print('📩 [ChatController] Received message via Socket.IO: $data');
+      final raw = data is Map && data['message'] is Map
+          ? data['message']
+          : data;
+      if (raw is! Map) return;
+      final messageData = Map<String, dynamic>.from(raw);
+      final message = MessageModel.fromJson(messageData);
+      final isFromCurrentUser = isMessageFromCurrentUser(message);
+      final isCurrentRoom =
+          currentRoomId != null &&
+          (message.roomId == null || message.roomId == currentRoomId);
+
+      if (!isFromCurrentUser && (!isCurrentRoom || isLoading.value)) {
+        _notifyInbox(messageData);
+      }
+
+      // Skip while switching conversations, or when no chat is open (home screen).
+      if (isLoading.value || currentRoomId == null) {
+        return;
+      }
+      if (message.roomId != null && message.roomId != currentRoomId) {
+        print(
+          '⏭️ [ChatController] Ignoring message for other room: ${message.roomId}',
+        );
+        return;
+      }
+
+      final currentUser = _authController.currentUser.value;
+      print(
+        '📩 [ChatController] Parsed message: id=${message.id}, senderId=${message.senderId}, currentUserId=${currentUser?.id}, imageUrl=${message.imageUrl}, content=${message.message}',
+      );
+
+      // Check if message already exists by ID (might have been added by message_sent)
+      final existingIndex = messages.indexWhere((m) => m.id == message.id);
+      if (existingIndex >= 0) {
+        print(
+          '🔄 [ChatController] Message already exists, updating at index $existingIndex',
+        );
+        sendingMessageIds.remove(message.id);
+        messages[existingIndex] = message;
+        messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+        return;
+      }
+
+      print(
+        '📩 [ChatController] isFromCurrentUser: $isFromCurrentUser (senderId: ${message.senderId}, currentUserId=${currentUser?.id})',
+      );
+
+      if (isFromCurrentUser) {
+        final tempIndex = messages.indexWhere(
+          (m) =>
+              sendingMessageIds.contains(m.id) &&
+              m.message == message.message &&
+              m.senderId == message.senderId &&
+              (m.timestamp.difference(message.timestamp).inSeconds.abs() < 10),
+        );
+
+        if (tempIndex >= 0) {
+          print(
+            '🔄 [ChatController] Replacing temp message at index $tempIndex with server message',
+          );
+          sendingMessageIds.remove(messages[tempIndex].id);
+          messages[tempIndex] = message;
+          messages.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+          return;
+        }
+        print(
+          '⚠️ [ChatController] Own message received but no temp message found, waiting for message_sent',
+        );
+        return;
+      }
+
+      _addOrUpdateMessage(message);
+    } catch (e) {
+      print('❌ [ChatController] Error parsing message: $e');
+      print('❌ [ChatController] Data: $data');
+    }
+  }
+
+  void _notifyInbox(Map<String, dynamic> messageData) {
+    try {
+      if (Get.isRegistered<DoctorChatsScreenController>()) {
+        Get.find<DoctorChatsScreenController>().onIncomingChatMessage(
+          messageData,
+        );
+      }
+      if (Get.isRegistered<DoctorHomeController>()) {
+        Get.find<DoctorHomeController>().bumpUnreadFromMessage(messageData);
+      }
+    } catch (e) {
+      print('❌ [ChatController] Error notifying inbox: $e');
+    }
+  }
+
+  void _bindInboxListener() {
+    final socketService = _chatService.socketService;
+    if (!socketService.isConnected) return;
+    socketService.off('message_received', _handleIncomingSocketMessage);
+    socketService.on('message_received', _handleIncomingSocketMessage);
   }
 
   // Helper method to add or update message
@@ -1034,6 +1064,8 @@ class ChatController extends GetxController {
         print(
           '✅ [ChatController] Socket already connected on login, skipping...',
         );
+        isConnected.value = true;
+        _bindInboxListener();
         return;
       }
 
@@ -1049,6 +1081,7 @@ class ChatController extends GetxController {
           if (_chatService.socketService.isConnected) {
             print('✅ [ChatController] Socket connected while waiting on login');
             isConnected.value = true;
+            _bindInboxListener();
             return;
           }
         }
@@ -1085,7 +1118,9 @@ class ChatController extends GetxController {
           }
         };
 
-        // Setup basic event listeners (message_received will be set up when chat opens)
+        // Inbox + open-chat listener: keep badges updated even when no room is open.
+        _bindInboxListener();
+
         socketService.on('error', (data) {
           final errorMessage = data['message'] ?? 'حدث خطأ';
           print('❌ [ChatController] Socket error on login: $errorMessage');

@@ -397,10 +397,11 @@ async def send_message(sid: str, data: dict):
             return
         
         # Create message
+        sender_role = str(user.role.value if hasattr(user.role, "value") else user.role)
         message = ChatMessage(
             room_id=room.id,
             sender_user_id=user.id,
-            sender_role=user.role,
+            sender_role=sender_role,
             content=content or "",
             imageUrl=image_url,
             is_read=False

@@ -1142,7 +1142,7 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
     }
 
     // في وضع العرض، نستخدم Obx فقط عند الحاجة
-    final appointments = controller.appointmentController.appointments
+    final appointments = controller.appointmentController.patientAppointments
         .where((apt) => apt.patientId == controller.patientId)
         .toList();
 
@@ -1180,7 +1180,7 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
     }
 
     return Obx(() {
-      final updatedAppointments = controller.appointmentController.appointments
+      final updatedAppointments = controller.appointmentController.patientAppointments
           .where((apt) => apt.patientId == controller.patientId)
           .toList();
 

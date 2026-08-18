@@ -262,7 +262,7 @@ class DoctorChatsScreen extends GetView<DoctorChatsScreenController> {
     final name = (chatItem['patient_name'] as String?) ?? 'مريض';
     final rawLast = (chatItem['last_message'] as String?) ?? 'لا توجد رسائل';
     final last = _stripReplyMeta(rawLast);
-    final unread = (chatItem['unread_count'] as int?) ?? 0;
+    final unread = chatUnreadCount(chatItem);
     final hasUnread = unread > 0;
     final timeText = _formatTime(chatItem['last_message_time']?.toString());
     final imageUrl = ImageUtils.convertToValidUrl(chatItem['patient_image_url']);
@@ -317,6 +317,17 @@ class DoctorChatsScreen extends GetView<DoctorChatsScreenController> {
                     children: [
                       Row(
                         children: [
+                          if (hasUnread) ...[
+                            Container(
+                              width: 8.w,
+                              height: 8.w,
+                              decoration: const BoxDecoration(
+                                color: AppColors.error,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            SizedBox(width: 6.w),
+                          ],
                           Expanded(
                             child: Text(
                               name,
@@ -341,7 +352,7 @@ class DoctorChatsScreen extends GetView<DoctorChatsScreenController> {
                                     ? FontWeight.w600
                                     : FontWeight.w500,
                                 color: hasUnread
-                                    ? AppColors.primary
+                                    ? AppColors.error
                                     : _subtitleColor,
                               ),
                             ),
@@ -370,11 +381,13 @@ class DoctorChatsScreen extends GetView<DoctorChatsScreenController> {
                           if (hasUnread) ...[
                             SizedBox(width: 8.w),
                             Container(
-                              constraints: BoxConstraints(minWidth: 22.w),
-                              height: 22.w,
+                              constraints: BoxConstraints(
+                                minWidth: 22.w,
+                                minHeight: 22.w,
+                              ),
                               padding: EdgeInsets.symmetric(horizontal: 6.w),
                               decoration: BoxDecoration(
-                                color: AppColors.primary,
+                                color: AppColors.error,
                                 borderRadius: BorderRadius.circular(99.r),
                               ),
                               child: Center(

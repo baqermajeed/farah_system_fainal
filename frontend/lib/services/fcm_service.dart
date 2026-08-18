@@ -10,6 +10,7 @@ import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/controllers/doctor_home_controller.dart';
 import 'package:farah_sys_final/controllers/notifications_screen_controller.dart';
 import 'package:farah_sys_final/controllers/patient_home_controller.dart';
+import 'package:farah_sys_final/controllers/doctor_chats_screen_controller.dart';
 import 'dart:io';
 
 @pragma('vm:entry-point')
@@ -126,6 +127,9 @@ class FcmService extends GetxService {
       if (_isDoctor()) {
         if (Get.isRegistered<DoctorHomeController>()) {
           Get.find<DoctorHomeController>().loadUnreadCounts();
+        }
+        if (Get.isRegistered<DoctorChatsScreenController>()) {
+          Get.find<DoctorChatsScreenController>().loadChatList();
         }
       } else if (Get.isRegistered<PatientHomeController>()) {
         Get.find<PatientHomeController>().loadUnreadCount();

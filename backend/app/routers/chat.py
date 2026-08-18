@@ -92,6 +92,28 @@ async def _get_or_room_for_user(*, patient_id: str, user: User, doctor_id: str |
     )
     return await get_or_create_chat_room(patient=patient, doctor=selected_doctor)
 
+
+async def _count_unread_messages(room: ChatRoom, current: User) -> int:
+    """عدد الرسائل غير المقروءة المرسلة من الطرف الآخر في هذه الغرفة."""
+    other_role = (
+        Role.PATIENT.value if current.role == Role.DOCTOR else Role.DOCTOR.value
+    )
+    other_user_id = (
+        room.patient_user_id if current.role == Role.DOCTOR else room.doctor_user_id
+    )
+    or_clauses: list[dict] = [{"sender_role": other_role}]
+    if other_user_id is not None:
+        or_clauses.append({"sender_user_id": other_user_id})
+
+    return await ChatMessage.find(
+        {
+            "room_id": room.id,
+            "is_read": False,
+            "sender_user_id": {"$ne": current.id},
+            "$or": or_clauses,
+        }
+    ).count()
+
 @router.get("/list", response_model=list[ChatListItemOut])
 async def get_chat_list(current: User = Depends(get_current_user)):
     """جلب قائمة المحادثات للطبيب أو المريض مع آخر رسالة وعدد الرسائل غير المقروءة."""
@@ -139,11 +161,7 @@ async def get_chat_list(current: User = Depends(get_current_user)):
             ).sort(-ChatMessage.created_at).limit(1).to_list()
             last_message = last_messages[0] if last_messages else None
 
-            unread_count = await ChatMessage.find(
-                ChatMessage.room_id == room.id,
-                ChatMessage.sender_user_id == room.patient_user_id,
-                ChatMessage.is_read == False,
-            ).count()
+            unread_count = await _count_unread_messages(room, current)
 
             if not last_message:
                 continue
@@ -216,11 +234,7 @@ async def get_chat_list(current: User = Depends(get_current_user)):
             ).sort(-ChatMessage.created_at).limit(1).to_list()
             last_message = last_messages[0] if last_messages else None
 
-            unread_count = await ChatMessage.find(
-                ChatMessage.room_id == room.id,
-                ChatMessage.sender_user_id == room.doctor_user_id,
-                ChatMessage.is_read == False,
-            ).count()
+            unread_count = await _count_unread_messages(room, current)
 
             if not last_message:
                 continue

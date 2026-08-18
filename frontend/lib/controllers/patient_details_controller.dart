@@ -13,6 +13,7 @@ import 'package:farah_sys_final/controllers/patient_controller.dart';
 import 'package:farah_sys_final/models/appointment_model.dart';
 import 'package:farah_sys_final/models/doctor_model.dart';
 import 'package:farah_sys_final/services/chat_service.dart';
+import 'package:farah_sys_final/controllers/doctor_chats_screen_controller.dart';
 import 'package:farah_sys_final/services/patient_service.dart';
 import 'package:farah_sys_final/services/working_hours_service.dart';
 
@@ -271,7 +272,7 @@ class PatientDetailsController extends GetxController
         (c) => c['patient_id']?.toString() == patientId,
         orElse: () => <String, dynamic>{},
       );
-      final count = chat['unread_count'] as int? ?? 0;
+      final count = chatUnreadCount(chat);
       unreadCount.value = count;
     } catch (e) {
       print('❌ Error loading unread count: $e');

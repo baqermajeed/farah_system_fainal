@@ -244,6 +244,7 @@ class AuthController extends GetxController {
       appointmentController.appointments.clear();
       appointmentController.primaryAppointments.clear();
       appointmentController.secondaryAppointments.clear();
+      appointmentController.patientAppointments.clear();
     } catch (e) {
       _logError(e, 'selectFamilyMember/clearAppointments');
     }

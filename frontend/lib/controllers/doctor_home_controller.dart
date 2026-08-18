@@ -9,6 +9,7 @@ import 'package:farah_sys_final/controllers/appointment_controller.dart';
 import 'package:farah_sys_final/models/patient_model.dart';
 import 'package:farah_sys_final/models/appointment_model.dart';
 import 'package:farah_sys_final/services/chat_service.dart';
+import 'package:farah_sys_final/controllers/doctor_chats_screen_controller.dart';
 import 'package:farah_sys_final/services/doctor_service.dart';
 import 'package:farah_sys_final/services/notification_service.dart';
 
@@ -143,7 +144,7 @@ class DoctorHomeController extends GetxController {
       final unreadMap = <String, int>{};
       for (var chat in chatList) {
         final patientId = chat['patient_id']?.toString();
-        final unreadCount = chat['unread_count'] as int? ?? 0;
+        final unreadCount = chatUnreadCount(chat);
         if (patientId != null) {
           unreadMap[patientId] = unreadCount;
         }
@@ -152,6 +153,15 @@ class DoctorHomeController extends GetxController {
     } catch (e) {
       print('❌ [DoctorHomeController] Error loading unread counts: $e');
     }
+  }
+
+  void bumpUnreadFromMessage(Map<String, dynamic> messageData) {
+    final senderRole = messageData['sender_role']?.toString().toLowerCase();
+    if (senderRole == 'doctor') return;
+    final patientId = messageData['patient_id']?.toString();
+    if (patientId == null || patientId.isEmpty) return;
+    unreadCounts[patientId] = (unreadCounts[patientId] ?? 0) + 1;
+    unreadCounts.refresh();
   }
 
   int get totalUnreadCount {

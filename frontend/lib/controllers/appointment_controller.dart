@@ -17,6 +17,8 @@ class AppointmentController extends GetxController {
   final RxList<AppointmentModel> primaryAppointments = <AppointmentModel>[].obs;
   final RxList<AppointmentModel> secondaryAppointments =
       <AppointmentModel>[].obs;
+  /// مواعيد مريض واحد في شاشة التفاصيل — منفصلة حتى لا تُستبدل قائمة الطبيب.
+  final RxList<AppointmentModel> patientAppointments = <AppointmentModel>[].obs;
   final RxBool isLoading = false.obs;
   final RxInt appointmentsTotalCount = 0.obs;
 
@@ -257,24 +259,49 @@ class AppointmentController extends GetxController {
     );
   }
 
-  // جلب مواعيد مريض محدد (للطبيب)
+  // جلب مواعيد مريض محدد (للطبيب) دون المساس بقائمة مواعيد الطبيب.
   Future<void> loadPatientAppointmentsById(String patientId) async {
     try {
-      isLoading.value = true;
       final appointmentsList = await _doctorService.getPatientAppointments(
         patientId,
       );
-      // Filter by patient ID
-      appointments.value = appointmentsList
-          .where((apt) => apt.patientId == patientId)
-          .toList();
+      patientAppointments.assignAll(
+        appointmentsList.where((apt) => apt.patientId == patientId),
+      );
     } on ApiException catch (e) {
       await NetworkUtils.showError(e);
     } catch (e) {
       await NetworkUtils.showError(e, fallbackMessage: 'حدث خطأ أثناء تحميل المواعيد');
-    } finally {
-      isLoading.value = false;
     }
+  }
+
+  void _replaceOrAddInList(
+    RxList<AppointmentModel> list,
+    String id,
+    AppointmentModel appointment,
+  ) {
+    final index = list.indexWhere((apt) => apt.id == id);
+    if (index != -1) {
+      list[index] = appointment;
+    } else {
+      list.add(appointment);
+    }
+  }
+
+  void _replaceIfPresent(
+    RxList<AppointmentModel> list,
+    String id,
+    AppointmentModel appointment,
+  ) {
+    final index = list.indexWhere((apt) => apt.id == id);
+    if (index != -1) {
+      list[index] = appointment;
+    }
+  }
+
+  void _removeFromLists(String appointmentId) {
+    appointments.removeWhere((apt) => apt.id == appointmentId);
+    patientAppointments.removeWhere((apt) => apt.id == appointmentId);
   }
 
   // حذف موعد (للطبيب)
@@ -287,7 +314,7 @@ class AppointmentController extends GetxController {
       );
 
       if (success) {
-        appointments.removeWhere((apt) => apt.id == appointmentId);
+        _removeFromLists(appointmentId);
         Get.snackbar('نجح', 'تم حذف الموعد بنجاح');
       } else {
         throw ApiException('فشل حذف الموعد');
@@ -331,6 +358,7 @@ class AppointmentController extends GetxController {
       );
 
       appointments.add(tempAppointment);
+      patientAppointments.add(tempAppointment);
 
       // 2) استدعاء السيرفر
       final appointment = await _doctorService.addAppointment(
@@ -342,26 +370,21 @@ class AppointmentController extends GetxController {
       );
 
       // 3) استبدال الموعد المؤقت بالموعد الحقيقي
-      final index =
-          appointments.indexWhere((apt) => apt.id == tempAppointment!.id);
-      if (index != -1) {
-        appointments[index] = appointment;
-      } else {
-        appointments.add(appointment);
-      }
+      _replaceOrAddInList(appointments, tempAppointment.id, appointment);
+      _replaceOrAddInList(patientAppointments, tempAppointment.id, appointment);
 
       Get.snackbar('نجح', 'تم إضافة الموعد بنجاح');
     } on ApiException catch (e) {
       // Rollback: إزالة الموعد المؤقت
       if (tempAppointment != null) {
-        appointments.removeWhere((apt) => apt.id == tempAppointment!.id);
+        _removeFromLists(tempAppointment.id);
       }
 
       await NetworkUtils.showError(e);
       rethrow;
     } catch (e) {
       if (tempAppointment != null) {
-        appointments.removeWhere((apt) => apt.id == tempAppointment!.id);
+        _removeFromLists(tempAppointment.id);
       }
 
       await NetworkUtils.showError(e, fallbackMessage: 'حدث خطأ أثناء إضافة الموعد');
@@ -385,11 +408,12 @@ class AppointmentController extends GetxController {
         status,
       );
 
-      // تحديث الموعد في القائمة
-      final index = appointments.indexWhere((apt) => apt.id == appointmentId);
-      if (index != -1) {
-        appointments[index] = updatedAppointment;
-      }
+      _replaceIfPresent(appointments, appointmentId, updatedAppointment);
+      _replaceIfPresent(
+        patientAppointments,
+        appointmentId,
+        updatedAppointment,
+      );
 
       Get.snackbar('نجح', 'تم تحديث حالة الموعد بنجاح');
     } on ApiException catch (e) {
