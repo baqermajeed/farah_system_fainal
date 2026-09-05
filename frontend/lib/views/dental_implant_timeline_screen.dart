@@ -7,7 +7,7 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:farah_sys_final/controllers/dental_implant_timeline_controller.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
-import 'package:farah_sys_final/core/widgets/loading_widget.dart';
+import 'package:farah_sys_final/core/widgets/app_skeleton.dart';
 import 'package:farah_sys_final/models/implant_stage_model.dart';
 
 class _TimelineAssets {
@@ -73,7 +73,7 @@ class DentalImplantTimelineScreen
               final implantStageController = controller.implantStageController;
               if (implantStageController.isLoading.value &&
                   implantStageController.stages.isEmpty) {
-                return const LoadingWidget(message: 'جاري تحميل المراحل...');
+                return const SkeletonTimeline();
               }
 
               final patientStages =

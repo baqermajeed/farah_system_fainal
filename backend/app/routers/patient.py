@@ -185,6 +185,7 @@ async def my_doctor(
         phone=user.phone,
         imageUrl=user.imageUrl,
         is_online=await is_user_online(str(doctor.user_id)),
+        room_number=getattr(doctor, "room_number", None),
     )
 
 
@@ -219,6 +220,7 @@ async def my_doctors(
                 phone=u.phone,
                 imageUrl=u.imageUrl,
                 is_online=await is_user_online(str(d.user_id)),
+                room_number=getattr(d, "room_number", None),
             ))
     return out
 

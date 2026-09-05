@@ -146,13 +146,6 @@ class FcmService extends GetxService {
     return type == 'doctor';
   }
 
-  String? _activePatientId() {
-    if (!Get.isRegistered<AuthController>()) return null;
-    final id = Get.find<AuthController>().patientProfileId.value;
-    if (id == null || id.isEmpty) return null;
-    return id;
-  }
-
   /// تحديث عداد الإشعارات غير المقروءة في الشاشة الرئيسية.
   void refreshHomeUnreadCounts() {
     try {
@@ -182,7 +175,9 @@ class FcmService extends GetxService {
         );
         break;
       case 'message':
-        _navigateToMessageChat(data, isDoctor: isDoctor);
+        // إشعار الرسالة يفتح الصفحة الرئيسية فقط (طبيب/مريض)
+        // دون المرور بشاشة الشات حتى لا تظهر ثم تُستبدل أثناء الإقلاع.
+        _openHomeFromMessageNotification(isDoctor);
         break;
       case 'implant_stage':
         if (!isDoctor) {
@@ -198,39 +193,25 @@ class FcmService extends GetxService {
     }
   }
 
-  void _navigateToMessageChat(
-    Map<String, dynamic> data, {
-    required bool isDoctor,
-  }) {
-    if (isDoctor) {
-      final patientId = data['patientId']?.toString();
-      if (patientId != null && patientId.isNotEmpty) {
-        Get.toNamed(
-          AppRoutes.chat,
-          arguments: {'patientId': patientId},
-        );
-      } else {
-        Get.toNamed(AppRoutes.doctorChats);
-      }
+  void _openHomeFromMessageNotification(bool isDoctor) {
+    _refreshChatUnreadCounts();
+
+    final homeRoute =
+        isDoctor ? AppRoutes.doctorHome : AppRoutes.patientHome;
+    final current = Get.currentRoute;
+
+    // أثناء الإقلاع: Splash يوجّه للرئيسية بعد استعادة الجلسة.
+    if (current == homeRoute ||
+        current == AppRoutes.splash ||
+        current == '/' ||
+        current.isEmpty) {
       return;
     }
 
-    final patientId =
-        data['patientId']?.toString() ?? _activePatientId();
-    if (patientId == null || patientId.isEmpty) {
-      Get.toNamed(AppRoutes.notifications);
-      return;
-    }
+    if (!Get.isRegistered<AuthController>()) return;
+    if (!Get.find<AuthController>().isAuthenticated) return;
 
-    final doctorUserId = data['doctorUserId']?.toString();
-    Get.toNamed(
-      AppRoutes.chat,
-      arguments: {
-        'patientId': patientId,
-        if (doctorUserId != null && doctorUserId.isNotEmpty)
-          'doctorUserId': doctorUserId,
-      },
-    );
+    Get.offAllNamed(homeRoute);
   }
 
   Future<void> _registerToken(String token) async {

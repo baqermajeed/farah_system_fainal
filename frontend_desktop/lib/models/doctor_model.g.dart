@@ -24,13 +24,14 @@ class DoctorModelAdapter extends TypeAdapter<DoctorModel> {
       imageUrl: fields[4] as String?,
       todayTransfers: fields[5] as int,
       lastTransferAt: fields[6] as DateTime?,
+      roomNumber: fields[7] as int?,
     );
   }
 
   @override
   void write(BinaryWriter writer, DoctorModel obj) {
     writer
-      ..writeByte(7)
+      ..writeByte(8)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -44,7 +45,9 @@ class DoctorModelAdapter extends TypeAdapter<DoctorModel> {
       ..writeByte(5)
       ..write(obj.todayTransfers)
       ..writeByte(6)
-      ..write(obj.lastTransferAt);
+      ..write(obj.lastTransferAt)
+      ..writeByte(7)
+      ..write(obj.roomNumber);
   }
 
   @override

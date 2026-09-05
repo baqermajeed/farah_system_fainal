@@ -4,6 +4,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
+import 'package:farah_sys_final/core/widgets/decorative_background.dart';
 import 'package:farah_sys_final/controllers/otp_verification_controller.dart';
 
 class _OtpAssets {
@@ -17,10 +18,9 @@ class OtpVerificationScreen extends GetView<OtpVerificationController> {
   @override
   Widget build(BuildContext context) {
     final c = controller;
-    return Scaffold(
-      backgroundColor: AppColors.onboardingBackground,
-      body: SafeArea(
-        child: Stack(
+    return AuthDecoratedScaffold(
+      scene: AuthDecorScene.login,
+      body: Stack(
           children: [
             Column(
               children: [
@@ -265,7 +265,6 @@ class OtpVerificationScreen extends GetView<OtpVerificationController> {
               child: const BackButtonWidget(assetPath: _OtpAssets.back),
             ),
           ],
-        ),
       ),
     );
   }

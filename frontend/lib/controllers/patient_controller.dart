@@ -7,6 +7,7 @@ import 'package:farah_sys_final/services/patient_service.dart';
 import 'package:farah_sys_final/services/doctor_service.dart';
 import 'package:farah_sys_final/core/network/api_exception.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
+import 'package:farah_sys_final/controllers/appointment_controller.dart';
 import 'package:farah_sys_final/controllers/presence_controller.dart';
 import 'package:farah_sys_final/core/utils/network_utils.dart';
 
@@ -20,6 +21,8 @@ class PatientController extends GetxController {
   final Rx<PatientModel?> myProfile = Rx<PatientModel?>(null);
   final Rx<Map<String, dynamic>?> myDoctor = Rx<Map<String, dynamic>?>(null);
   final RxList<Map<String, dynamic>> myDoctors = <Map<String, dynamic>>[].obs;
+  /// يصبح true بعد أول جلب للأطباء (حتى لو كانت القائمة فارغة).
+  final RxBool myDoctorsReady = false.obs;
 
   // Doctor pagination (مثل frontend_desktop)
   var doctorCurrentPage = 1;
@@ -334,6 +337,24 @@ class PatientController extends GetxController {
     myProfile.value = profile;
     myDoctor.value = null;
     myDoctors.clear();
+    myDoctorsReady.value = false;
+  }
+
+  void resetHomeData() {
+    myProfile.value = null;
+    myDoctor.value = null;
+    myDoctors.clear();
+    myDoctorsReady.value = false;
+  }
+
+  /// يحمّل الملف والأطباء والمواعيد قبل فتح الرئيسية حتى لا تظهر حالة التصميم الفارغة.
+  Future<void> loadHomeScreenData() async {
+    final appointmentController = Get.find<AppointmentController>();
+    await Future.wait<void>([
+      loadMyProfile(),
+      appointmentController.loadPatientAppointments(),
+      loadMyDoctors(),
+    ]);
   }
 
   // جلب بيانات المريض الحالي (للمريض)
@@ -820,6 +841,7 @@ class PatientController extends GetxController {
       myDoctors.value = [];
       myDoctor.value = null;
     } finally {
+      myDoctorsReady.value = true;
       isLoading.value = false;
     }
   }

@@ -344,6 +344,7 @@ async def list_doctors_for_manager(current=Depends(get_current_user)):
             "today_transfers": today_transfers,
             "last_transfer_at": last_transfer_at.isoformat() if last_transfer_at else None,
             "is_online": await is_user_online(str(d.user_id)),
+            "room_number": getattr(d, "room_number", None),
         }
 
         print(

@@ -7,7 +7,7 @@ import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
 import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/core/widgets/empty_state_widget.dart';
-import 'package:farah_sys_final/core/widgets/loading_widget.dart';
+import 'package:farah_sys_final/core/widgets/app_skeleton.dart';
 import 'package:farah_sys_final/models/medical_record_model.dart';
 import 'package:farah_sys_final/controllers/medical_records_screen_controller.dart';
 import 'package:farah_sys_final/views/doctor/widgets/doctor_back_button.dart';
@@ -114,7 +114,7 @@ class MedicalRecordsScreen extends GetView<MedicalRecordsScreenController> {
             Expanded(
               child: Obx(() {
                 if (controller.isLoading.value) {
-                  return const LoadingWidget(message: 'جاري تحميل السجلات...');
+                  return const SkeletonCardList();
                 }
 
                 if (controller.records.isEmpty) {

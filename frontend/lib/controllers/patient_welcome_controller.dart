@@ -47,6 +47,13 @@ class PatientWelcomeController extends GetxController {
       final hasDoctor = await patientController.checkDoctorAssignment();
       if (hasDoctor) {
         _checkTimer?.cancel();
+        try {
+          await patientController.loadHomeScreenData();
+        } catch (e) {
+          print(
+            '❌ [PatientWelcomeController] Error loading home data: $e',
+          );
+        }
         Get.offAllNamed(AppRoutes.patientHome);
       }
     } catch (e) {

@@ -11,7 +11,7 @@ import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/controllers/patient_home_controller.dart';
 import 'package:farah_sys_final/models/appointment_model.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
-import 'package:farah_sys_final/core/widgets/loading_widget.dart';
+import 'package:farah_sys_final/core/widgets/app_skeleton.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 class _HomeAssets {
@@ -68,9 +68,7 @@ class PatientHomeScreen extends GetView<PatientHomeController> {
                   children: [
                     _buildHeader(),
                     Expanded(
-                      child: const LoadingWidget(
-                        message: 'جاري تحميل الصفحة الرئيسية...',
-                      ),
+                      child: const SkeletonPatientHome(),
                     ),
                   ],
                 ),
@@ -808,7 +806,7 @@ class PatientHomeScreen extends GetView<PatientHomeController> {
           final upcoming =
               controller.appointmentController.getUpcomingAppointments();
           if (upcoming.isEmpty) {
-            return _emptyCard('لا توجد مواعيد حالياً');
+            return _emptyCard('لاتوجد مواعيد جديدة حاليا');
           }
           return _buildAppointmentCard(appointment: upcoming.first);
         }),

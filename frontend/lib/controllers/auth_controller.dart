@@ -223,49 +223,58 @@ class AuthController extends GetxController {
     String patientId, {
     bool showSuccessSnackbar = false,
   }) async {
-    patientProfileId.value = patientId;
-    await _authService.saveActivePatientId(patientId);
+    final startedLoading = !isLoading.value;
+    if (startedLoading) isLoading.value = true;
 
-    final patientService = PatientService();
-    final profile = await patientService.getMyProfile(patientId: patientId);
-    final hasDoctor = profile.doctorIds.isNotEmpty;
-
-    // حدّث الملف الطبي النشط فوراً حتى لا تبقى بيانات/صورة فرد سابق في الـ UI
     try {
-      final patientController = Get.find<PatientController>();
-      patientController.applyActiveFamilyProfile(profile);
-    } catch (e) {
-      _logError(e, 'selectFamilyMember/applyActiveFamilyProfile');
-    }
+      patientProfileId.value = patientId;
+      await _authService.saveActivePatientId(patientId);
 
-    // امسح مواعيد الفرد السابق من الذاكرة (الكاش الآن مفصول حسب patient_id)
-    try {
-      final appointmentController = Get.find<AppointmentController>();
-      appointmentController.appointments.clear();
-      appointmentController.primaryAppointments.clear();
-      appointmentController.secondaryAppointments.clear();
-      appointmentController.patientAppointments.clear();
-    } catch (e) {
-      _logError(e, 'selectFamilyMember/clearAppointments');
-    }
+      final patientService = PatientService();
+      final profile = await patientService.getMyProfile(patientId: patientId);
+      final hasDoctor = profile.doctorIds.isNotEmpty;
 
-    // امسح إشعارات الفرد السابق من الذاكرة إن كانت شاشة الإشعارات محمّلة
-    try {
-      if (Get.isRegistered<NotificationsScreenController>()) {
-        final n = Get.find<NotificationsScreenController>();
-        n.notifications.clear();
-        n.hasMore.value = true;
+      // حدّث الملف الطبي النشط فوراً حتى لا تبقى بيانات/صورة فرد سابق في الـ UI
+      try {
+        final patientController = Get.find<PatientController>();
+        patientController.applyActiveFamilyProfile(profile);
+      } catch (e) {
+        _logError(e, 'selectFamilyMember/applyActiveFamilyProfile');
       }
-    } catch (e) {
-      _logError(e, 'selectFamilyMember/clearNotifications');
-    }
 
-    await _afterPatientAuthSetup(showSuccessSnackbar: showSuccessSnackbar);
+      // امسح مواعيد الفرد السابق من الذاكرة (الكاش الآن مفصول حسب patient_id)
+      try {
+        final appointmentController = Get.find<AppointmentController>();
+        appointmentController.clearPatientHomeAppointments();
+      } catch (e) {
+        _logError(e, 'selectFamilyMember/clearAppointments');
+      }
 
-    if (hasDoctor) {
-      Get.offAllNamed(AppRoutes.patientHome);
-    } else {
-      Get.offAllNamed(AppRoutes.patientWelcome);
+      // امسح إشعارات الفرد السابق من الذاكرة إن كانت شاشة الإشعارات محمّلة
+      try {
+        if (Get.isRegistered<NotificationsScreenController>()) {
+          final n = Get.find<NotificationsScreenController>();
+          n.notifications.clear();
+          n.hasMore.value = true;
+        }
+      } catch (e) {
+        _logError(e, 'selectFamilyMember/clearNotifications');
+      }
+
+      await _afterPatientAuthSetup(showSuccessSnackbar: showSuccessSnackbar);
+
+      if (hasDoctor) {
+        try {
+          await Get.find<PatientController>().loadHomeScreenData();
+        } catch (e) {
+          _logError(e, 'selectFamilyMember/loadHomeScreenData');
+        }
+        Get.offAllNamed(AppRoutes.patientHome);
+      } else {
+        Get.offAllNamed(AppRoutes.patientWelcome);
+      }
+    } finally {
+      if (startedLoading) isLoading.value = false;
     }
   }
 
@@ -676,6 +685,12 @@ class AuthController extends GetxController {
       await _authService.logout();
       currentUser.value = null;
       patientProfileId.value = null;
+      try {
+        Get.find<PatientController>().resetHomeData();
+        Get.find<AppointmentController>().clearPatientHomeAppointments();
+      } catch (e) {
+        _logError(e, 'logout/resetHomeData');
+      }
       Get.offAllNamed(AppRoutes.userSelection);
     } catch (e) {
       final errorMsg = e.toString();

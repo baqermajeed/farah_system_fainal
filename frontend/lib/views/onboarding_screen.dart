@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
+import 'package:farah_sys_final/core/widgets/decorative_background.dart';
 import 'package:farah_sys_final/controllers/onboarding_controller.dart';
 
 /// شاشة الـ Onboarding — GetView؛ المنطق في OnboardingController.
@@ -34,10 +35,9 @@ class OnboardingScreen extends GetView<OnboardingController> {
   @override
   Widget build(BuildContext context) {
     final slides = _slides;
-    return Scaffold(
-      backgroundColor: AppColors.onboardingBackground,
-      body: SafeArea(
-        child: Column(
+    return AuthDecoratedScaffold(
+      scene: AuthDecorScene.onboarding,
+      body: Column(
           children: [
             SizedBox(height: 8.h),
             // Top Row (Skip button)
@@ -218,7 +218,6 @@ class OnboardingScreen extends GetView<OnboardingController> {
 
             SizedBox(height: 14.h),
           ],
-        ),
       ),
     );
   }

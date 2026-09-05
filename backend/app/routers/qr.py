@@ -51,6 +51,7 @@ async def scan(code: str, current=Depends(require_roles([Role.ADMIN, Role.DOCTOR
                     name=doctor_user.name,
                     phone=doctor_user.phone,
                     imageUrl=doctor_user.imageUrl,
+                    room_number=getattr(doctor, "room_number", None),
                 ))
 
     return {

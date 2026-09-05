@@ -7466,6 +7466,8 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                     ),
                     child: Row(
                       children: [
+                        _buildRoomTicketButton(doctor),
+                        SizedBox(width: 8.w),
                         // Doctor info column (on the left in RTL)
                         Expanded(
                           child: Padding(
@@ -7496,14 +7498,17 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
                                 Align(
                                   alignment: Alignment.centerRight,
                                   child: Text(
-                                    'الاختصاص : طبيب اسنان',
+                                    doctor.roomNumber != null
+                                        ? 'غرفة رقم ${doctor.roomNumber}'
+                                        : 'لم يُعيَّن رقم غرفة',
                                     style: TextStyle(
                                       fontSize: 12.sp,
-                                      color: AppColors.textSecondary,
+                                      color: doctor.roomNumber != null
+                                          ? AppColors.primary
+                                          : AppColors.textSecondary,
+                                      fontWeight: FontWeight.w600,
                                     ),
                                     textAlign: TextAlign.right,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                               ],
@@ -7532,6 +7537,35 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
         ),
       );
     });
+  }
+
+  Widget _buildRoomTicketButton(DoctorModel doctor) {
+    final hasRoom = doctor.roomNumber != null;
+    return Tooltip(
+      message: hasRoom ? 'طباعة تذكرة الغرفة' : 'لم يُعيَّن رقم غرفة لهذا الطبيب',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: hasRoom ? () => _printRoomTicket(doctor) : null,
+          borderRadius: BorderRadius.circular(12.r),
+          child: Container(
+            width: 44.w,
+            height: 44.w,
+            decoration: BoxDecoration(
+              color: hasRoom
+                  ? AppColors.primary.withValues(alpha: 0.12)
+                  : AppColors.divider.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(12.r),
+            ),
+            child: Icon(
+              Icons.print_rounded,
+              size: 22.sp,
+              color: hasRoom ? AppColors.primary : AppColors.textHint,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildDoctorImage(DoctorModel doctor, String doctorInitials) {
@@ -7630,6 +7664,47 @@ class _ReceptionHomeScreenState extends State<ReceptionHomeScreen>
       if (entry.name.trim() == trimmed) return entry;
     }
     return null;
+  }
+
+  Future<void> _printRoomTicket(DoctorModel doctor) async {
+    final roomNumber = doctor.roomNumber;
+    if (roomNumber == null) {
+      Get.snackbar(
+        'تنبيه',
+        'لم يُعيَّن رقم غرفة لهذا الطبيب من الداشبورد',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: AppColors.warning,
+        colorText: AppColors.white,
+      );
+      return;
+    }
+
+    final doctorName = (doctor.name ?? 'طبيب').trim();
+    final displayName = doctorName.startsWith('د') ? doctorName : 'د.$doctorName';
+
+    try {
+      final method = await QueueTicketPrintService.printRoomTicket(
+        doctorName: displayName,
+        roomNumber: roomNumber,
+      );
+      Get.snackbar(
+        'تمت الطباعة',
+        'تم الإرسال عبر: $method',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: AppColors.success,
+        colorText: AppColors.white,
+        duration: const Duration(seconds: 4),
+      );
+    } catch (e) {
+      Get.snackbar(
+        'تنبيه',
+        'فشلت طباعة تذكرة الغرفة\n$e',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: AppColors.error,
+        colorText: AppColors.white,
+        duration: const Duration(seconds: 6),
+      );
+    }
   }
 
   Future<void> _printQueueTicket({

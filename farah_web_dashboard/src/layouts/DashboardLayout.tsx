@@ -21,10 +21,11 @@ export function DashboardLayout() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { mode, toggleTheme } = useThemeMode();
-  const { logout } = useAuth();
+  const { logout, role } = useAuth();
   const screens = useBreakpoint();
   const isMobile = !screens.md;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const selectedMenuKey = pathname.startsWith('/call-center/') && pathname !== '/call-center/workspace' ? '/call-center' : pathname;
 
   useEffect(() => {
     if (!isMobile) {
@@ -32,28 +33,42 @@ export function DashboardLayout() {
     }
   }, [isMobile]);
 
-  const menuItems = [
-    {
-      key: '/overview',
-      icon: <DashboardOutlined />,
-      label: <Link to="/overview">نظرة عامة</Link>,
-    },
-    {
-      key: '/doctors',
-      icon: <MedicineBoxOutlined />,
-      label: <Link to="/doctors">قائمة الأطباء</Link>,
-    },
-    {
-      key: '/doctors-comparison',
-      icon: <TeamOutlined />,
-      label: <Link to="/doctors-comparison">مقارنة الأطباء</Link>,
-    },
-    {
-      key: '/call-center',
-      icon: <CustomerServiceOutlined />,
-      label: <Link to="/call-center">موظفي الكول سنتر</Link>,
-    },
-  ];
+  const menuItems =
+    role === 'call_center'
+      ? [
+          {
+            key: '/call-center/workspace',
+            icon: <CustomerServiceOutlined />,
+            label: <Link to="/call-center/workspace">منصة الكول سنتر</Link>,
+          },
+        ]
+      : [
+          {
+            key: '/overview',
+            icon: <DashboardOutlined />,
+            label: <Link to="/overview">نظرة عامة</Link>,
+          },
+          {
+            key: '/doctors',
+            icon: <MedicineBoxOutlined />,
+            label: <Link to="/doctors">قائمة الأطباء</Link>,
+          },
+          {
+            key: '/doctors-comparison',
+            icon: <TeamOutlined />,
+            label: <Link to="/doctors-comparison">مقارنة الأطباء</Link>,
+          },
+          {
+            key: '/call-center',
+            icon: <CustomerServiceOutlined />,
+            label: <Link to="/call-center">موظفي الكول سنتر</Link>,
+          },
+          {
+            key: '/call-center/workspace',
+            icon: <CustomerServiceOutlined />,
+            label: <Link to="/call-center/workspace">منصة الكول سنتر</Link>,
+          },
+        ];
 
   const handleLogout = () => {
     logout();
@@ -66,12 +81,14 @@ export function DashboardLayout() {
         <Typography.Title level={4} style={{ margin: 0 }}>
           Farah CRM
         </Typography.Title>
-        <Typography.Text type="secondary">لوحة التحكم الإدارية</Typography.Text>
+        <Typography.Text type="secondary">
+          {role === 'call_center' ? 'بوابة موظف الكول سنتر' : 'لوحة التحكم الإدارية'}
+        </Typography.Text>
       </div>
 
       <Menu
         mode="inline"
-        selectedKeys={[pathname]}
+        selectedKeys={[selectedMenuKey]}
         theme={mode}
         onClick={() => {
           if (isMobile) {

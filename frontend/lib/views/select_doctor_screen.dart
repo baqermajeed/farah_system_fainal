@@ -3,6 +3,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
+import 'package:farah_sys_final/core/widgets/app_skeleton.dart';
 import 'package:farah_sys_final/controllers/select_doctor_controller.dart';
 
 /// شاشة اختيار الأطباء — GetView؛ المنطق في SelectDoctorController.
@@ -53,11 +54,7 @@ class SelectDoctorScreen extends GetView<SelectDoctorController> {
                 ),
                 child: Obx(() {
                   if (controller.isLoading.value) {
-                    return Center(
-                      child: CircularProgressIndicator(
-                        color: AppColors.primary,
-                      ),
-                    );
+                    return const SkeletonPatientList(itemCount: 6);
                   }
                   if (controller.doctors.isEmpty) {
                     return Center(

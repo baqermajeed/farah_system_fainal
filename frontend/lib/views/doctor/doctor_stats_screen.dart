@@ -10,6 +10,7 @@ import 'package:farah_sys_final/views/doctor/widgets/doctor_back_button.dart';
 import 'package:farah_sys_final/controllers/doctor_stats_controller.dart';
 import 'package:farah_sys_final/models/doctor_stats_model.dart';
 import 'package:farah_sys_final/views/doctor/widgets/doctor_glass_card.dart';
+import 'package:farah_sys_final/core/widgets/app_skeleton.dart';
 
 class DoctorStatsScreen extends GetView<DoctorStatsController> {
   const DoctorStatsScreen({super.key});
@@ -31,9 +32,7 @@ class DoctorStatsScreen extends GetView<DoctorStatsController> {
             children: [
               _StatsHeader(onBack: Get.back),
               const Expanded(
-                child: Center(
-                  child: CircularProgressIndicator(color: AppColors.primary),
-                ),
+                child: SkeletonStatsPage(),
               ),
             ],
           );

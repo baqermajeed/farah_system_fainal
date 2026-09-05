@@ -4,6 +4,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
+import 'package:farah_sys_final/core/widgets/decorative_background.dart';
 import 'package:farah_sys_final/controllers/user_selection_controller.dart';
 
 /// شاشة اختيار نوع المستخدم — GetView؛ المنطق في UserSelectionController.
@@ -14,10 +15,9 @@ class UserSelectionScreen extends GetView<UserSelectionController> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.onboardingBackground,
-      body: SafeArea(
-        child: Padding(
+    return AuthDecoratedScaffold(
+      scene: AuthDecorScene.login,
+      body: Padding(
           padding: EdgeInsets.symmetric(horizontal: 24.w),
           child: Column(
             children: [
@@ -169,7 +169,6 @@ class UserSelectionScreen extends GetView<UserSelectionController> {
               ),
             ],
           ),
-        ),
       ),
     );
   }

@@ -25,6 +25,9 @@ class DoctorModel {
   @HiveField(6)
   final DateTime? lastTransferAt;
 
+  @HiveField(7)
+  final int? roomNumber;
+
   /// Whether the doctor's desktop app is currently open (not persisted in Hive).
   final bool isOnline;
 
@@ -36,6 +39,7 @@ class DoctorModel {
     this.imageUrl,
     this.todayTransfers = 0,
     this.lastTransferAt,
+    this.roomNumber,
     this.isOnline = false,
   });
 
@@ -58,6 +62,13 @@ class DoctorModel {
       }
     }
 
+    int? roomNumber;
+    if (json['room_number'] != null) {
+      roomNumber = json['room_number'] is int
+          ? json['room_number'] as int
+          : int.tryParse(json['room_number'].toString());
+    }
+
     print('🔍 [DoctorModel] Parsing doctor: ${json['name']}, today_transfers: ${json['today_transfers']}, parsed: $transfers');
     
     return DoctorModel(
@@ -68,6 +79,7 @@ class DoctorModel {
       imageUrl: json['imageUrl'] ?? json['image_url'],
       todayTransfers: transfers,
       lastTransferAt: lastTransferAt,
+      roomNumber: roomNumber,
       isOnline: json['is_online'] == true,
     );
   }
@@ -80,6 +92,7 @@ class DoctorModel {
       'phone': phone,
       'imageUrl': imageUrl,
       if (lastTransferAt != null) 'last_transfer_at': lastTransferAt!.toIso8601String(),
+      'room_number': roomNumber,
     };
   }
 }

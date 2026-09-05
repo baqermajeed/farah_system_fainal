@@ -42,6 +42,32 @@ export type CallCenterAppointmentListItem = {
   created_at: string;
   status: string;
   accepted_at?: string | null;
+  branch?: 'farah_najaf' | 'kendy_baghdad';
+};
+
+export type CallCenterAppointmentPayload = {
+  patient_name: string;
+  patient_phone: string;
+  scheduled_at: string;
+  governorate?: string;
+  platform?: string;
+  note?: string;
+};
+
+export type CallCenterDoctorAppointmentListItem = {
+  id: string;
+  patient_id: string;
+  patient_name: string | null;
+  patient_phone?: string | null;
+  doctor_id: string;
+  doctor_name?: string | null;
+  scheduled_at: string;
+  note?: string | null;
+  status: string;
+  is_late?: boolean;
+  kind?: string;
+  stage_name?: string | null;
+  branch?: 'farah_najaf' | 'kendy_baghdad';
 };
 
 export type DashboardStats = {
@@ -116,6 +142,7 @@ export type DoctorBasic = {
   name: string | null;
   phone: string | null;
   imageUrl: string | null;
+  room_number?: number | null;
 };
 
 export type DoctorStatsListResponse = {

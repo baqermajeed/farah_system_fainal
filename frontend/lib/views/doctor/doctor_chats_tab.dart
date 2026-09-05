@@ -8,7 +8,7 @@ import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
 import 'package:farah_sys_final/core/widgets/empty_state_widget.dart';
-import 'package:farah_sys_final/core/widgets/loading_widget.dart';
+import 'package:farah_sys_final/core/widgets/app_skeleton.dart';
 import 'package:farah_sys_final/core/utils/date_time_utils.dart';
 import 'package:farah_sys_final/controllers/doctor_chats_screen_controller.dart';
 
@@ -49,7 +49,7 @@ class DoctorChatsTab extends GetView<DoctorChatsScreenController> {
               child: Obx(() {
                 final chats = controller.filteredChatList;
                 if (controller.isLoading.value && controller.chatList.isEmpty) {
-                  return const LoadingWidget(message: 'جاري تحميل المحادثات...');
+                  return const SkeletonChatList();
                 }
 
                 if (chats.isEmpty) {
@@ -345,7 +345,7 @@ class _ChatTile extends StatelessWidget {
                               width: 8.w,
                               height: 8.w,
                               decoration: const BoxDecoration(
-                                color: AppColors.error,
+                                color: AppColors.primary,
                                 shape: BoxShape.circle,
                               ),
                             ),
@@ -375,7 +375,7 @@ class _ChatTile extends StatelessWidget {
                                     ? FontWeight.w600
                                     : FontWeight.w500,
                                 color: hasUnread
-                                    ? AppColors.error
+                                    ? AppColors.primary
                                     : _subtitleColor,
                               ),
                             ),
@@ -410,7 +410,7 @@ class _ChatTile extends StatelessWidget {
                               ),
                               padding: EdgeInsets.symmetric(horizontal: 6.w),
                               decoration: BoxDecoration(
-                                color: AppColors.error,
+                                color: AppColors.primary,
                                 borderRadius: BorderRadius.circular(99.r),
                               ),
                               child: Center(

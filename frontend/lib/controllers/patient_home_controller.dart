@@ -29,24 +29,27 @@ class PatientHomeController extends GetxController {
   int get totalUnreadMessages =>
       unreadByDoctorId.values.fold(0, (sum, count) => sum + count);
 
-  bool hasHomeData() {
-    return patientController.myProfile.value != null ||
-        patientController.myDoctors.isNotEmpty ||
-        appointmentController.appointments.isNotEmpty;
-  }
+  bool get isHomeDataReady =>
+      patientController.myDoctorsReady.value &&
+      appointmentController.homeAppointmentsReady.value;
 
   @override
   void onInit() {
     super.onInit();
-    // Avoid full-screen loader flash when controllers already have data.
-    isInitialLoading.value = !hasHomeData();
+    isInitialLoading.value = !isHomeDataReady;
   }
 
   @override
   void onReady() {
     super.onReady();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await loadData();
+      if (isHomeDataReady) {
+        isInitialLoading.value = false;
+        await loadUnreadCount();
+        await loadUnreadNotificationsCount();
+      } else {
+        await loadData(showFullScreenLoader: true);
+      }
       listenForIncomingMessages();
     });
   }
@@ -58,25 +61,13 @@ class PatientHomeController extends GetxController {
   }
 
   Future<void> loadData({bool showFullScreenLoader = true}) async {
-    final showLoader = showFullScreenLoader && !hasHomeData();
-
-    if (showLoader) {
+    if (showFullScreenLoader && !isHomeDataReady) {
       isInitialLoading.value = true;
     }
 
     try {
       await Future.wait([
-        patientController.loadMyProfile().catchError((e) {
-          debugPrint('❌ [PatientHomeController] Error loading profile: $e');
-        }),
-        appointmentController.loadPatientAppointments().catchError((e) {
-          debugPrint(
-            '❌ [PatientHomeController] Error loading appointments: $e',
-          );
-        }),
-        patientController.loadMyDoctors().catchError((e) {
-          debugPrint('❌ [PatientHomeController] Error loading doctors: $e');
-        }),
+        patientController.loadHomeScreenData(),
         loadUnreadCount(),
       ]);
     } finally {

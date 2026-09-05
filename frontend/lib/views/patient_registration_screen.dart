@@ -4,9 +4,11 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
-import 'package:farah_sys_final/core/widgets/custom_text_field.dart';
+import 'package:farah_sys_final/core/widgets/auth_button.dart';
+import 'package:farah_sys_final/core/widgets/auth_text_field.dart';
 import 'package:farah_sys_final/core/widgets/gender_selector.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
+import 'package:farah_sys_final/core/widgets/decorative_background.dart';
 import 'package:farah_sys_final/controllers/patient_registration_controller.dart';
 
 /// شاشة تسجيل حساب المريض — GetView؛ المنطق في PatientRegistrationController.
@@ -15,15 +17,14 @@ class PatientRegistrationScreen extends GetView<PatientRegistrationController> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.onboardingBackground,
-      body: SafeArea(
-        child: Stack(
+    return AuthDecoratedScaffold(
+      scene: AuthDecorScene.login,
+      body: Stack(
           children: [
             // Main content with padding
             SingleChildScrollView(
               child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 24.w),
+                padding: EdgeInsets.symmetric(horizontal: 28.w),
                 child: Column(
                   children: [
                     SizedBox(height: 56.h),
@@ -56,6 +57,7 @@ class PatientRegistrationScreen extends GetView<PatientRegistrationController> {
                       'إنشاء حساب',
                       textAlign: TextAlign.center,
                       style: TextStyle(
+                        fontFamily: AppFonts.family,
                         fontSize: 20.sp,
                         fontWeight: FontWeight.bold,
                         color: AppColors.primary,
@@ -66,15 +68,17 @@ class PatientRegistrationScreen extends GetView<PatientRegistrationController> {
                       'يرجى إكمال البيانات التالية',
                       textAlign: TextAlign.center,
                       style: TextStyle(
+                        fontFamily: AppFonts.family,
                         fontSize: 14.sp,
                         color: AppColors.textHint,
                       ),
                     ),
                     SizedBox(height: 24.h),
-                    CustomTextField(
-                      labelText: AppStrings.name,
-                      hintText: AppStrings.enterYourName,
+                    AuthTextField(
+                      hint: AppStrings.enterYourName,
+                      icon: Icons.person_outline_rounded,
                       controller: controller.nameController,
+                      focusColor: const Color(0xFF032252),
                     ),
                     SizedBox(height: 36.h),
                     Column(
@@ -83,6 +87,7 @@ class PatientRegistrationScreen extends GetView<PatientRegistrationController> {
                         Text(
                           AppStrings.gender,
                           style: TextStyle(
+                            fontFamily: AppFonts.family,
                             fontSize: 16.sp,
                             fontWeight: FontWeight.w500,
                             color: AppColors.textPrimary,
@@ -104,24 +109,26 @@ class PatientRegistrationScreen extends GetView<PatientRegistrationController> {
                       children: [
                         Expanded(
                           child: Obx(
-                            () => CustomTextField(
-                              labelText: AppStrings.city,
-                              hintText: AppStrings.selectCity,
+                            () => AuthTextField(
+                              hint: AppStrings.selectCity,
+                              icon: Icons.location_on_outlined,
                               readOnly: true,
                               onTap: () => controller.showCityPicker(context),
                               controller: TextEditingController(
                                 text: controller.selectedCity.value ?? '',
                               ),
+                              focusColor: const Color(0xFF032252),
                             ),
                           ),
                         ),
                         SizedBox(width: 16.w),
                         Expanded(
-                          child: CustomTextField(
-                            labelText: AppStrings.age,
-                            hintText: AppStrings.selectCity,
+                          child: AuthTextField(
+                            hint: AppStrings.age,
+                            icon: Icons.cake_outlined,
                             controller: controller.ageController,
                             keyboardType: TextInputType.number,
+                            focusColor: const Color(0xFF032252),
                           ),
                         ),
                       ],
@@ -129,47 +136,12 @@ class PatientRegistrationScreen extends GetView<PatientRegistrationController> {
                     SizedBox(height: 75.h),
                     // Register button
                     Obx(
-                      () => Container(
-                        width: double.infinity,
-                        height: 50.h,
-                        decoration: BoxDecoration(
-                          color: controller.authController.isLoading.value
-                              ? AppColors.textHint
-                              : AppColors.secondary,
-                          borderRadius: BorderRadius.circular(16.r),
-                        ),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: controller.authController.isLoading.value
-                                ? null
-                                : controller.submit,
-                            borderRadius: BorderRadius.circular(16.r),
-                            child: Center(
-                              child: controller.authController.isLoading.value
-                                  ? SizedBox(
-                                      width: 20.w,
-                                      height: 20.h,
-                                      child: const CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        valueColor:
-                                            AlwaysStoppedAnimation<Color>(
-                                              AppColors.white,
-                                            ),
-                                      ),
-                                    )
-                                  : Text(
-                                      'إنشاء حساب',
-                                      style: TextStyle(
-                                        fontFamily: AppFonts.family,
-                                        fontSize: 16.sp,
-                                        fontWeight: FontWeight.w600,
-                                        color: AppColors.white,
-                                      ),
-                                    ),
-                            ),
-                          ),
-                        ),
+                      () => AuthButton(
+                        label: controller.authController.isLoading.value
+                            ? 'جاري الإنشاء...'
+                            : 'إنشاء حساب',
+                        isLoading: controller.authController.isLoading.value,
+                        onPressed: controller.submit,
                       ),
                     ),
                     SizedBox(height: 32.h),
@@ -180,7 +152,6 @@ class PatientRegistrationScreen extends GetView<PatientRegistrationController> {
             // Back button positioned at top left without padding
             Positioned(top: 16.h, left: 16, child: BackButtonWidget()),
           ],
-        ),
       ),
     );
   }

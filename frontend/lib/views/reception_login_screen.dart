@@ -1,11 +1,15 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:farah_sys_final/core/theme/app_fonts.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
-import 'package:farah_sys_final/core/widgets/custom_text_field.dart';
+import 'package:farah_sys_final/core/widgets/auth_button.dart';
+import 'package:farah_sys_final/core/widgets/auth_text_field.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
+import 'package:farah_sys_final/core/widgets/decorative_background.dart';
+import 'package:farah_sys_final/core/widgets/shake_animation.dart';
 import 'package:farah_sys_final/controllers/reception_login_controller.dart';
 
 /// شاشة تسجيل دخول الاستقبال — GetView؛ المنطق في ReceptionLoginController.
@@ -14,136 +18,137 @@ class ReceptionLoginScreen extends GetView<ReceptionLoginController> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.onboardingBackground,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            SingleChildScrollView(
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 24.w),
-                child: Column(
-                  children: [
-                    SizedBox(height: 56.h),
-                    SizedBox(height: 12.h),
-                    SizedBox(
-                      height: 250.h,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        clipBehavior: Clip.none,
-                        children: [
-                          Positioned(
-                            child: Opacity(
-                              opacity: 0.85,
-                              child: Image.asset(
-                                'assets/images/tooth_logo.png',
-                                width: 280.w,
-                                height: 280.h,
-                                fit: BoxFit.contain,
+    return AuthDecoratedScaffold(
+      scene: AuthDecorScene.login,
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 28.w),
+              child: Column(
+                children: [
+                  SizedBox(height: 56.h),
+                  SizedBox(height: 12.h),
+                  SizedBox(
+                    height: 250.h,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      clipBehavior: Clip.none,
+                      children: [
+                        Positioned(
+                          child: Opacity(
+                            opacity: 0.85,
+                            child: Image.asset(
+                              'assets/images/tooth_logo.png',
+                              width: 280.w,
+                              height: 280.h,
+                              fit: BoxFit.contain,
+                            ),
+                          ),
+                        ),
+                        Image.asset(
+                          'assets/images/logo.png',
+                          width: 140.w,
+                          height: 140.h,
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              width: 140.w,
+                              height: 140.h,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: AppColors.primaryLight.withValues(
+                                  alpha: 0.3,
+                                ),
                               ),
-                            ),
-                          ),
-                          Image.asset(
-                            'assets/images/logo.png',
-                            width: 140.w,
-                            height: 140.h,
-                            fit: BoxFit.contain,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                width: 140.w,
-                                height: 140.h,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: AppColors.primaryLight.withValues(
-                                    alpha: 0.3,
-                                  ),
-                                ),
-                                child: Icon(
-                                  Icons.local_hospital,
-                                  size: 70.sp,
-                                  color: AppColors.primary,
-                                ),
-                              );
-                            },
-                          ),
-                        ],
-                      ),
+                              child: Icon(
+                                Icons.local_hospital,
+                                size: 70.sp,
+                                color: AppColors.primary,
+                              ),
+                            );
+                          },
+                        ),
+                      ],
                     ),
-                    SizedBox(height: 16.h),
-                    Text(
-                      AppStrings.receptionLogin,
-                      style: TextStyle(
-                        fontFamily: AppFonts.family,
-                        fontSize: 22.sp,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
+                  ),
+                  SizedBox(height: 16.h),
+                  Text(
+                    AppStrings.receptionLogin,
+                    style: TextStyle(
+                      fontFamily: AppFonts.family,
+                      fontSize: 22.sp,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
                     ),
-                    SizedBox(height: 24.h),
-                    CustomTextField(
-                      labelText: AppStrings.receptionUsername,
-                      hintText: 'اسم المستخدم',
+                  ),
+                  SizedBox(height: 28.h),
+                  Obx(
+                    () => AuthTextField(
+                      hint: AppStrings.receptionUsername,
+                      icon: Icons.person_outline_rounded,
                       controller: controller.usernameController,
-                    ),
-                    SizedBox(height: 16.h),
-                    CustomTextField(
-                      labelText: AppStrings.password,
-                      hintText: '••••••••',
-                      controller: controller.passwordController,
-                      obscureText: true,
-                    ),
-                    SizedBox(height: 24.h),
-                    Obx(
-                      () => Container(
-                        width: double.infinity,
-                        height: 50.h,
-                        decoration: BoxDecoration(
-                          color: controller.auth.isLoading.value
-                              ? AppColors.textHint
-                              : AppColors.secondary,
-                          borderRadius: BorderRadius.circular(16.r),
-                        ),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: controller.auth.isLoading.value
-                                ? null
-                                : controller.submit,
-                            borderRadius: BorderRadius.circular(16.r),
-                            child: Center(
-                              child: controller.auth.isLoading.value
-                                  ? SizedBox(
-                                      width: 20.w,
-                                      height: 20.h,
-                                      child: const CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        valueColor:
-                                            AlwaysStoppedAnimation<Color>(
-                                          AppColors.white,
-                                        ),
-                                      ),
-                                    )
-                                  : Text(
-                                      AppStrings.login,
-                                      style: TextStyle(
-                                        fontFamily: AppFonts.family,
-                                        fontSize: 16.sp,
-                                        fontWeight: FontWeight.w600,
-                                        color: AppColors.white,
-                                      ),
-                                    ),
-                            ),
-                          ),
-                        ),
+                      onChanged: controller.onUsernameChanged,
+                      errorText: controller.usernameError.value,
+                      showErrorBorder: controller.usernameError.value != null,
+                      focusColor: ReceptionLoginController.actionNavy,
+                    ).shakeOnTick(controller.usernameShakeTick.value),
+                  )
+                      .animate()
+                      .fadeIn(duration: 400.ms, delay: 100.ms)
+                      .slideX(
+                        begin: 0.08,
+                        end: 0,
+                        duration: 400.ms,
+                        delay: 100.ms,
                       ),
+                  SizedBox(height: 16.h),
+                  Obx(
+                    () => AuthTextField(
+                      hint: AppStrings.password,
+                      icon: Icons.lock_outline_rounded,
+                      obscureText: true,
+                      controller: controller.passwordController,
+                      onChanged: controller.onPasswordChanged,
+                      errorText: controller.passwordError.value,
+                      showErrorBorder: controller.passwordError.value != null,
+                      focusColor: ReceptionLoginController.actionNavy,
+                    ).shakeOnTick(controller.passwordShakeTick.value),
+                  )
+                      .animate()
+                      .fadeIn(duration: 400.ms, delay: 200.ms)
+                      .slideX(
+                        begin: 0.08,
+                        end: 0,
+                        duration: 400.ms,
+                        delay: 200.ms,
+                      ),
+                  SizedBox(height: 28.h),
+                  Obx(
+                    () => AuthButton(
+                      label: controller.auth.isLoading.value
+                          ? 'جاري الدخول...'
+                          : AppStrings.login,
+                      isLoading: controller.auth.isLoading.value,
+                      onPressed: controller.submit,
+                      backgroundColor: ReceptionLoginController.actionNavy,
                     ),
-                  ],
-                ),
+                  )
+                      .animate()
+                      .fadeIn(duration: 450.ms, delay: 300.ms)
+                      .slideY(
+                        begin: 0.15,
+                        end: 0,
+                        duration: 450.ms,
+                        delay: 300.ms,
+                      ),
+                  SizedBox(height: 24.h),
+                ],
               ),
             ),
-            Positioned(top: 16.h, left: 16, child: const BackButtonWidget()),
-          ],
-        ),
+          ),
+          Positioned(top: 16.h, left: 16, child: const BackButtonWidget()),
+        ],
       ),
     );
   }

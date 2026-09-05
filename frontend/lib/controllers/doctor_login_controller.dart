@@ -15,6 +15,8 @@ class DoctorLoginController extends GetxController {
   /// `null` = لا خطأ، `''` = حدود حمراء بدون نص، نص = رسالة تحت الحقل.
   final RxnString usernameError = RxnString();
   final RxnString passwordError = RxnString();
+  final usernameShakeTick = 0.obs;
+  final passwordShakeTick = 0.obs;
 
   AuthController get auth => Get.find<AuthController>();
 
@@ -38,10 +40,12 @@ class DoctorLoginController extends GetxController {
 
     if (username.isEmpty) {
       usernameError.value = 'يرجى إدخال اسم المستخدم';
+      usernameShakeTick.value++;
       hasEmpty = true;
     }
     if (password.isEmpty) {
       passwordError.value = 'يرجى إدخال كلمة المرور';
+      passwordShakeTick.value++;
       hasEmpty = true;
     }
     if (hasEmpty) return;
@@ -60,9 +64,10 @@ class DoctorLoginController extends GetxController {
       return;
     }
 
-    // بيانات دخول خاطئة: حدود حمراء + أيقونة + رسالة واضحة
     usernameError.value = '';
     passwordError.value = credentialsErrorMessage;
+    usernameShakeTick.value++;
+    passwordShakeTick.value++;
   }
 
   @override

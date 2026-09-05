@@ -305,6 +305,12 @@ body[data-theme='dark'] .doctor-hero {
   color: rgba(120, 120, 120, 0.95) !important;
 }
 
+.room-assign-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .stats-tiles-grid {
   margin-bottom: 12px;
 }
@@ -470,6 +476,28 @@ body[data-theme='dark'] .stat-group-item {
 .stat-info .stat-icon-wrap {
   background: rgba(14, 165, 233, 0.15);
   color: #0ea5e9;
+}
+
+.call-center-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.call-center-loading-wrap {
+  min-height: 200px;
+  display: grid;
+  place-items: center;
+}
+
+.call-center-row-accepted > td {
+  background: rgba(34, 197, 94, 0.14) !important;
+}
+
+body[data-theme='dark'] .call-center-row-accepted > td {
+  background: rgba(34, 197, 94, 0.24) !important;
 }
 
 @media (max-width: 992px) {

@@ -9,7 +9,7 @@ import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
 import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/controllers/patient_profile_controller.dart';
-import 'package:farah_sys_final/core/widgets/loading_widget.dart';
+import 'package:farah_sys_final/core/widgets/app_skeleton.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
 
@@ -225,7 +225,7 @@ class PatientProfileScreen extends GetView<PatientProfileController> {
           child: Obx(() {
             if (patientController.isLoading.value &&
                 patientController.myProfile.value == null) {
-              return const LoadingWidget(message: 'جاري تحميل البيانات...');
+              return const SkeletonProfilePage();
             }
 
             final profile = patientController.myProfile.value;

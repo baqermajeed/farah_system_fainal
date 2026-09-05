@@ -140,6 +140,7 @@ class QueueTicketPrintService {
       _renderTicketImage({
     required String name,
     required int number,
+    String? heading,
   }) async {
     await _ensureUiFont();
 
@@ -191,9 +192,23 @@ class QueueTicketPrintService {
       weight: FontWeight.w800,
       maxLines: 1,
     );
+    final headingPara = heading == null
+        ? null
+        : buildParagraph(
+            text: heading,
+            fontSize: 36,
+            weight: FontWeight.w700,
+          );
 
-    final contentHeight =
-        (padY * 2 + namePara.height + gap + numberPara.height).ceil();
+    final contentHeight = headingPara == null
+        ? (padY * 2 + namePara.height + gap + numberPara.height).ceil()
+        : (padY * 2 +
+                headingPara.height +
+                gap +
+                numberPara.height +
+                gap +
+                namePara.height)
+            .ceil();
     final height = (contentHeight + tearMarginDots).clamp(200, 560);
 
     final recorder = ui.PictureRecorder();
@@ -222,9 +237,17 @@ class QueueTicketPrintService {
     );
 
     var y = padY;
-    canvas.drawParagraph(namePara, Offset(padX, y));
-    y += namePara.height + gap;
-    canvas.drawParagraph(numberPara, Offset(padX, y));
+    if (headingPara != null) {
+      canvas.drawParagraph(headingPara, Offset(padX, y));
+      y += headingPara.height + gap;
+      canvas.drawParagraph(numberPara, Offset(padX, y));
+      y += numberPara.height + gap;
+      canvas.drawParagraph(namePara, Offset(padX, y));
+    } else {
+      canvas.drawParagraph(namePara, Offset(padX, y));
+      y += namePara.height + gap;
+      canvas.drawParagraph(numberPara, Offset(padX, y));
+    }
 
     final picture = recorder.endRecording();
     final image = await picture.toImage(width, height);
@@ -691,6 +714,69 @@ try {
     final pdfBytes = await _pngToPdf(rendered.png);
     await Printing.layoutPdf(
       name: 'تذكرة_الطابور_$number',
+      format: PdfPageFormat(
+        59 * PdfPageFormat.mm,
+        double.parse(_heightMm(rendered.height)) * PdfPageFormat.mm,
+        marginAll: 0,
+      ),
+      usePrinterSettings: true,
+      onLayout: (_) async => pdfBytes,
+    );
+    return 'دايلوك ويندوز';
+  }
+
+  static Future<String> printRoomTicket({
+    required String doctorName,
+    required int roomNumber,
+  }) async {
+    if (!Platform.isWindows) {
+      throw StateError('طباعة التذاكر متاحة على ويندوز فقط');
+    }
+
+    final printerName = await _findXprinterName();
+    if (printerName == null) {
+      throw StateError('لم يتم العثور على طابعة في ويندوز');
+    }
+    debugPrint('🖨️ [QueueTicketPrint] using printer: $printerName');
+
+    final rendered = await _renderTicketImage(
+      name: doctorName,
+      number: roomNumber,
+      heading: 'غرفة رقم',
+    );
+    debugPrint(
+      '🖨️ [QueueTicketPrint] room ticket ${rendered.width}x${rendered.height} '
+      '(~${_heightMm(rendered.height)}mm feed)',
+    );
+
+    if (await _printViaEscPos(
+      printerName: printerName,
+      rgba: rendered.rgba,
+      width: rendered.width,
+      height: rendered.height,
+    )) {
+      return 'ESC/POS ($printerName)';
+    }
+
+    if (await _printViaGdiTicket(
+      printerName: printerName,
+      rgba: rendered.rgba,
+      width: rendered.width,
+      height: rendered.height,
+    )) {
+      return 'GDI ($printerName)';
+    }
+
+    if (await _printViaDirectPdf(
+      printerName: printerName,
+      pngBytes: rendered.png,
+    )) {
+      return 'PDF ($printerName)';
+    }
+
+    final pdfBytes = await _pngToPdf(rendered.png);
+    await Printing.layoutPdf(
+      name: 'تذكرة_الغرفة_$roomNumber',
       format: PdfPageFormat(
         59 * PdfPageFormat.mm,
         double.parse(_heightMm(rendered.height)) * PdfPageFormat.mm,

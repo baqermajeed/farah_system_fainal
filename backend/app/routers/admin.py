@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Body
 from typing import List
 
-from app.schemas import UserOut, PatientOut, PatientCreate, PatientUpdate
+from app.schemas import UserOut, PatientOut, PatientCreate, PatientUpdate, DoctorRoomUpdate
 from app.security import require_roles, get_current_user
 from app.constants import Role
 from app.services.admin_service import (
@@ -102,6 +102,23 @@ async def set_doctor_manager(
     d.is_manager = bool(is_manager)
     await d.save()
     return {"ok": True, "doctor_id": str(d.id), "is_manager": d.is_manager}
+
+
+@router.patch("/doctors/{doctor_id}/room")
+async def set_doctor_room(doctor_id: str, payload: DoctorRoomUpdate):
+    """تعيين رقم غرفة الطبيب. يُسمح أن يشترك أكثر من طبيب بنفس الرقم."""
+    try:
+        did = OID(doctor_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid doctor_id")
+
+    d = await Doctor.get(did)
+    if not d:
+        raise HTTPException(status_code=404, detail="Doctor not found")
+
+    d.room_number = payload.room_number
+    await d.save()
+    return {"ok": True, "doctor_id": str(d.id), "room_number": d.room_number}
 
 @router.post("/assign", summary="تعيين مريض لأطباء")
 async def admin_assign(patient_id: str, doctor_ids: List[str] = [], current=Depends(get_current_user)):

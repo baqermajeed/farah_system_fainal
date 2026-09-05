@@ -27,6 +27,14 @@ class AppColors {
   static const Color onboardingTitle = Color(0xFFF8B23C); // orange title
   static const Color onboardingButton = Color(0xFF4A88B8); // buttons and controls
 
+  // Auth decorative background (splash / onboarding / login)
+  static const Color blobTop = Color(0xFFD4EEF8);
+  static const Color blobBottom = Color(0xFFE0F4FB);
+  static const Color blobAccent = Color(0xFFC5E6F4);
+  static const Color dotGrid = Color(0xFFB5D4E6);
+  static const Color glowOrb = Color(0xFF7EC8E3);
+  static const Color sparkleGold = Color(0xFFF8B23C);
+
   // Doctor dashboard — modern UI palette
   static const Color doctorSurface = Color(0xFFF8FAFC);
   static const Color doctorCard = Color(0xFFFFFFFF);

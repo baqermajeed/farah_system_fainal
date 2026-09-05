@@ -11,6 +11,7 @@ import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/controllers/doctor_home_controller.dart';
 import 'package:farah_sys_final/models/appointment_model.dart';
 import 'package:farah_sys_final/widgets/app_avatar.dart';
+import 'package:farah_sys_final/core/widgets/app_skeleton.dart';
 
 class DoctorHomeTab extends GetView<DoctorHomeController> {
   const DoctorHomeTab({super.key});
@@ -432,7 +433,8 @@ class DoctorHomeTab extends GetView<DoctorHomeController> {
             children: List.generate(actions.length, (index) {
               final action = actions[index];
               final color = action['color'] as Color;
-              
+              final isChats = action['label'] == 'المحادثات';
+
               return Expanded(
                 child: GestureDetector(
                   onTap: () {
@@ -446,18 +448,19 @@ class DoctorHomeTab extends GetView<DoctorHomeController> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Container(
-                        padding: EdgeInsets.all(10.w),
-                        decoration: BoxDecoration(
-                          color: color.withValues(alpha: 0.08), // خلفية شفافة من نفس لون الأيقونة
-                          borderRadius: BorderRadius.circular(16.r),
-                        ),
-                        child: Icon(
-                          action['icon'] as IconData,
+                      if (isChats)
+                        Obx(
+                          () => _quickActionIcon(
+                            color: color,
+                            icon: action['icon'] as IconData,
+                            badgeCount: controller.totalUnreadCount,
+                          ),
+                        )
+                      else
+                        _quickActionIcon(
                           color: color,
-                          size: 24.sp,
+                          icon: action['icon'] as IconData,
                         ),
-                      ),
                       SizedBox(height: 8.h),
                       Text(
                         action['label'] as String,
@@ -477,6 +480,53 @@ class DoctorHomeTab extends GetView<DoctorHomeController> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _quickActionIcon({
+    required Color color,
+    required IconData icon,
+    int badgeCount = 0,
+  }) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          padding: EdgeInsets.all(10.w),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(16.r),
+          ),
+          child: Icon(
+            icon,
+            color: color,
+            size: 24.sp,
+          ),
+        ),
+        if (badgeCount > 0)
+          Positioned(
+            top: -4.h,
+            left: -4.w,
+            child: Container(
+              constraints: BoxConstraints(minWidth: 18.w, minHeight: 18.w),
+              padding: EdgeInsets.symmetric(horizontal: 5.w),
+              decoration: BoxDecoration(
+                color: AppColors.primary,
+                borderRadius: BorderRadius.circular(99.r),
+                border: Border.all(color: Colors.white, width: 1.5),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                badgeCount > 99 ? '99+' : '$badgeCount',
+                style: AppFonts.lamaSans(
+                  fontSize: 10.sp,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.white,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -660,12 +710,7 @@ class DoctorHomeTab extends GetView<DoctorHomeController> {
   Widget _buildTodaySchedule() {
     return Obx(() {
       if (controller.isLoadingAppointments.value && controller.todayAppointments.isEmpty) {
-        return Center(
-          child: Padding(
-            padding: EdgeInsets.all(24.h),
-            child: CircularProgressIndicator(color: AppColors.primary),
-          ),
-        );
+        return const SkeletonScheduleCards();
       }
 
       if (controller.todayAppointments.isEmpty) {

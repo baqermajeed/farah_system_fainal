@@ -9,6 +9,7 @@ import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/controllers/chat_controller.dart';
 import 'package:farah_sys_final/controllers/patient_controller.dart';
 import 'package:farah_sys_final/controllers/presence_controller.dart';
+import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
 import 'package:farah_sys_final/models/message_model.dart';
 
@@ -155,6 +156,25 @@ class ChatScreenController extends GetxController {
       return patient?.name ?? 'مريض';
     }
     return 'محادثة';
+  }
+
+  /// فتح ملف المريض من صورة الرأس داخل محادثة الطبيب.
+  void openPatientFile() {
+    if (authController.currentUser.value?.userType.toLowerCase() != 'doctor') {
+      return;
+    }
+    final id = patientId?.trim();
+    if (id == null || id.isEmpty) return;
+
+    final patient = patientController.getPatientById(id);
+    if (patient != null) {
+      patientController.selectPatient(patient);
+    }
+
+    Get.toNamed(
+      AppRoutes.patientDetails,
+      arguments: {'patientId': id},
+    );
   }
 
   String? doctorImageUrl() {

@@ -172,6 +172,7 @@ async def list_doctors():
             phone=u.phone if u else "",
             imageUrl=image_url,
             is_online=await is_user_online(str(d.user_id)),
+            room_number=getattr(d, "room_number", None),
         ))
     return out
 
@@ -204,6 +205,7 @@ async def get_patient_doctors(patient_id: str):
             phone=u.phone if u else "",
             imageUrl=image_url,
             is_online=await is_user_online(str(d.user_id)),
+            room_number=getattr(d, "room_number", None),
         ))
     return out
 

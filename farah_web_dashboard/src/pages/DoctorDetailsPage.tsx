@@ -1,4 +1,4 @@
-import { Button, Card, Col, DatePicker, Modal, Row, Select, Spin, Switch, Table, Tag, Tooltip, Typography, message } from 'antd';
+import { Button, Card, Col, DatePicker, InputNumber, Modal, Row, Select, Spin, Switch, Table, Tag, Tooltip, Typography, message } from 'antd';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
@@ -6,6 +6,7 @@ import {
   CalendarOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
+  HomeOutlined,
   ManOutlined,
   TeamOutlined,
   UserOutlined,
@@ -18,6 +19,7 @@ import {
   fetchDoctorDetailsCards,
   fetchDoctorsStats,
   setDoctorManager,
+  setDoctorRoom,
 } from '../services/statsApi';
 import type { DoctorAppointmentsBreakdownResponse, DoctorDetailsCardsResponse } from '../types/stats';
 import { useAuth } from '../state/AuthContext';
@@ -39,6 +41,8 @@ export function DoctorDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [cardsRefreshing, setCardsRefreshing] = useState(false);
   const [updatingManager, setUpdatingManager] = useState(false);
+  const [savingRoom, setSavingRoom] = useState(false);
+  const [roomDraft, setRoomDraft] = useState<number | null>(null);
   const [doctorId, setDoctorId] = useState<string | undefined>(() => searchParams.get('doctorId') ?? undefined);
   const [dates, setDates] = useState<[Dayjs | null, Dayjs | null]>([dayjs().startOf('month'), dayjs()]);
   const [rangeModalOpen, setRangeModalOpen] = useState(false);
@@ -50,6 +54,10 @@ export function DoctorDetailsPage() {
   const [cardsData, setCardsData] = useState<DoctorDetailsCardsResponse | null>(null);
   const [implantAppointments, setImplantAppointments] = useState<DoctorAppointmentsBreakdownResponse | null>(null);
   const isManagerDoctor = Boolean(cardsData?.doctor.is_manager);
+
+  useEffect(() => {
+    setRoomDraft(cardsData?.doctor.room_number ?? null);
+  }, [cardsData?.doctor.room_number]);
 
   useEffect(() => {
     const loadDoctors = async () => {
@@ -198,6 +206,30 @@ export function DoctorDetailsPage() {
     }
   };
 
+  const handleSaveRoom = async () => {
+    if (!doctorId || !cardsData) return;
+    try {
+      setSavingRoom(true);
+      const response = await setDoctorRoom(doctorId, roomDraft);
+      setCardsData({
+        ...cardsData,
+        doctor: {
+          ...cardsData.doctor,
+          room_number: response.room_number,
+        },
+      });
+      message.success(
+        response.room_number != null
+          ? `تم تعيين الغرفة رقم ${response.room_number}`
+          : 'تم إلغاء رقم الغرفة',
+      );
+    } catch {
+      message.error('تعذر تحديث رقم الغرفة');
+    } finally {
+      setSavingRoom(false);
+    }
+  };
+
   const applyRangeSelection = () => {
     setDates(draftRange);
     setRangeModalOpen(false);
@@ -231,6 +263,11 @@ export function DoctorDetailsPage() {
             <Typography.Text className="doctor-hero-role">
               نوع الطبيب: {cardsData?.doctor.is_manager ? 'طبيب مدير' : 'طبيب'}
             </Typography.Text>
+            <Typography.Text className="doctor-hero-role">
+              {cardsData?.doctor.room_number != null
+                ? `غرفة رقم ${cardsData.doctor.room_number}`
+                : 'لم يُعيَّن رقم غرفة'}
+            </Typography.Text>
             <div>
               {cardsData?.doctor.is_manager ? <Tag color="gold">طبيب مدير</Tag> : <Tag color="blue">طبيب</Tag>}
             </div>
@@ -255,6 +292,38 @@ export function DoctorDetailsPage() {
             disabled={role !== 'admin'}
             onChange={handleManagerToggle}
           />
+        </div>
+      </Card>
+
+      <Card className="glass-card stats-panel" style={{ marginBottom: 12 }}>
+        <div className="manager-toggle-card">
+          <div className="manager-toggle-copy">
+            <HomeOutlined className="manager-toggle-icon" />
+            <div>
+              <Typography.Text className="manager-toggle-title">رقم الغرفة</Typography.Text>
+              <Typography.Paragraph className="manager-toggle-subtitle">
+                يمكن أن يشترك أكثر من طبيب بنفس رقم الغرفة
+              </Typography.Paragraph>
+            </div>
+          </div>
+          <div className="room-assign-actions">
+            <InputNumber
+              min={1}
+              max={999}
+              value={roomDraft ?? undefined}
+              placeholder="رقم الغرفة"
+              disabled={role !== 'admin'}
+              onChange={(value) => setRoomDraft(typeof value === 'number' ? value : null)}
+            />
+            <Button
+              type="primary"
+              loading={savingRoom}
+              disabled={role !== 'admin'}
+              onClick={() => void handleSaveRoom()}
+            >
+              حفظ
+            </Button>
+          </div>
         </div>
       </Card>
 

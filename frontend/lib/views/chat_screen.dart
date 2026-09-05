@@ -10,7 +10,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_strings.dart';
 import 'package:farah_sys_final/controllers/chat_screen_controller.dart';
-import 'package:farah_sys_final/core/widgets/loading_widget.dart';
+import 'package:farah_sys_final/core/widgets/app_skeleton.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/views/doctor/widgets/doctor_back_button.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
@@ -121,7 +121,7 @@ class ChatScreen extends GetView<ChatScreenController> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.start,
                   children: [
-                    _buildDoctorAvatar(imageUrl),
+                    _buildHeaderAvatar(imageUrl, isDoctor),
                     SizedBox(width: 12.w),
                     Expanded(
                       child: Obx(
@@ -162,6 +162,17 @@ class ChatScreen extends GetView<ChatScreenController> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildHeaderAvatar(String? imageUrl, bool isDoctor) {
+    final avatar = _buildDoctorAvatar(imageUrl);
+    if (!isDoctor) return avatar;
+
+    return GestureDetector(
+      onTap: controller.openPatientFile,
+      behavior: HitTestBehavior.opaque,
+      child: avatar,
     );
   }
 
@@ -211,7 +222,7 @@ class ChatScreen extends GetView<ChatScreenController> {
       // Always show loader while fetching so old chat / empty flash never appears.
       if (controller.chatController.isLoading.value &&
           controller.chatController.messages.isEmpty) {
-        return const LoadingWidget(message: 'جاري تحميل الرسائل...');
+        return const SkeletonChatMessages();
       }
 
       if (controller.chatController.messages.isEmpty) {

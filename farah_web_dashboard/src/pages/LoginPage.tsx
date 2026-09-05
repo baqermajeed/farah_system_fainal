@@ -10,6 +10,15 @@ type LoginFormValues = {
   password: string;
 };
 
+function readRoleFromToken(token: string) {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1] ?? ''));
+    return typeof payload?.role === 'string' ? payload.role : null;
+  } catch {
+    return null;
+  }
+}
+
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -23,7 +32,8 @@ export function LoginPage() {
       const tokens = await loginStaff(values.username, values.password);
       login(tokens);
       message.success('تم تسجيل الدخول بنجاح');
-      navigate('/overview');
+      const role = readRoleFromToken(tokens.access_token);
+      navigate(role === 'call_center' ? '/call-center/workspace' : '/overview');
     } catch (err) {
       console.error(err);
       setError('فشل تسجيل الدخول، تأكد من اسم المستخدم وكلمة المرور وصلاحيات الحساب.');

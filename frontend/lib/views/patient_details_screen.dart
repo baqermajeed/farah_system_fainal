@@ -25,7 +25,7 @@ import 'package:farah_sys_final/models/medical_record_model.dart';
 import 'package:farah_sys_final/models/appointment_model.dart';
 import 'package:farah_sys_final/models/doctor_model.dart';
 import 'package:farah_sys_final/models/patient_model.dart';
-import 'package:skeletonizer/skeletonizer.dart';
+import 'package:farah_sys_final/core/widgets/app_skeleton.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:farah_sys_final/widgets/patient_profile_avatar.dart';
 import 'package:farah_sys_final/widgets/dental_chart/patient_dental_chart_tab.dart';
@@ -510,26 +510,7 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
 
   /// Scrollable wrapper required for TabBarView inside NestedScrollView.
   Widget _buildInitialLoadingOverlay() {
-    return ColoredBox(
-      color: _kPatientProfileBg,
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(color: AppColors.primary),
-            SizedBox(height: 16.h),
-            Text(
-              'جاري تحميل ملف المريض...',
-              style: AppFonts.lamaSans(
-                fontSize: 14.sp,
-                fontWeight: FontWeight.w600,
-                color: _kPatientProfileGray,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    return const SkeletonPatientFile();
   }
 
   /// Scrollable wrapper required for TabBarView inside NestedScrollView.
@@ -847,14 +828,7 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
         return _tabFillScroll(const SizedBox.shrink());
       }
       if (controller.medicalRecordController.isLoading.value) {
-        return _tabFillScroll(
-          Container(
-            color: _kPatientProfileBg,
-            child: Center(
-              child: CircularProgressIndicator(color: AppColors.primary),
-            ),
-          ),
-        );
+        return const SkeletonCardList();
       }
 
       final records = controller.medicalRecordController.records
@@ -1907,14 +1881,7 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
         return _tabFillScroll(const SizedBox.shrink());
       }
       if (implantStageController.isLoading.value) {
-        return _tabFillScroll(
-          Container(
-            color: _kPatientProfileBg,
-            child: Center(
-              child: CircularProgressIndicator(color: AppColors.primary),
-            ),
-          ),
-        );
+        return const SkeletonTimeline();
       }
 
       // Only consider stages for this patient (controller may hold stages for multiple patients)
@@ -2282,35 +2249,7 @@ class PatientDetailsScreen extends GetView<PatientDetailsController> {
         return const SizedBox.shrink();
       }
       if (controller.galleryController.isLoading.value) {
-        return CustomScrollView(
-          slivers: [
-            SliverPadding(
-              padding: EdgeInsets.all(16.w),
-              sliver: SliverToBoxAdapter(
-                child: Skeletonizer(
-                  enabled: true,
-                  child: GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      crossAxisSpacing: 8.w,
-                      mainAxisSpacing: 8.h,
-                      childAspectRatio: 1.0,
-                    ),
-                    itemCount: 6,
-                    itemBuilder: (context, index) {
-                      return ClipRRect(
-                        borderRadius: BorderRadius.circular(8.r),
-                        child: Container(color: AppColors.divider),
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ),
-          ],
-        );
+        return const SkeletonGalleryGrid();
       }
 
       if (controller.galleryController.galleryImages.isEmpty) {

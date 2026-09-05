@@ -2,6 +2,8 @@ import { http } from './http';
 import axios from 'axios';
 import { appConfig } from '../config/appConfig';
 import type {
+  CallCenterAppointmentPayload,
+  CallCenterDoctorAppointmentListItem,
   AppointmentsStatsResponse,
   ChatStatsResponse,
   CallCenterAppointmentListItem,
@@ -26,6 +28,22 @@ import type {
 const authHeaders = {
   'Content-Type': 'application/x-www-form-urlencoded',
 };
+
+type BranchKey = 'farah_najaf' | 'kendy_baghdad';
+
+const BRANCH_BASE_URLS: Record<BranchKey, string> = {
+  farah_najaf: appConfig.apiBaseUrl,
+  kendy_baghdad: appConfig.apiKendyBaseUrl,
+};
+
+function buildAuthHeader() {
+  const token = localStorage.getItem('farah-access-token');
+  return token ? { Authorization: `Bearer ${token}` } : undefined;
+}
+
+function resolveBranch(baseUrl: string): BranchKey {
+  return baseUrl === appConfig.apiKendyBaseUrl ? 'kendy_baghdad' : 'farah_najaf';
+}
 
 export async function loginStaff(username: string, password: string): Promise<TokenResponse> {
   const form = new URLSearchParams();
@@ -80,24 +98,29 @@ export async function fetchCallCenterAppointments(params?: {
 
 async function fetchCallCenterAppointmentsAllByBase(
   baseUrl: string,
-  params: { created_by_user_id?: string; search?: string },
+  params: {
+    created_by_user_id?: string;
+    search?: string;
+    date_from?: string;
+    date_to?: string;
+  },
 ): Promise<CallCenterAppointmentListItem[]> {
   const pageSize = 100;
   let skip = 0;
   const all: CallCenterAppointmentListItem[] = [];
+  const branch = resolveBranch(baseUrl);
 
   while (true) {
-    const token = localStorage.getItem('farah-access-token');
     const response = await axios.get<CallCenterAppointmentListItem[]>(`${baseUrl}/call-center/appointments`, {
       params: {
         ...params,
         skip,
         limit: pageSize,
       },
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      headers: buildAuthHeader(),
     });
 
-    const batch = response.data ?? [];
+    const batch = (response.data ?? []).map((item) => ({ ...item, branch }));
     all.push(...batch);
     if (batch.length < pageSize) break;
     skip += pageSize;
@@ -110,10 +133,9 @@ async function fetchStaffUsersByBase(
   baseUrl: string,
   params?: { role?: string; skip?: number; limit?: number },
 ): Promise<StaffUser[]> {
-  const token = localStorage.getItem('farah-access-token');
   const response = await axios.get<StaffUser[]>(`${baseUrl}/admin/staff`, {
     params,
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    headers: buildAuthHeader(),
   });
   return response.data ?? [];
 }
@@ -184,6 +206,122 @@ export async function fetchCallCenterAppointmentsFromBoth(params: { created_by_u
   return merged;
 }
 
+export async function fetchCallCenterMyAppointmentsFromBoth(params?: {
+  search?: string;
+  date_from?: string;
+  date_to?: string;
+}) {
+  const merged: CallCenterAppointmentListItem[] = [];
+  const seen = new Set<string>();
+  const pushUnique = (items: CallCenterAppointmentListItem[]) => {
+    for (const item of items) {
+      const key = `${item.branch ?? ''}|${item.id}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        merged.push(item);
+      }
+    }
+  };
+
+  const [najaf, kendy] = await Promise.allSettled([
+    fetchCallCenterAppointmentsAllByBase(appConfig.apiBaseUrl, params ?? {}),
+    fetchCallCenterAppointmentsAllByBase(appConfig.apiKendyBaseUrl, params ?? {}),
+  ]);
+
+  if (najaf.status === 'fulfilled') pushUnique(najaf.value);
+  if (kendy.status === 'fulfilled') pushUnique(kendy.value);
+
+  return merged.sort((a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime());
+}
+
+export async function createCallCenterAppointment(
+  branch: BranchKey,
+  payload: CallCenterAppointmentPayload,
+) {
+  const baseUrl = BRANCH_BASE_URLS[branch];
+  const response = await axios.post<CallCenterAppointmentListItem>(`${baseUrl}/call-center/appointments`, payload, {
+    headers: buildAuthHeader(),
+  });
+  return { ...response.data, branch };
+}
+
+export async function updateCallCenterAppointment(
+  branch: BranchKey,
+  appointmentId: string,
+  payload: Partial<CallCenterAppointmentPayload>,
+) {
+  const baseUrl = BRANCH_BASE_URLS[branch];
+  const response = await axios.put<CallCenterAppointmentListItem>(
+    `${baseUrl}/call-center/appointments/${appointmentId}`,
+    payload,
+    {
+      headers: buildAuthHeader(),
+    },
+  );
+  return { ...response.data, branch };
+}
+
+export async function deleteCallCenterAppointment(branch: BranchKey, appointmentId: string) {
+  const baseUrl = BRANCH_BASE_URLS[branch];
+  const response = await axios.delete<{ ok: boolean }>(`${baseUrl}/call-center/appointments/${appointmentId}`, {
+    headers: buildAuthHeader(),
+  });
+  return response.data;
+}
+
+async function fetchCallCenterDoctorAppointmentsByBase(
+  baseUrl: string,
+  params?: {
+    day?: 'today' | 'month';
+    date_from?: string;
+    date_to?: string;
+    status?: string;
+  },
+) {
+  const pageSize = 100;
+  let skip = 0;
+  const all: CallCenterDoctorAppointmentListItem[] = [];
+  const branch = resolveBranch(baseUrl);
+
+  while (true) {
+    const response = await axios.get<CallCenterDoctorAppointmentListItem[]>(
+      `${baseUrl}/call-center/doctor-appointments`,
+      {
+        params: {
+          ...params,
+          skip,
+          limit: pageSize,
+        },
+        headers: buildAuthHeader(),
+      },
+    );
+    const batch = (response.data ?? []).map((item) => ({ ...item, branch }));
+    all.push(...batch);
+    if (batch.length < pageSize) break;
+    skip += pageSize;
+  }
+
+  return all;
+}
+
+export async function fetchCallCenterDoctorAppointmentsFromBoth(params?: {
+  day?: 'today' | 'month';
+  date_from?: string;
+  date_to?: string;
+  status?: string;
+}) {
+  const [najaf, kendy] = await Promise.allSettled([
+    fetchCallCenterDoctorAppointmentsByBase(appConfig.apiBaseUrl, params),
+    fetchCallCenterDoctorAppointmentsByBase(appConfig.apiKendyBaseUrl, params),
+  ]);
+
+  const merged: CallCenterDoctorAppointmentListItem[] = [];
+  if (najaf.status === 'fulfilled') merged.push(...najaf.value);
+  if (kendy.status === 'fulfilled') merged.push(...kendy.value);
+
+  return merged.sort((a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime());
+}
+
 export async function fetchCallCenterStaffFromBoth() {
   const [najafStaff, kendyStaff] = await Promise.allSettled([
     fetchStaffUsers({ role: 'call_center', skip: 0, limit: 500 }),
@@ -224,6 +362,14 @@ export async function setDoctorManager(doctorId: string, isManager: boolean) {
   const { data } = await http.patch<{ ok: boolean; doctor_id: string; is_manager: boolean }>(
     `/admin/doctors/${doctorId}/manager`,
     { is_manager: isManager },
+  );
+  return data;
+}
+
+export async function setDoctorRoom(doctorId: string, roomNumber: number | null) {
+  const { data } = await http.patch<{ ok: boolean; doctor_id: string; room_number: number | null }>(
+    `/admin/doctors/${doctorId}/room`,
+    { room_number: roomNumber },
   );
   return data;
 }

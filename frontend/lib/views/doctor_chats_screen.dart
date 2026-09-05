@@ -6,7 +6,7 @@ import 'package:get/get.dart';
 import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
 import 'package:farah_sys_final/core/widgets/empty_state_widget.dart';
-import 'package:farah_sys_final/core/widgets/loading_widget.dart';
+import 'package:farah_sys_final/core/widgets/app_skeleton.dart';
 import 'package:farah_sys_final/core/utils/date_time_utils.dart';
 import 'package:farah_sys_final/views/doctor/widgets/doctor_back_button.dart';
 import 'package:farah_sys_final/controllers/doctor_chats_screen_controller.dart';
@@ -67,7 +67,7 @@ class DoctorChatsScreen extends GetView<DoctorChatsScreenController> {
         ),
         body: Obx(() {
           if (controller.isLoading.value && controller.chatList.isEmpty) {
-            return const LoadingWidget(message: 'جاري تحميل المحادثات...');
+            return const SkeletonChatList();
           }
 
           final chats = controller.filteredChatList;
@@ -322,7 +322,7 @@ class DoctorChatsScreen extends GetView<DoctorChatsScreenController> {
                               width: 8.w,
                               height: 8.w,
                               decoration: const BoxDecoration(
-                                color: AppColors.error,
+                                color: AppColors.primary,
                                 shape: BoxShape.circle,
                               ),
                             ),
@@ -352,7 +352,7 @@ class DoctorChatsScreen extends GetView<DoctorChatsScreenController> {
                                     ? FontWeight.w600
                                     : FontWeight.w500,
                                 color: hasUnread
-                                    ? AppColors.error
+                                    ? AppColors.primary
                                     : _subtitleColor,
                               ),
                             ),
@@ -387,7 +387,7 @@ class DoctorChatsScreen extends GetView<DoctorChatsScreenController> {
                               ),
                               padding: EdgeInsets.symmetric(horizontal: 6.w),
                               decoration: BoxDecoration(
-                                color: AppColors.error,
+                                color: AppColors.primary,
                                 borderRadius: BorderRadius.circular(99.r),
                               ),
                               child: Center(

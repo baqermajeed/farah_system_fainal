@@ -6,6 +6,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import 'package:farah_sys_final/core/widgets/empty_state_widget.dart';
+import 'package:farah_sys_final/core/widgets/app_skeleton.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/views/doctor/widgets/doctor_back_button.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
@@ -54,12 +55,7 @@ class NotificationsScreen extends GetView<NotificationsScreenController> {
                 child: Obx(() {
                   if (controller.isLoading.value &&
                       controller.notifications.isEmpty) {
-                    return Center(
-                      child: CircularProgressIndicator(
-                        color: _navy,
-                        strokeWidth: 2.5,
-                      ),
-                    );
+                    return const SkeletonNotificationList();
                   }
 
                   if (controller.notifications.isEmpty) {

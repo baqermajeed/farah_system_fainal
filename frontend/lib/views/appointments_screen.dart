@@ -11,7 +11,7 @@ import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/controllers/appointments_screen_controller.dart';
 import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/models/appointment_model.dart';
-import 'package:farah_sys_final/core/widgets/loading_widget.dart';
+import 'package:farah_sys_final/core/widgets/app_skeleton.dart';
 import 'package:farah_sys_final/core/widgets/empty_state_widget.dart';
 import 'package:farah_sys_final/views/doctor/widgets/doctor_back_button.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
@@ -171,7 +171,7 @@ class AppointmentsScreen extends GetView<AppointmentsScreenController> {
 
       if (appointmentController.isLoading.value &&
           filteredAppointments.isEmpty) {
-        return const LoadingWidget(message: 'جاري تحميل المواعيد...');
+        return const SkeletonAppointmentList();
       }
 
       final activeFilter = controller.currentFilter.value;

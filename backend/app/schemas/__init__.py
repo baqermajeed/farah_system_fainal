@@ -124,9 +124,15 @@ class DoctorOut(BaseModel):
     phone: str
     imageUrl: Optional[str] = None
     is_online: bool = False
+    room_number: Optional[int] = None
 
     class Config:
         from_attributes = True
+
+
+class DoctorRoomUpdate(BaseModel):
+    """تعيين رقم غرفة الطبيب (يُسمح بتكرار الرقم بين أكثر من طبيب)."""
+    room_number: Optional[int] = Field(default=None, ge=1, le=999)
 
 # -------------------- Working Hours --------------------
 

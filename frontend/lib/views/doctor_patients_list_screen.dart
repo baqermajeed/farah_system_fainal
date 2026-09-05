@@ -5,7 +5,7 @@ import 'package:farah_sys_final/core/constants/app_colors.dart';
 import 'package:farah_sys_final/core/routes/app_routes.dart';
 import 'package:farah_sys_final/core/theme/app_fonts.dart';
 import 'package:farah_sys_final/core/widgets/empty_state_widget.dart';
-import 'package:farah_sys_final/core/widgets/loading_widget.dart';
+import 'package:farah_sys_final/core/widgets/app_skeleton.dart';
 import 'package:farah_sys_final/views/doctor/widgets/doctor_back_button.dart';
 import 'package:farah_sys_final/controllers/doctor_patients_list_controller.dart';
 import 'package:farah_sys_final/models/patient_model.dart';
@@ -109,7 +109,7 @@ class DoctorPatientsListScreen extends GetView<DoctorPatientsListController> {
           (isLoading || isSearching) && patients.isEmpty;
 
       if (isInitialLoading) {
-        return const LoadingWidget(message: 'جاري تحميل المرضى...');
+        return const SkeletonPatientList();
       }
 
       if (patients.isEmpty) {

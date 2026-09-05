@@ -15,13 +15,12 @@ class PatientLoginController extends GetxController {
       'رقم الهاتف يجب أن يبدأ بـ 07 ويتكون من 11 رقماً';
 
   final RxnString phoneError = RxnString();
-  final RxnString bannerError = RxnString();
+  final phoneShakeTick = 0.obs;
 
   AuthController get auth => Get.find<AuthController>();
 
   void clearFieldErrors() {
     phoneError.value = null;
-    bannerError.value = null;
   }
 
   void onPhoneChanged(String _) => clearFieldErrors();
@@ -39,10 +38,12 @@ class PatientLoginController extends GetxController {
     final phone = phoneController.text.trim();
     if (phone.isEmpty) {
       phoneError.value = emptyPhoneMessage;
+      phoneShakeTick.value++;
       return;
     }
     if (!isPhoneValid(phone)) {
       phoneError.value = invalidPhoneMessage;
+      phoneShakeTick.value++;
       return;
     }
 
@@ -60,8 +61,8 @@ class PatientLoginController extends GetxController {
       return;
     }
 
-    bannerError.value = UserErrorMessages.otpRequestMessage(raw: error);
-    phoneError.value = '';
+    phoneError.value = UserErrorMessages.otpRequestMessage(raw: error);
+    phoneShakeTick.value++;
   }
 
   @override

@@ -8,6 +8,7 @@ import { DoctorDetailsPage } from './pages/DoctorDetailsPage';
 import { DoctorsGalleryPage } from './pages/DoctorsGalleryPage';
 import { CallCenterStaffPage } from './pages/CallCenterStaffPage';
 import { CallCenterStaffDetailsPage } from './pages/CallCenterStaffDetailsPage';
+import { CallCenterWorkspacePage } from './pages/CallCenterWorkspacePage';
 import { useAuth } from './state/AuthContext';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -17,6 +18,28 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/login" replace />;
   }
   return <>{children}</>;
+}
+
+function RoleRoute({
+  children,
+  allowedRoles,
+}: {
+  children: React.ReactNode;
+  allowedRoles: string[];
+}) {
+  const { role } = useAuth();
+  if (!role || !allowedRoles.includes(role)) {
+    return <Navigate to="/" replace />;
+  }
+  return <>{children}</>;
+}
+
+function HomeRedirect() {
+  const { role } = useAuth();
+  if (role === 'call_center') {
+    return <Navigate to="/call-center/workspace" replace />;
+  }
+  return <Navigate to="/overview" replace />;
 }
 
 export default function App() {
@@ -31,15 +54,37 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<Navigate to="/overview" replace />} />
+        <Route index element={<HomeRedirect />} />
         <Route path="overview" element={<OverviewPage />} />
         <Route path="doctors" element={<DoctorsGalleryPage />} />
         <Route path="doctors-comparison" element={<DoctorsComparisonPage />} />
-        <Route path="call-center" element={<CallCenterStaffPage />} />
-        <Route path="call-center/:staffId" element={<CallCenterStaffDetailsPage />} />
+        <Route
+          path="call-center"
+          element={
+            <RoleRoute allowedRoles={['admin']}>
+              <CallCenterStaffPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="call-center/:staffId"
+          element={
+            <RoleRoute allowedRoles={['admin']}>
+              <CallCenterStaffDetailsPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="call-center/workspace"
+          element={
+            <RoleRoute allowedRoles={['call_center', 'admin']}>
+              <CallCenterWorkspacePage />
+            </RoleRoute>
+          }
+        />
         <Route path="doctor-details" element={<DoctorDetailsPage />} />
       </Route>
-      <Route path="*" element={<Navigate to="/overview" replace />} />
+      <Route path="*" element={<HomeRedirect />} />
     </Routes>
   );
 }

@@ -8,6 +8,7 @@ import 'package:farah_sys_final/controllers/auth_controller.dart';
 import 'package:farah_sys_final/controllers/reception_home_controller.dart';
 import 'package:farah_sys_final/models/patient_model.dart';
 import 'package:farah_sys_final/core/utils/image_utils.dart';
+import 'package:farah_sys_final/core/widgets/app_skeleton.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 class ReceptionHomeScreen extends GetView<ReceptionHomeController> {
@@ -277,13 +278,9 @@ class ReceptionHomeScreen extends GetView<ReceptionHomeController> {
                       final allPatients = controller.filteredPatients;
 
                       if (controller.isLoading.value) {
-                        return Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(32.h),
-                            child: CircularProgressIndicator(
-                              color: AppColors.primary,
-                            ),
-                          ),
+                        return const SkeletonPatientList(
+                          itemCount: 6,
+                          shrinkWrap: true,
                         );
                       }
 

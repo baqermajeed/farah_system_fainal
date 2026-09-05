@@ -20,6 +20,8 @@ class AppointmentController extends GetxController {
   /// مواعيد مريض واحد في شاشة التفاصيل — منفصلة حتى لا تُستبدل قائمة الطبيب.
   final RxList<AppointmentModel> patientAppointments = <AppointmentModel>[].obs;
   final RxBool isLoading = false.obs;
+  /// يصبح true بعد أول جلب لمواعيد المريض (حتى لو لم توجد مواعيد).
+  final RxBool homeAppointmentsReady = false.obs;
   final RxInt appointmentsTotalCount = 0.obs;
 
   // Pagination — نفس frontend_desktop
@@ -122,9 +124,18 @@ class AppointmentController extends GetxController {
       print('❌ [AppointmentController] Stack trace: $stackTrace');
       await NetworkUtils.showError(e, fallbackMessage: 'حدث خطأ أثناء تحميل المواعيد');
     } finally {
+      homeAppointmentsReady.value = true;
       isLoading.value = false;
       print('📅 [AppointmentController] loadPatientAppointments finished');
     }
+  }
+
+  void clearPatientHomeAppointments() {
+    appointments.clear();
+    primaryAppointments.clear();
+    secondaryAppointments.clear();
+    patientAppointments.clear();
+    homeAppointmentsReady.value = false;
   }
 
   // جلب مواعيد الطبيب أو جميع المواعيد للاستقبال — تصفية من السيرفر + pagination

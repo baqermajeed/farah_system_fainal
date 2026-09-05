@@ -425,6 +425,7 @@ async def get_doctor_profile_stats(
             "phone": user.phone if user else None,
             "imageUrl": user.imageUrl if user else None,
             "is_manager": doctor.is_manager,
+            "room_number": getattr(doctor, "room_number", None),
         },
         "counts": {
             "total_patients": total_patients,
@@ -658,6 +659,7 @@ async def get_doctor_details_cards_stats(
             "phone": user.phone if user else None,
             "imageUrl": user.imageUrl if user else None,
             "is_manager": doctor.is_manager,
+            "room_number": getattr(doctor, "room_number", None),
         },
         "counts": {
             "total_patients": total_patients,
@@ -1745,6 +1747,7 @@ async def get_doctor_patients_breakdown_stats(
             "phone": doctor_user.phone if doctor_user else None,
             "imageUrl": doctor_user.imageUrl if doctor_user else None,
             "is_manager": doctor.is_manager,
+            "room_number": getattr(doctor, "room_number", None),
         },
         "group": group,
         "range": {"from": date_from, "to": date_to},
@@ -1914,6 +1917,7 @@ async def get_doctor_appointments_breakdown_stats(
             "phone": doctor_user.phone if doctor_user else None,
             "imageUrl": doctor_user.imageUrl if doctor_user else None,
             "is_manager": doctor.is_manager,
+            "room_number": getattr(doctor, "room_number", None),
         },
         "group": group,
         "range": {"from": date_from, "to": date_to},
@@ -2031,6 +2035,7 @@ async def get_doctors_comparison_stats(
                 "phone": user.phone if user else None,
                 "imageUrl": user.imageUrl if user else None,
                 "is_manager": doctor.is_manager,
+                "room_number": getattr(doctor, "room_number", None),
                 "patients": {
                     "total_current": total_patients,
                     "active_current": active_now,

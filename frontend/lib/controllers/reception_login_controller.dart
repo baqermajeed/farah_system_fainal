@@ -7,20 +7,41 @@ import 'auth_controller.dart';
 class ReceptionLoginController extends GetxController {
   final usernameController = TextEditingController();
   final passwordController = TextEditingController();
+  static const Color actionNavy = Color(0xFF032252);
+
+  final RxnString usernameError = RxnString();
+  final RxnString passwordError = RxnString();
+  final usernameShakeTick = 0.obs;
+  final passwordShakeTick = 0.obs;
 
   AuthController get auth => Get.find<AuthController>();
+
+  void clearFieldErrors() {
+    usernameError.value = null;
+    passwordError.value = null;
+  }
+
+  void onUsernameChanged(String _) => clearFieldErrors();
+
+  void onPasswordChanged(String _) => clearFieldErrors();
 
   Future<void> submit() async {
     if (auth.isLoading.value) return;
 
-    if (usernameController.text.isEmpty || passwordController.text.isEmpty) {
-      Get.snackbar(
-        'خطأ',
-        'يرجى إدخال اسم المستخدم وكلمة المرور',
-        snackPosition: SnackPosition.TOP,
-      );
-      return;
+    clearFieldErrors();
+
+    var hasEmpty = false;
+    if (usernameController.text.trim().isEmpty) {
+      usernameError.value = 'يرجى إدخال اسم المستخدم';
+      usernameShakeTick.value++;
+      hasEmpty = true;
     }
+    if (passwordController.text.isEmpty) {
+      passwordError.value = 'يرجى إدخال كلمة المرور';
+      passwordShakeTick.value++;
+      hasEmpty = true;
+    }
+    if (hasEmpty) return;
 
     await auth.loginDoctor(
       username: usernameController.text.trim(),

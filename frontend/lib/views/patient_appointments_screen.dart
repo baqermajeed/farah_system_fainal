@@ -9,7 +9,7 @@ import 'package:farah_sys_final/core/constants/app_strings.dart';
 import 'package:farah_sys_final/controllers/appointment_controller.dart';
 import 'package:farah_sys_final/controllers/patient_controller.dart';
 import 'package:farah_sys_final/models/appointment_model.dart';
-import 'package:farah_sys_final/core/widgets/loading_widget.dart';
+import 'package:farah_sys_final/core/widgets/app_skeleton.dart';
 import 'package:farah_sys_final/core/widgets/empty_state_widget.dart';
 import 'package:farah_sys_final/core/widgets/back_button_widget.dart';
 import 'package:farah_sys_final/widgets/appointment_list_card.dart';
@@ -49,7 +49,7 @@ class PatientAppointmentsScreen extends StatelessWidget {
                 child: Obx(() {
                   if (appointmentController.isLoading.value &&
                       appointmentController.appointments.isEmpty) {
-                    return const LoadingWidget();
+                    return const SkeletonAppointmentList();
                   }
 
                   final appointments =
