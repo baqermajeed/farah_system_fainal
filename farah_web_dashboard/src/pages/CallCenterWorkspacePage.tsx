@@ -549,6 +549,9 @@ export function CallCenterWorkspacePage() {
             title="ضمن فترة محددة"
             value={stats.rangeCount}
             subtitle={rangeLabel}
+            actionIcon={<CalendarOutlined />}
+            actionTooltip="اختيار فترة"
+            onActionClick={() => setAcceptedRangeModalOpen(true)}
           />
         </Col>
         <Col xs={24} md={12} xl={6}>
@@ -556,9 +559,6 @@ export function CallCenterWorkspacePage() {
             title="المواعيد المقبولة"
             value={acceptedValue}
             subtitle={acceptedSubtitle}
-            actionIcon={<CalendarOutlined />}
-            actionTooltip="اختيار فترة"
-            onActionClick={() => setAcceptedRangeModalOpen(true)}
           />
         </Col>
       </Row>
