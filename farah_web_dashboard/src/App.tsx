@@ -77,7 +77,7 @@ export default function App() {
         <Route
           path="call-center/workspace"
           element={
-            <RoleRoute allowedRoles={['call_center', 'admin']}>
+            <RoleRoute allowedRoles={['call_center']}>
               <CallCenterWorkspacePage />
             </RoleRoute>
           }

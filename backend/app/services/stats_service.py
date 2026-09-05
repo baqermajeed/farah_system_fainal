@@ -1792,15 +1792,18 @@ async def get_doctor_appointments_breakdown_stats(
     doctor_user = await User.get(doctor.user_id)
 
     df, dt = parse_dates(date_from, date_to)
+    df_cmp = _clinic_datetime(df) if df is not None else None
+    dt_cmp = _clinic_datetime(dt) if dt is not None else None
     group = group if group in {"day", "month", "year"} else "day"
     status = _normalize_filter_value(status)
     stage_name = _normalize_filter_value(stage_name)
     status_filter = _status_bucket(status) if status else None
+    effective_include_lists = include_lists or bool(stage_name)
 
-    now = datetime.now(timezone.utc)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    now_clinic = _clinic_now()
+    today_start = now_clinic.replace(hour=0, minute=0, second=0, microsecond=0)
     tomorrow_start = today_start + timedelta(days=1)
-    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    month_start = today_start.replace(day=1)
     next_month_start = (
         month_start.replace(year=month_start.year + 1, month=1)
         if month_start.month == 12
@@ -1808,11 +1811,11 @@ async def get_doctor_appointments_breakdown_stats(
     )
 
     scan_start = month_start
-    if df is not None and df < scan_start:
-        scan_start = df
+    if df_cmp is not None and df_cmp < scan_start:
+        scan_start = df_cmp
     scan_end = next_month_start
-    if dt is not None and dt > scan_end:
-        scan_end = dt
+    if dt_cmp is not None and dt_cmp > scan_end:
+        scan_end = dt_cmp
 
     appointments = await Appointment.find(
         Appointment.doctor_id == did,
@@ -1853,15 +1856,15 @@ async def get_doctor_appointments_breakdown_stats(
             month_apps.append(app)
             by_status_month[status_key] += 1
 
-        if (df is None or app_time >= df) and (dt is None or app_time < dt):
+        if (df_cmp is None or app_time >= df_cmp) and (dt_cmp is None or app_time < dt_cmp):
             range_apps.append(app)
             by_status_range[status_key] += 1
             period = format_date_group(app_time, group)
             timeline_counts[period] += 1
 
-    selected_apps = range_apps if (df is not None or dt is not None) else today_apps
+    selected_apps = range_apps if (df_cmp is not None or dt_cmp is not None) else today_apps
     selected_list: list[dict] = []
-    if include_lists and selected_apps:
+    if effective_include_lists and selected_apps:
         selected_patient_ids = list({app.patient_id for app in selected_apps})
         patients_selected = await Patient.find(
             In(Patient.id, selected_patient_ids)

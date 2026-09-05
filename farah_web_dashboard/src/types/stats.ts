@@ -26,6 +26,12 @@ export type CallCenterStaffAppointmentStats = {
     count: number;
   };
   accepted: number;
+  accepted_this_month?: number;
+  accepted_range?: {
+    from: string | null;
+    to: string | null;
+    count: number;
+  };
   not_accepted: number;
 };
 

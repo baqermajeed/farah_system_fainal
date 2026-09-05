@@ -4,7 +4,9 @@
 
 body {
   margin: 0;
-  font-family: Tajawal, 'Segoe UI', sans-serif;
+  font-family: 'Lama Sans', 'IBM Plex Sans Arabic', Tajawal, 'Segoe UI', sans-serif;
+  font-weight: 600;
+  font-style: normal;
   background: radial-gradient(circle at top right, #0b2c45, #090d16 45%, #111827 100%);
   overflow-x: hidden;
 }
@@ -128,19 +130,247 @@ body[data-theme='light'] .glass-card {
 }
 
 .login-page {
+  --login-ink: #e8f4f2;
+  --login-muted: rgba(232, 244, 242, 0.72);
+  --login-accent: #2ec4b6;
+  --login-accent-deep: #0f8f86;
+  --login-panel: rgba(10, 22, 34, 0.72);
+  position: relative;
+  isolation: isolate;
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: 24px 16px;
+  overflow: hidden;
+  background:
+    radial-gradient(1200px 700px at 80% -10%, rgba(46, 196, 182, 0.28), transparent 55%),
+    radial-gradient(900px 600px at 0% 100%, rgba(37, 99, 235, 0.18), transparent 50%),
+    linear-gradient(160deg, #061018 0%, #0b1c2b 45%, #102636 100%);
 }
 
-.login-card {
-  width: 100%;
-  max-width: 470px;
-  border-radius: 16px;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.04)) !important;
-  backdrop-filter: blur(16px);
+.login-atmosphere {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.login-orb {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(48px);
+  opacity: 0.55;
+  animation: login-float 12s ease-in-out infinite;
+}
+
+.login-orb-a {
+  width: 280px;
+  height: 280px;
+  background: #2ec4b6;
+  top: -80px;
+  right: -40px;
+}
+
+.login-orb-b {
+  width: 240px;
+  height: 240px;
+  background: #1d4ed8;
+  bottom: 8%;
+  left: -60px;
+  animation-delay: -4s;
+}
+
+.login-orb-c {
+  width: 180px;
+  height: 180px;
+  background: #0ea5e9;
+  top: 42%;
+  right: 18%;
+  opacity: 0.35;
+  animation-delay: -7s;
+}
+
+.login-sheen {
+  position: absolute;
+  inset: -40% -20%;
+  background: linear-gradient(
+    115deg,
+    transparent 35%,
+    rgba(255, 255, 255, 0.05) 48%,
+    transparent 62%
+  );
+  animation: login-sheen 9s linear infinite;
+}
+
+.login-mesh {
+  position: absolute;
+  inset: 0;
+  opacity: 0.18;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 42px 42px;
+  mask-image: radial-gradient(circle at center, black 20%, transparent 75%);
+}
+
+.login-shell {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 420px);
+  padding: 36px 28px 30px;
+  border-radius: 28px;
+  background:
+    linear-gradient(165deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.04) 40%, rgba(8, 24, 36, 0.55));
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(22px) saturate(1.2);
+  animation: login-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.login-brand-wrap {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.login-brand {
+  margin: 0;
+  color: var(--login-ink);
+  font-family: 'Reem Kufi', 'Lama Sans', 'IBM Plex Sans Arabic', sans-serif;
+  font-weight: 700;
+  font-size: clamp(1.35rem, 4.6vw, 1.75rem);
+  line-height: 1.55;
+  letter-spacing: 0.01em;
+  text-wrap: balance;
+  animation: login-brand-in 0.9s ease both;
+  text-shadow: 0 10px 30px rgba(46, 196, 182, 0.25);
+}
+
+.login-alert {
+  margin-bottom: 16px;
+  border-radius: 14px !important;
+  animation: login-rise 0.35s ease both;
+}
+
+.login-form .ant-form-item-label > label {
+  color: var(--login-muted) !important;
+  font-weight: 600;
+}
+
+.login-form .ant-input-affix-wrapper,
+.login-form .ant-input {
+  border-radius: 14px !important;
+  min-height: 48px;
+  background: rgba(255, 255, 255, 0.94) !important;
+  border-color: rgba(255, 255, 255, 0.35) !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.login-form .ant-input-affix-wrapper:hover,
+.login-form .ant-input-affix-wrapper-focused,
+.login-form .ant-input-affix-wrapper:focus-within {
+  border-color: var(--login-accent) !important;
+  box-shadow: 0 0 0 3px rgba(46, 196, 182, 0.22) !important;
+  transform: translateY(-1px);
+}
+
+.login-form .ant-input-prefix {
+  color: #5f7a86;
+  margin-inline-end: 8px;
+}
+
+.login-submit.ant-btn {
+  margin-top: 8px;
+  height: 50px !important;
+  border: none !important;
+  border-radius: 14px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.02em;
+  background: linear-gradient(135deg, var(--login-accent), var(--login-accent-deep)) !important;
+  box-shadow: 0 14px 30px rgba(15, 143, 134, 0.35);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.login-submit.ant-btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.28) 50%, transparent 70%);
+  transform: translateX(-120%);
+  transition: transform 0.55s ease;
+}
+
+.login-submit.ant-btn:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.05);
+  box-shadow: 0 18px 36px rgba(15, 143, 134, 0.42);
+}
+
+.login-submit.ant-btn:hover::after {
+  transform: translateX(120%);
+}
+
+.login-submit.ant-btn:active {
+  transform: translateY(0);
+}
+
+@keyframes login-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(18px, -22px, 0) scale(1.06);
+  }
+}
+
+@keyframes login-sheen {
+  from {
+    transform: translateX(-18%) rotate(8deg);
+  }
+  to {
+    transform: translateX(18%) rotate(8deg);
+  }
+}
+
+@keyframes login-rise {
+  from {
+    opacity: 0;
+    transform: translateY(22px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes login-brand-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+    letter-spacing: 0.08em;
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    letter-spacing: 0.01em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-orb,
+  .login-sheen,
+  .login-shell,
+  .login-brand,
+  .login-submit.ant-btn::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 
 .premium-search .ant-input-affix-wrapper {
@@ -529,12 +759,12 @@ body[data-theme='dark'] .call-center-row-accepted > td {
   }
 
   .login-page {
-    padding: 10px;
+    padding: 16px 12px;
   }
 
-  .login-card {
-    max-width: 100%;
-    border-radius: 14px;
+  .login-shell {
+    padding: 30px 20px 24px;
+    border-radius: 24px;
   }
 
   .doctor-hero-name.ant-typography {
@@ -570,5 +800,604 @@ body[data-theme='dark'] .call-center-row-accepted > td {
 
   .mobile-nav-drawer .ant-drawer-content-wrapper {
     width: min(82vw, 320px) !important;
+  }
+
+
+  /* Call Center Mobile - match mockup 100% */
+  body.call-center-mobile-active {
+    background: #e8f4ff !important;
+    font-family: var(--cc-font-lama, 'Lama Sans', 'IBM Plex Sans Arabic', Tajawal, sans-serif) !important;
+    font-weight: 600 !important;
+    font-style: normal !important;
+  }
+
+  body.call-center-mobile-active,
+  body.call-center-mobile-active *:not(.anticon):not(svg):not(path),
+  body.call-center-mobile-active .ant-typography,
+  body.call-center-mobile-active .ant-btn,
+  body.call-center-mobile-active .ant-input,
+  body.call-center-mobile-active .ant-input-affix-wrapper,
+  body.call-center-mobile-active .ant-select,
+  body.call-center-mobile-active .ant-modal,
+  body.call-center-mobile-active .ant-dropdown,
+  body.call-center-mobile-active .ant-picker,
+  body.call-center-mobile-active .ant-tag,
+  body.call-center-mobile-active .ant-form,
+  body.call-center-mobile-active .ant-menu {
+    font-family: var(--cc-font-lama, 'Lama Sans', 'IBM Plex Sans Arabic', Tajawal, sans-serif) !important;
+    font-weight: 600 !important;
+    font-style: normal !important;
+  }
+
+  body.call-center-mobile-active .cc-app-header-hello,
+  body.call-center-mobile-active .cc-booking-name,
+  body.call-center-mobile-active .cc-mobile-add-btn.ant-btn,
+  body.call-center-mobile-active .cc-chip,
+  body.call-center-mobile-active .cc-stat-figma-value,
+  body.call-center-mobile-active .cc-stat-figma-label,
+  body.call-center-mobile-active .cc-stat-figma-sub,
+  body.call-center-mobile-active .cc-booking-clinic,
+  body.call-center-mobile-active .cc-booking-phone,
+  body.call-center-mobile-active .cc-booking-time,
+  body.call-center-mobile-active .cc-booking-date,
+  body.call-center-mobile-active .cc-app-header-sub,
+  body.call-center-mobile-active em,
+  body.call-center-mobile-active i {
+    font-weight: 600 !important;
+    font-style: normal !important;
+  }
+
+
+  body.call-center-mobile-active .dashboard-content {
+    padding: 0 !important;
+    background: #e8f4ff;
+  }
+
+  body.call-center-mobile-active .top-header,
+  body.call-center-mobile-active .cc-app-top-header {
+    background: #e8f4ff !important;
+    border-bottom: none !important;
+    backdrop-filter: none;
+    min-height: 72px !important;
+    height: auto !important;
+    padding: 10px 14px !important;
+    line-height: 1.2;
+  }
+
+  body.call-center-mobile-active .top-header-inner {
+    justify-content: flex-start;
+  }
+
+  body.call-center-mobile-active .mobile-header-title {
+    display: none;
+  }
+
+  .cc-app-header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .cc-app-header-user {
+    display: flex;
+    align-items: center;
+    gap: 10px; /* w 10 between avatar and text */
+    min-width: 0;
+    flex: 1;
+  }
+
+  .cc-app-header-avatar.ant-avatar {
+    flex: 0 0 48px;
+    background: linear-gradient(145deg, #7dd3fc, #3b82f6) !important;
+    border: 2px solid #60a5fa;
+    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.25), 0 6px 14px rgba(59, 130, 246, 0.2);
+  }
+
+  .cc-app-header-copy {
+    min-width: 0;
+    text-align: right;
+  }
+
+  .cc-app-header-hello {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1e3a5f;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+
+  .cc-app-header-sub {
+    margin-top: 3px;
+    font-size: 11px;
+    color: #5b8def;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .cc-app-header-menu.ant-btn {
+    flex: 0 0 auto;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    color: #1e3a5f !important;
+    font-size: 22px !important;
+    width: 40px;
+    height: 40px;
+    padding: 0 !important;
+  }
+
+  body.call-center-mobile-active .top-header .ant-btn {
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    color: #1e3a5f;
+  }
+
+  .cc-mobile-shell {
+    gap: 0;
+  }
+
+  .cc-mobile {
+    padding: 8px 14px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .cc-mobile-online-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #22c55e;
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2);
+    display: inline-block;
+    flex-shrink: 0;
+  }
+
+  .cc-mobile-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .cc-mobile-stats-primary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Figma: W116 H60 Radius15 Fill #FFFFFF | Lama Sans SemiBold 12 | #505558 */
+  .cc-stat-card-figma {
+    width: 116px;
+    height: 60px;
+    max-width: calc((100% - 16px) / 3);
+    flex: 1 1 116px;
+    border: none;
+    border-radius: 15px;
+    background: #ffffff;
+    opacity: 1;
+    box-shadow: none;
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px;
+    font-family: var(--cc-font-lama, 'Lama Sans', Tajawal, sans-serif);
+    cursor: pointer;
+  }
+
+  .cc-stat-icon-wrap {
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
+    min-height: 24px;
+    flex: 0 0 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    line-height: 1;
+  }
+
+  .cc-stat-icon-wrap .anticon {
+    font-size: 24px;
+  }
+
+  .cc-stat-icon-total {
+    color: #2563eb;
+  }
+
+  .cc-stat-icon-month {
+    color: #16a34a;
+  }
+
+  .cc-stat-icon-today {
+    color: #f59e0b;
+  }
+
+  .cc-stat-icon-range {
+    color: #8b5cf6;
+  }
+
+  .cc-stat-icon-accepted {
+    color: #06b6d4;
+  }
+
+  .cc-stat-figma-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    min-width: 0;
+    flex: 1;
+    text-align: right;
+  }
+
+  .cc-stat-figma-value {
+    font-family: var(--cc-font-lama, 'Lama Sans', Tajawal, sans-serif);
+    font-weight: 600;
+    font-size: 14px;
+    line-height: 1.1;
+    letter-spacing: 0;
+    color: #505558;
+  }
+
+  .cc-stat-figma-label {
+    font-family: var(--cc-font-lama, 'Lama Sans', Tajawal, sans-serif);
+    font-weight: 600;
+    font-size: 11px;
+    line-height: 1.2;
+    letter-spacing: 0%;
+    color: #505558;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+
+  .cc-mobile-stats-secondary {
+    display: flex;
+    justify-content: space-between;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  /* Figma: W183 H57 Radius15 Fill #FFFFFF | Lama Sans SemiBold 12 | #505558 */
+  .cc-stat-card-figma-wide {
+    width: 183px;
+    height: 57px;
+    max-width: calc((100% - 8px) / 2);
+    flex: 1 1 183px;
+    border: none;
+    border-radius: 15px;
+    background: #ffffff;
+    opacity: 1;
+    box-shadow: none;
+    padding: 6px 10px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    font-family: var(--cc-font-lama, 'Lama Sans', Tajawal, sans-serif);
+    cursor: pointer;
+    overflow: hidden;
+  }
+
+  .cc-stat-figma-sub {
+    font-family: var(--cc-font-lama, 'Lama Sans', Tajawal, sans-serif);
+    font-weight: 600;
+    font-size: 9px;
+    line-height: 1.1;
+    letter-spacing: 0;
+    color: #505558;
+    opacity: 0.75;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+
+  .cc-stat-card {
+    border: none;
+    background: #ffffff;
+    border-radius: 15px;
+    padding: 12px 10px 14px;
+    text-align: center;
+    box-shadow: none;
+    position: relative;
+    min-height: 98px;
+    width: 100%;
+  }
+
+  .cc-stat-card.cc-stat-wide {
+    min-height: 110px;
+  }
+
+  .cc-stat-icon {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    color: #3b82f6;
+    font-size: 15px;
+  }
+
+  .cc-stat-value {
+    margin-top: 16px;
+    font-size: 24px;
+    font-weight: 600;
+    color: #2563eb;
+    line-height: 1.1;
+  }
+
+  .cc-stat-label {
+    margin-top: 6px;
+    font-size: 11px;
+    color: #64748b;
+    font-weight: 600;
+  }
+
+  .cc-stat-sub {
+    margin-top: 4px;
+    font-size: 10px;
+    color: #94a3b8;
+  }
+
+  .cc-mobile-add-btn.ant-btn {
+    height: 48px !important;
+    border-radius: 16px !important;
+    font-size: 16px !important;
+    font-weight: 600 !important;
+    background: #3b9de0 !important;
+    border: none !important;
+    box-shadow: 0 10px 22px rgba(59, 157, 224, 0.35);
+  }
+
+  .cc-mobile-search-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .cc-mobile-search.ant-input-affix-wrapper {
+    flex: 1;
+    border-radius: 16px !important;
+    border: none !important;
+    background: #ffffff !important;
+    box-shadow: 0 6px 16px rgba(96, 165, 250, 0.12);
+    padding: 10px 14px !important;
+  }
+
+  .cc-mobile-search .ant-input {
+    background: transparent !important;
+  }
+
+  .cc-mobile-filter-btn.ant-btn {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px !important;
+    background: #3b9de0 !important;
+    border: none !important;
+    color: #fff !important;
+    box-shadow: 0 8px 16px rgba(59, 157, 224, 0.3);
+  }
+
+  .cc-mobile-chips {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .cc-mobile-chips::-webkit-scrollbar {
+    display: none;
+  }
+
+  .cc-chip {
+    border: none;
+    border-radius: 999px;
+    height: 34px;
+    min-height: 34px;
+    padding: 0 10px;
+    font-size: 11px;
+    font-weight: 600;
+    background: #eef2f7;
+    color: #334155;
+    flex: 1 1 0;
+    white-space: nowrap;
+    line-height: 1;
+  }
+
+  .cc-chip.active {
+    background: #3b9de0;
+    color: #fff;
+    box-shadow: 0 6px 14px rgba(59, 157, 224, 0.3);
+  }
+
+  .cc-mobile-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .cc-mobile-empty {
+    text-align: center;
+    padding: 40px 0;
+    color: #64748b;
+    font-weight: 600;
+  }
+
+  .cc-booking-card {
+    display: grid;
+    grid-template-columns: 52px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 12px;
+    box-shadow: 0 8px 18px rgba(96, 165, 250, 0.12);
+  }
+
+  .cc-booking-card.accepted {
+    background: #f3fbf6;
+  }
+
+  .cc-call-btn {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: #dcfce7;
+    color: #16a34a;
+    display: grid;
+    place-items: center;
+    font-size: 20px;
+    text-decoration: none;
+  }
+
+  .cc-booking-main {
+    min-width: 0;
+    text-align: right;
+  }
+
+  .cc-booking-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: #2563eb;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .cc-booking-clinic {
+    margin-top: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .cc-booking-phone {
+    margin-top: 2px;
+    color: #94a3b8;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .cc-booking-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    min-width: 78px;
+  }
+
+  .cc-more-btn {
+    border: none;
+    background: transparent;
+    color: #f59e0b;
+    font-size: 18px;
+    padding: 0;
+    line-height: 1;
+  }
+
+  .cc-booking-time,
+  .cc-booking-date {
+    color: #475569;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .cc-infinite-sentinel {
+    min-height: 28px;
+    display: grid;
+    place-items: center;
+    padding: 12px 0 20px;
+  }
+
+  .cc-load-more-wrap {
+    padding-top: 4px;
+  }
+
+  .cc-load-more-wrap .ant-btn {
+    border-radius: 14px;
+    height: 44px;
+    font-weight: 600;
+  }
+
+  .cc-mobile-shell .ant-modal {
+    max-width: calc(100vw - 20px) !important;
+  }
+
+  .adaptive-datetime-mobile,
+  .adaptive-date-range-mobile {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    width: 100%;
+  }
+
+  .adaptive-date-input {
+    width: 100%;
+    height: 44px;
+    border: 1px solid #d9d9d9;
+    border-radius: 12px;
+    padding: 0 12px;
+    background: #fff;
+    color: #505558;
+    font-size: 15px;
+    outline: none;
+    box-sizing: border-box;
+  }
+
+  .adaptive-date-input:focus {
+    border-color: #4db6ac;
+    box-shadow: 0 0 0 2px rgba(77, 182, 172, 0.15);
+  }
+
+  .adaptive-date-input:disabled {
+    background: #f5f5f5;
+    color: #999;
+  }
+
+  .adaptive-datetime-mobile .adaptive-time-select.ant-select {
+    width: 100%;
+  }
+
+  .adaptive-datetime-mobile .ant-select-selector {
+    min-height: 44px !important;
+    border-radius: 12px !important;
+    align-items: center;
+  }
+
+  .cc-mobile-shell .ant-picker-dropdown,
+  .cc-mobile-shell .ant-picker-panel-container,
+  .cc-mobile-shell .ant-picker-range-wrapper {
+    max-width: calc(100vw - 20px);
+  }
+
+  @media (max-width: 380px) {
+    .cc-chip {
+      font-size: 10px;
+      padding: 0 8px;
+      height: 32px;
+      min-height: 32px;
+    }
   }
 }

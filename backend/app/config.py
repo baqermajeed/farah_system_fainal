@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     OTPIQ_BASE_URL: str | None = None
     OTP_TTL_SECONDS: int = 120
 
+    # Google Play review demo account (patient OTP login)
+    PLAY_REVIEW_DEMO_PHONE: str = "07746818591"
+    PLAY_REVIEW_DEMO_OTP: str = "123456"
+
     # Firebase Admin SDK service account
     FIREBASE_CREDENTIALS_FILE: str | None = None
 

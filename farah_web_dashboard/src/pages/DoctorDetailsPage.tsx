@@ -116,13 +116,14 @@ export function DoctorDetailsPage() {
       }
       try {
         setImplantLoading(true);
-        const date_from = implantDay.startOf('day').toISOString();
-        const date_to = implantDay.endOf('day').toISOString();
+        const date_from = implantDay.format('YYYY-MM-DD');
+        const date_to = implantDay.add(1, 'day').format('YYYY-MM-DD');
         const response = await fetchDoctorAppointmentsBreakdown(doctorId, {
           group: 'day',
           date_from,
           date_to,
           stage_name: implantStage,
+          include_lists: true,
         });
         if (isCancelled) return;
         setImplantAppointments(response);
@@ -159,6 +160,11 @@ export function DoctorDetailsPage() {
   };
 
   const implantRows = implantAppointments?.selected_list ?? implantAppointments?.today_list ?? [];
+
+  const implantCount =
+    implantAppointments?.summary.selected_count ??
+    implantAppointments?.summary.range_count ??
+    implantRows.length;
 
   const implantColumns = useMemo(
     () => [
@@ -455,7 +461,11 @@ export function DoctorDetailsPage() {
       ) : null}
 
       {isManagerDoctor ? (
-        <Card className="glass-card" style={{ marginTop: 12 }} title="مواعيد مرضى الزراعة حسب المرحلة">
+        <Card
+          className="glass-card"
+          style={{ marginTop: 12 }}
+          title={`مواعيد مرضى الزراعة حسب المرحلة (${implantCount})`}
+        >
           <Row gutter={[12, 12]} style={{ marginBottom: 12 }}>
             <Col xs={24} md={8}>
               <DatePicker
@@ -473,6 +483,10 @@ export function DoctorDetailsPage() {
               />
             </Col>
           </Row>
+
+          <Tag color="cyan" style={{ marginBottom: 12 }}>
+            عدد المواعيد: {implantCount}
+          </Tag>
 
           <Table
             rowKey="id"

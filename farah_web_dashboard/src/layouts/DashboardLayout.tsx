@@ -7,9 +7,10 @@ import {
   SunOutlined,
   TeamOutlined,
   MenuOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
-import { Button, Drawer, Grid, Layout, Menu, Space, Typography } from 'antd';
-import { useEffect, useState } from 'react';
+import { Avatar, Button, Drawer, Grid, Layout, Menu, Space, Typography } from 'antd';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useThemeMode } from '../state/ThemeContext';
 import { useAuth } from '../state/AuthContext';
@@ -17,15 +18,34 @@ import { useAuth } from '../state/AuthContext';
 const { Header, Sider, Content } = Layout;
 const { useBreakpoint } = Grid;
 
+function readStaffDisplayName(accessToken: string | null) {
+  try {
+    if (!accessToken) return 'موظف الكول سنتر';
+    const payload = JSON.parse(atob(accessToken.split('.')[1] ?? ''));
+    return (
+      payload.name ||
+      payload.username ||
+      payload.preferred_username ||
+      payload.sub ||
+      'موظف الكول سنتر'
+    );
+  } catch {
+    return 'موظف الكول سنتر';
+  }
+}
+
 export function DashboardLayout() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { mode, toggleTheme } = useThemeMode();
-  const { logout, role } = useAuth();
+  const { logout, role, accessToken } = useAuth();
   const screens = useBreakpoint();
   const isMobile = !screens.md;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const selectedMenuKey = pathname.startsWith('/call-center/') && pathname !== '/call-center/workspace' ? '/call-center' : pathname;
+  const selectedMenuKey =
+    pathname.startsWith('/call-center/') && pathname !== '/call-center/workspace' ? '/call-center' : pathname;
+  const isCallCenterMobileWorkspace = isMobile && pathname.startsWith('/call-center/workspace');
+  const staffDisplayName = useMemo(() => readStaffDisplayName(accessToken), [accessToken]);
 
   useEffect(() => {
     if (!isMobile) {
@@ -62,11 +82,6 @@ export function DashboardLayout() {
             key: '/call-center',
             icon: <CustomerServiceOutlined />,
             label: <Link to="/call-center">موظفي الكول سنتر</Link>,
-          },
-          {
-            key: '/call-center/workspace',
-            icon: <CustomerServiceOutlined />,
-            label: <Link to="/call-center/workspace">منصة الكول سنتر</Link>,
           },
         ];
 
@@ -135,31 +150,54 @@ export function DashboardLayout() {
       )}
 
       <Layout>
-        <Header className="top-header">
-          <div className="top-header-inner">
-            {isMobile && (
+        <Header className={`top-header ${isCallCenterMobileWorkspace ? 'cc-app-top-header' : ''}`}>
+          {isCallCenterMobileWorkspace ? (
+            <div className="cc-app-header">
+              <div className="cc-app-header-user">
+                <Avatar size={48} className="cc-app-header-avatar" icon={<UserOutlined />} />
+                <div className="cc-app-header-copy">
+                  <div className="cc-app-header-hello">
+                    <span className="cc-mobile-online-dot" />
+                    <span>مرحباً</span>
+                    <span className="cc-app-header-name">{staffDisplayName}</span>
+                  </div>
+                  <div className="cc-app-header-sub">أهلاً بك في لوحة تحكم مركز الاتصالات</div>
+                </div>
+              </div>
               <Button
+                className="cc-app-header-menu"
+                type="text"
                 icon={<MenuOutlined />}
                 onClick={() => setMobileMenuOpen(true)}
                 aria-label="فتح القائمة"
               />
-            )}
-            {isMobile ? (
-              <Typography.Text className="mobile-header-title">Farah CRM</Typography.Text>
-            ) : (
-              <Space wrap>
+            </div>
+          ) : (
+            <div className="top-header-inner">
+              {isMobile && (
                 <Button
-                  icon={mode === 'dark' ? <SunOutlined /> : <MoonOutlined />}
-                  onClick={toggleTheme}
-                >
-                  {mode === 'dark' ? 'الوضع الفاتح' : 'الوضع الداكن'}
-                </Button>
-                <Button danger icon={<LogoutOutlined />} onClick={handleLogout}>
-                  تسجيل الخروج
-                </Button>
-              </Space>
-            )}
-          </div>
+                  icon={<MenuOutlined />}
+                  onClick={() => setMobileMenuOpen(true)}
+                  aria-label="فتح القائمة"
+                />
+              )}
+              {isMobile ? (
+                <Typography.Text className="mobile-header-title">Farah CRM</Typography.Text>
+              ) : (
+                <Space wrap>
+                  <Button
+                    icon={mode === 'dark' ? <SunOutlined /> : <MoonOutlined />}
+                    onClick={toggleTheme}
+                  >
+                    {mode === 'dark' ? 'الوضع الفاتح' : 'الوضع الداكن'}
+                  </Button>
+                  <Button danger icon={<LogoutOutlined />} onClick={handleLogout}>
+                    تسجيل الخروج
+                  </Button>
+                </Space>
+              )}
+            </div>
+          )}
         </Header>
 
         <Content className="dashboard-content">

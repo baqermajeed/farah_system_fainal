@@ -77,11 +77,99 @@ export async function fetchStaffUsers(params?: { role?: string; skip?: number; l
   return data;
 }
 
-export async function fetchCallCenterStaffStats(params: { user_id: string }) {
+export async function fetchCallCenterStaffStats(params: {
+  user_id?: string;
+  date_from?: string;
+  date_to?: string;
+  accepted_date_from?: string;
+  accepted_date_to?: string;
+}) {
   const { data } = await http.get<CallCenterStaffAppointmentStats>('/call-center/appointments/stats', {
     params,
   });
   return data;
+}
+
+async function fetchCallCenterStatsByBase(
+  baseUrl: string,
+  params?: {
+    user_id?: string;
+    date_from?: string;
+    date_to?: string;
+    accepted_date_from?: string;
+    accepted_date_to?: string;
+  },
+): Promise<CallCenterStaffAppointmentStats> {
+  const response = await axios.get<CallCenterStaffAppointmentStats>(`${baseUrl}/call-center/appointments/stats`, {
+    params,
+    headers: buildAuthHeader(),
+  });
+  return (
+    response.data ?? {
+      user_id: null,
+      total: 0,
+      today: 0,
+      this_month: 0,
+      range: { from: null, to: null, count: 0 },
+      accepted: 0,
+      accepted_this_month: 0,
+      accepted_range: { from: null, to: null, count: 0 },
+      not_accepted: 0,
+    }
+  );
+}
+
+export async function fetchCallCenterMyStatsFromBoth(params?: {
+  date_from?: string;
+  date_to?: string;
+  accepted_date_from?: string;
+  accepted_date_to?: string;
+}) {
+  const empty: CallCenterStaffAppointmentStats = {
+    user_id: null,
+    total: 0,
+    today: 0,
+    this_month: 0,
+    range: { from: params?.date_from ?? null, to: params?.date_to ?? null, count: 0 },
+    accepted: 0,
+    accepted_this_month: 0,
+    accepted_range: {
+      from: params?.accepted_date_from ?? null,
+      to: params?.accepted_date_to ?? null,
+      count: 0,
+    },
+    not_accepted: 0,
+  };
+
+  const [najaf, kendy] = await Promise.allSettled([
+    fetchCallCenterStatsByBase(appConfig.apiBaseUrl, params),
+    fetchCallCenterStatsByBase(appConfig.apiKendyBaseUrl, params),
+  ]);
+
+  const parts = [
+    najaf.status === 'fulfilled' ? najaf.value : empty,
+    kendy.status === 'fulfilled' ? kendy.value : empty,
+  ];
+
+  return {
+    user_id: parts.find((item) => item.user_id)?.user_id ?? null,
+    total: parts.reduce((sum, item) => sum + (item.total ?? 0), 0),
+    today: parts.reduce((sum, item) => sum + (item.today ?? 0), 0),
+    this_month: parts.reduce((sum, item) => sum + (item.this_month ?? 0), 0),
+    range: {
+      from: params?.date_from ?? null,
+      to: params?.date_to ?? null,
+      count: parts.reduce((sum, item) => sum + (item.range?.count ?? 0), 0),
+    },
+    accepted: parts.reduce((sum, item) => sum + (item.accepted ?? 0), 0),
+    accepted_this_month: parts.reduce((sum, item) => sum + (item.accepted_this_month ?? 0), 0),
+    accepted_range: {
+      from: params?.accepted_date_from ?? null,
+      to: params?.accepted_date_to ?? null,
+      count: parts.reduce((sum, item) => sum + (item.accepted_range?.count ?? 0), 0),
+    },
+    not_accepted: parts.reduce((sum, item) => sum + (item.not_accepted ?? 0), 0),
+  } satisfies CallCenterStaffAppointmentStats;
 }
 
 export async function fetchCallCenterAppointments(params?: {
@@ -206,6 +294,24 @@ export async function fetchCallCenterAppointmentsFromBoth(params: { created_by_u
   return merged;
 }
 
+async function fetchCallCenterAppointmentsPageByBase(
+  baseUrl: string,
+  params: {
+    search?: string;
+    date_from?: string;
+    date_to?: string;
+    skip?: number;
+    limit?: number;
+  },
+): Promise<CallCenterAppointmentListItem[]> {
+  const branch = resolveBranch(baseUrl);
+  const response = await axios.get<CallCenterAppointmentListItem[]>(`${baseUrl}/call-center/appointments`, {
+    params,
+    headers: buildAuthHeader(),
+  });
+  return (response.data ?? []).map((item) => ({ ...item, branch }));
+}
+
 export async function fetchCallCenterMyAppointmentsFromBoth(params?: {
   search?: string;
   date_from?: string;
@@ -232,6 +338,50 @@ export async function fetchCallCenterMyAppointmentsFromBoth(params?: {
   if (kendy.status === 'fulfilled') pushUnique(kendy.value);
 
   return merged.sort((a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime());
+}
+
+export async function fetchCallCenterMyAppointmentsPageFromBoth(params?: {
+  search?: string;
+  date_from?: string;
+  date_to?: string;
+  najaf_skip?: number;
+  kendy_skip?: number;
+  per_branch_limit?: number;
+}) {
+  const najafSkip = Math.max(0, params?.najaf_skip ?? 0);
+  const kendySkip = Math.max(0, params?.kendy_skip ?? 0);
+  const perBranchLimit = Math.max(1, params?.per_branch_limit ?? 10);
+
+  const [najaf, kendy] = await Promise.allSettled([
+    fetchCallCenterAppointmentsPageByBase(appConfig.apiBaseUrl, {
+      search: params?.search,
+      date_from: params?.date_from,
+      date_to: params?.date_to,
+      skip: najafSkip,
+      limit: perBranchLimit,
+    }),
+    fetchCallCenterAppointmentsPageByBase(appConfig.apiKendyBaseUrl, {
+      search: params?.search,
+      date_from: params?.date_from,
+      date_to: params?.date_to,
+      skip: kendySkip,
+      limit: perBranchLimit,
+    }),
+  ]);
+
+  const najafItems = najaf.status === 'fulfilled' ? najaf.value : [];
+  const kendyItems = kendy.status === 'fulfilled' ? kendy.value : [];
+
+  const items = [...najafItems, ...kendyItems].sort(
+    (a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime(),
+  );
+
+  return {
+    items,
+    next_najaf_skip: najafSkip + najafItems.length,
+    next_kendy_skip: kendySkip + kendyItems.length,
+    has_more: najafItems.length === perBranchLimit || kendyItems.length === perBranchLimit,
+  };
 }
 
 export async function createCallCenterAppointment(
@@ -410,7 +560,7 @@ export async function fetchDoctorPatientsBreakdown(
 
 export async function fetchDoctorAppointmentsBreakdown(
   doctorId: string,
-  params: Record<string, string | undefined>,
+  params: Record<string, string | boolean | undefined>,
 ) {
   const { data } = await http.get<DoctorAppointmentsBreakdownResponse>(
     `/stats/doctors/${doctorId}/appointments-breakdown`,

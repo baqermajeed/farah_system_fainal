@@ -13,6 +13,15 @@ _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 _MAX_ATTEMPTS = 5
 
 
+def is_play_review_demo_phone(phone: str) -> bool:
+    """Check if phone matches the Google Play review demo account."""
+    settings = get_settings()
+    demo_phone = (settings.PLAY_REVIEW_DEMO_PHONE or "").strip()
+    if not demo_phone:
+        return False
+    return normalize_iraqi_phone(phone) == normalize_iraqi_phone(demo_phone)
+
+
 def normalize_iraqi_phone(phone: str) -> str:
     """
     Normalize Iraqi phone numbers:
@@ -77,6 +86,13 @@ async def verify_otp_or_raise(*, phone: str, code: str) -> OTPRequest:
     - increments attempts on failure
     - marks verified_at on success
     """
+    if is_play_review_demo_phone(phone):
+        settings = get_settings()
+        if code.strip() != settings.PLAY_REVIEW_DEMO_OTP:
+            raise HTTPException(status_code=400, detail="Invalid or expired code")
+        normalized = normalize_iraqi_phone(phone)
+        return OTPRequest(phone=normalized, code_hash="", expires_at=datetime.now(timezone.utc))
+
     normalized = normalize_iraqi_phone(phone)
     if not normalized:
         raise HTTPException(status_code=400, detail="Invalid phone")

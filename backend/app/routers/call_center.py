@@ -219,10 +219,12 @@ async def list_call_center_appointments(
 async def call_center_appointments_stats(
     date_from: Optional[str] = Query(None, description="فلترة حسب تاريخ الإنشاء من (ISO)"),
     date_to: Optional[str] = Query(None, description="فلترة حسب تاريخ الإنشاء إلى (ISO)"),
+    accepted_date_from: Optional[str] = Query(None, description="فلترة المقبول حسب تاريخ القبول من (ISO)"),
+    accepted_date_to: Optional[str] = Query(None, description="فلترة المقبول حسب تاريخ القبول إلى (ISO)"),
     user_id: Optional[str] = Query(None, description="فلترة لموظف محدد (للأدمن فقط)"),
     current=Depends(get_current_user),
 ):
-    """عداد مواعيد الموظف (اليوم/الشهر/من-إلى) حسب تاريخ إنشاء الموعد."""
+    """عداد مواعيد الموظف (اليوم/الشهر/من-إلى) حسب تاريخ إنشاء الموعد، والمقبول حسب تاريخ القبول."""
     if current.role == Role.CALL_CENTER:
         uid = current.id
     else:
@@ -266,6 +268,21 @@ async def call_center_appointments_stats(
     range_count = await range_query.count()
 
     accepted_count = await base.find(CallCenterAppointment.status == "accepted").count()
+
+    accepted_this_month = await base.find(
+        CallCenterAppointment.status == "accepted",
+        CallCenterAppointment.accepted_at >= month_start,
+        CallCenterAppointment.accepted_at < next_month_start,
+    ).count()
+
+    adf, adt = parse_dates(accepted_date_from, accepted_date_to)
+    accepted_range_query = base.find(CallCenterAppointment.status == "accepted")
+    if adf:
+        accepted_range_query = accepted_range_query.find(CallCenterAppointment.accepted_at >= adf)
+    if adt:
+        accepted_range_query = accepted_range_query.find(CallCenterAppointment.accepted_at < adt)
+    accepted_range_count = await accepted_range_query.count() if (adf or adt) else 0
+
     total_count = await base.count()
     not_accepted_count = max(0, total_count - accepted_count)
 
@@ -276,6 +293,12 @@ async def call_center_appointments_stats(
         "this_month": this_month,
         "range": {"from": date_from, "to": date_to, "count": range_count},
         "accepted": accepted_count,
+        "accepted_this_month": accepted_this_month,
+        "accepted_range": {
+            "from": accepted_date_from,
+            "to": accepted_date_to,
+            "count": accepted_range_count,
+        },
         "not_accepted": not_accepted_count,
     }
 

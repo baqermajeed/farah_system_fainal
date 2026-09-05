@@ -5,6 +5,7 @@ from app.models import User
 from app.security import create_access_token, create_refresh_token, verify_password
 from app.services.otp_service import (
     create_otp_request,
+    is_play_review_demo_phone,
     normalize_iraqi_phone,
     verify_otp_or_raise,
 )
@@ -12,6 +13,8 @@ from app.services.otpiq import OTPIQError, send_verification_otp
 
 async def request_otp(phone: str) -> None:
     """إنشاء وإرسال رمز OTP للهاتف (يحفظ آخر طلب)."""
+    if is_play_review_demo_phone(phone):
+        return
     code, otp = await create_otp_request(phone=phone)
     # OTPIQ expects phoneNumber WITHOUT '+'
     try:

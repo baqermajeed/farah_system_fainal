@@ -24,7 +24,8 @@ function ProvidersContent() {
         token: {
           borderRadius: 12,
           colorPrimary: '#00A79D',
-          fontFamily: 'Tajawal, Segoe UI, sans-serif',
+          fontFamily: "'Lama Sans', 'IBM Plex Sans Arabic', Tajawal, Segoe UI, sans-serif",
+          fontWeightStrong: 600,
         },
       }}
     >

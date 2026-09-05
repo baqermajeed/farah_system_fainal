@@ -926,13 +926,13 @@ async def add_gallery_image(
 
 @router.get("/appointments", response_model=List[AppointmentOut])
 async def list_my_appointments(
+    response: Response,
     day: str | None = Query(None, description="today (مواعيد اليوم) | month (مواعيد هذا الشهر)"),
     date_from: str | None = Query(None, description="تاريخ البداية (ISO format) - للتصفية من"),
     date_to: str | None = Query(None, description="تاريخ النهاية (ISO format) - للتصفية إلى"),
     status: str | None = Query(None, description="late (المواعيد المتأخرة) | pending | completed | cancelled"),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1),
-    response: Response,
     current=Depends(get_current_user),
 ):
     """
