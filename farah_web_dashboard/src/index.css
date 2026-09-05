@@ -500,6 +500,12 @@ body[data-theme='dark'] .call-center-row-accepted > td {
   background: rgba(34, 197, 94, 0.24) !important;
 }
 
+.kpi-subtitle {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
 @media (max-width: 992px) {
   .top-header {
     gap: 10px;

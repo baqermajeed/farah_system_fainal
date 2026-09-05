@@ -5,12 +5,13 @@ type KpiCardProps = {
   title: string;
   value: number | string;
   suffix?: string;
+  subtitle?: string;
   actionIcon?: React.ReactNode;
   actionTooltip?: string;
   onActionClick?: () => void;
 };
 
-export function KpiCard({ title, value, suffix, actionIcon, actionTooltip, onActionClick }: KpiCardProps) {
+export function KpiCard({ title, value, suffix, subtitle, actionIcon, actionTooltip, onActionClick }: KpiCardProps) {
   return (
     <motion.div whileHover={{ y: -6, rotateX: 3 }} transition={{ type: 'spring', stiffness: 220, damping: 16 }}>
       <Card className="glass-card kpi-card-premium" styles={{ body: { padding: 16 } }}>
@@ -27,6 +28,7 @@ export function KpiCard({ title, value, suffix, actionIcon, actionTooltip, onAct
             </Tooltip>
           ) : null}
           <Statistic title={title} value={value} suffix={suffix} />
+          {subtitle ? <div className="kpi-subtitle">{subtitle}</div> : null}
         </div>
       </Card>
     </motion.div>

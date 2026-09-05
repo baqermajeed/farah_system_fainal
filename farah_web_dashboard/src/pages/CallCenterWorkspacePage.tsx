@@ -107,6 +107,12 @@ function isSameCalendarMonth(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
 }
 
+function isWithinInclusiveDayRange(target: Date, start: Date, end: Date) {
+  const s = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 0, 0, 0, 0);
+  const e = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 23, 59, 59, 999);
+  return target.getTime() >= s.getTime() && target.getTime() <= e.getTime();
+}
+
 function baseDateOf(item: CallCenterAppointmentListItem) {
   const createdAt = item.created_at ? new Date(item.created_at) : null;
   if (createdAt && !Number.isNaN(createdAt.getTime())) {
@@ -130,7 +136,9 @@ export function CallCenterWorkspacePage() {
   const [appointments, setAppointments] = useState<CallCenterAppointmentListItem[]>([]);
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [appointmentsRange, setAppointmentsRange] = useState<DateRange>([null, null]);
+  const [tableRange, setTableRange] = useState<DateRange>([null, null]);
+  const [acceptedRange, setAcceptedRange] = useState<DateRange>([null, null]);
+  const [acceptedRangeModalOpen, setAcceptedRangeModalOpen] = useState(false);
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -155,8 +163,8 @@ export function CallCenterWorkspacePage() {
   const loadAppointments = async () => {
     try {
       setLoading(true);
-      const date_from = appointmentsRange[0]?.startOf('day').toISOString();
-      const date_to = appointmentsRange[1]?.endOf('day').toISOString();
+      const date_from = tableRange[0]?.startOf('day').toISOString();
+      const date_to = tableRange[1]?.endOf('day').toISOString();
       const data = await fetchCallCenterMyAppointmentsFromBoth({
         search: searchQuery || undefined,
         date_from,
@@ -174,16 +182,16 @@ export function CallCenterWorkspacePage() {
 
   useEffect(() => {
     void loadAppointments();
-  }, [searchQuery, appointmentsRange]);
+  }, [searchQuery, tableRange]);
 
   const stats = useMemo(() => {
     const now = new Date();
     let today = 0;
     let thisMonth = 0;
-    let accepted = 0;
-    let rangeCount = 0;
-    const from = appointmentsRange[0]?.startOf('day') ?? null;
-    const to = appointmentsRange[1]?.endOf('day') ?? null;
+    let acceptedThisMonth = 0;
+    let acceptedInRange = 0;
+    const acceptedFrom = acceptedRange[0]?.toDate() ?? null;
+    const acceptedTo = acceptedRange[1]?.toDate() ?? null;
 
     for (const item of appointments) {
       const baseDate = baseDateOf(item);
@@ -196,13 +204,14 @@ export function CallCenterWorkspacePage() {
         thisMonth += 1;
       }
       if (item.status?.toLowerCase() === 'accepted') {
-        accepted += 1;
-      }
-
-      if (from && to) {
-        const target = dayjs(baseDate.toISOString());
-        if (target.isAfter(from) && target.isBefore(to)) {
-          rangeCount += 1;
+        const acceptedAt = item.accepted_at ? new Date(item.accepted_at) : null;
+        const acceptedDate =
+          acceptedAt && !Number.isNaN(acceptedAt.getTime()) ? acceptedAt : baseDate;
+        if (isSameCalendarMonth(acceptedDate, now)) {
+          acceptedThisMonth += 1;
+        }
+        if (acceptedFrom && acceptedTo && isWithinInclusiveDayRange(acceptedDate, acceptedFrom, acceptedTo)) {
+          acceptedInRange += 1;
         }
       }
     }
@@ -211,11 +220,15 @@ export function CallCenterWorkspacePage() {
       total: appointments.length,
       today,
       thisMonth,
-      accepted,
-      notAccepted: Math.max(0, appointments.length - accepted),
-      rangeCount: from && to ? rangeCount : appointments.length,
+      acceptedThisMonth,
+      acceptedInRange,
     };
-  }, [appointments, appointmentsRange]);
+  }, [appointments, acceptedRange]);
+
+  const acceptedRangeLabel =
+    acceptedRange[0] && acceptedRange[1]
+      ? `${acceptedRange[0].format('YYYY/MM/DD')} → ${acceptedRange[1].format('YYYY/MM/DD')}`
+      : 'اختر فترة';
 
   const openEdit = (item: CallCenterAppointmentListItem) => {
     if (item.status?.toLowerCase() === 'accepted') return;
@@ -510,22 +523,26 @@ export function CallCenterWorkspacePage() {
 
       <Row gutter={[12, 12]}>
         <Col xs={24} md={12} xl={6}>
-          <KpiCard title="عدد الحجوزات الكلي" value={stats.total} />
+          <KpiCard title="مواعيد اليوم" value={stats.today} />
         </Col>
         <Col xs={24} md={12} xl={6}>
-          <KpiCard title="عدد الحجوزات هذا الشهر" value={stats.thisMonth} />
+          <KpiCard title="مواعيد هذا الشهر" value={stats.thisMonth} />
         </Col>
         <Col xs={24} md={12} xl={6}>
-          <KpiCard title="عدد حجوزات اليوم" value={stats.today} />
+          <KpiCard title="كل المواعيد" value={stats.total} />
         </Col>
         <Col xs={24} md={12} xl={6}>
-          <KpiCard title="عدد المقبولة" value={stats.accepted} />
+          <KpiCard title="المواعيد المقبولة هذا الشهر" value={stats.acceptedThisMonth} />
         </Col>
         <Col xs={24} md={12} xl={6}>
-          <KpiCard title="غير المقبولة" value={stats.notAccepted} />
-        </Col>
-        <Col xs={24} md={12} xl={6}>
-          <KpiCard title="ضمن الفترة المختارة" value={stats.rangeCount} />
+          <KpiCard
+            title="المواعيد المقبولة ضمن فترة محددة"
+            value={stats.acceptedInRange}
+            subtitle={acceptedRangeLabel}
+            actionIcon={<CalendarOutlined />}
+            actionTooltip="اختيار فترة"
+            onActionClick={() => setAcceptedRangeModalOpen(true)}
+          />
         </Col>
       </Row>
 
@@ -542,14 +559,14 @@ export function CallCenterWorkspacePage() {
           </Col>
           <Col xs={24} lg={10}>
             <DatePicker.RangePicker
-              value={appointmentsRange}
+              value={tableRange}
               allowEmpty={[true, true]}
-              onChange={(value) => setAppointmentsRange([value?.[0] ?? null, value?.[1] ?? null])}
+              onChange={(value) => setTableRange([value?.[0] ?? null, value?.[1] ?? null])}
               style={{ width: '100%' }}
             />
           </Col>
           <Col xs={24} lg={4}>
-            <Button block onClick={() => setAppointmentsRange([null, null])}>
+            <Button block onClick={() => setTableRange([null, null])}>
               مسح الفترة
             </Button>
           </Col>
@@ -699,6 +716,21 @@ export function CallCenterWorkspacePage() {
           pagination={{ pageSize: 10, showSizeChanger: false }}
           scroll={{ x: 900 }}
           locale={{ emptyText: 'لا توجد مواعيد' }}
+        />
+      </Modal>
+
+      <Modal
+        title="المواعيد المقبولة ضمن فترة محددة"
+        open={acceptedRangeModalOpen}
+        onCancel={() => setAcceptedRangeModalOpen(false)}
+        onOk={() => setAcceptedRangeModalOpen(false)}
+        okText="تطبيق"
+        cancelText="إلغاء"
+      >
+        <DatePicker.RangePicker
+          value={acceptedRange}
+          onChange={(value) => setAcceptedRange([value?.[0] ?? null, value?.[1] ?? null])}
+          style={{ width: '100%' }}
         />
       </Modal>
     </div>
