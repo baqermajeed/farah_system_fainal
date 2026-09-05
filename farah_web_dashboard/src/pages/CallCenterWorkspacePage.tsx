@@ -188,8 +188,11 @@ export function CallCenterWorkspacePage() {
     const now = new Date();
     let today = 0;
     let thisMonth = 0;
+    let rangeCount = 0;
     let acceptedThisMonth = 0;
     let acceptedInRange = 0;
+    const rangeFrom = tableRange[0]?.toDate() ?? null;
+    const rangeTo = tableRange[1]?.toDate() ?? null;
     const acceptedFrom = acceptedRange[0]?.toDate() ?? null;
     const acceptedTo = acceptedRange[1]?.toDate() ?? null;
 
@@ -202,6 +205,9 @@ export function CallCenterWorkspacePage() {
       }
       if (isSameCalendarMonth(baseDate, now)) {
         thisMonth += 1;
+      }
+      if (rangeFrom && rangeTo && isWithinInclusiveDayRange(baseDate, rangeFrom, rangeTo)) {
+        rangeCount += 1;
       }
       if (item.status?.toLowerCase() === 'accepted') {
         const acceptedAt = item.accepted_at ? new Date(item.accepted_at) : null;
@@ -220,15 +226,22 @@ export function CallCenterWorkspacePage() {
       total: appointments.length,
       today,
       thisMonth,
+      rangeCount,
       acceptedThisMonth,
       acceptedInRange,
     };
-  }, [appointments, acceptedRange]);
+  }, [appointments, acceptedRange, tableRange]);
 
+  const rangeLabel =
+    tableRange[0] && tableRange[1]
+      ? `${tableRange[0].format('YYYY/MM/DD')} → ${tableRange[1].format('YYYY/MM/DD')}`
+      : 'اختر فترة';
   const acceptedRangeLabel =
     acceptedRange[0] && acceptedRange[1]
       ? `${acceptedRange[0].format('YYYY/MM/DD')} → ${acceptedRange[1].format('YYYY/MM/DD')}`
       : 'اختر فترة';
+  const acceptedValue = acceptedRange[0] && acceptedRange[1] ? stats.acceptedInRange : stats.acceptedThisMonth;
+  const acceptedSubtitle = acceptedRange[0] && acceptedRange[1] ? acceptedRangeLabel : 'هذا الشهر';
 
   const openEdit = (item: CallCenterAppointmentListItem) => {
     if (item.status?.toLowerCase() === 'accepted') return;
@@ -532,13 +545,17 @@ export function CallCenterWorkspacePage() {
           <KpiCard title="كل المواعيد" value={stats.total} />
         </Col>
         <Col xs={24} md={12} xl={6}>
-          <KpiCard title="المواعيد المقبولة هذا الشهر" value={stats.acceptedThisMonth} />
+          <KpiCard
+            title="ضمن فترة محددة"
+            value={stats.rangeCount}
+            subtitle={rangeLabel}
+          />
         </Col>
         <Col xs={24} md={12} xl={6}>
           <KpiCard
-            title="المواعيد المقبولة ضمن فترة محددة"
-            value={stats.acceptedInRange}
-            subtitle={acceptedRangeLabel}
+            title="المواعيد المقبولة"
+            value={acceptedValue}
+            subtitle={acceptedSubtitle}
             actionIcon={<CalendarOutlined />}
             actionTooltip="اختيار فترة"
             onActionClick={() => setAcceptedRangeModalOpen(true)}
@@ -720,7 +737,7 @@ export function CallCenterWorkspacePage() {
       </Modal>
 
       <Modal
-        title="المواعيد المقبولة ضمن فترة محددة"
+        title="المواعيد المقبولة ضمن فترة"
         open={acceptedRangeModalOpen}
         onCancel={() => setAcceptedRangeModalOpen(false)}
         onOk={() => setAcceptedRangeModalOpen(false)}
