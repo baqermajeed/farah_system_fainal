@@ -1,3 +1,6 @@
+import re
+import unicodedata
+
 from fastapi import HTTPException
 
 from app.constants import Role
@@ -64,15 +67,38 @@ async def verify_otp_and_login(
 
 # ---------------- Staff login (username/password) ----------------
 
+_ARABIC_DIGIT_MAP = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
+
+
+def _strip_invisible(value: str) -> str:
+    """Remove bidi/zero-width marks that Arabic mobile keyboards inject into Latin text."""
+    return "".join(ch for ch in value if unicodedata.category(ch) != "Cf")
+
+
+def _normalize_staff_username(username: str) -> str:
+    """Trim spaces, drop hidden RTL marks, and convert Arabic/Persian digits."""
+    return _strip_invisible((username or "").translate(_ARABIC_DIGIT_MAP)).strip()
+
+
+async def _find_staff_by_username(username: str) -> User | None:
+    user = await User.find_one(User.username == username)
+    if user or not username:
+        return user
+    return await User.find_one(
+        {"username": {"$regex": f"^{re.escape(username)}$", "$options": "i"}}
+    )
+
 
 async def staff_login_with_password(*, username: str, password: str) -> tuple[tuple[str, str], User]:
     """تسجيل دخول الطبيب/الاستقبال/المصور/المدير عن طريق username + password.
     يرجع ((access_token, refresh_token), user).
     """
+    username = _normalize_staff_username(username)
+    password = _strip_invisible(password or "")
     print(f"🔍 [AuthService] staff_login_with_password called")
     print(f"   👤 Searching for user with username: {username}")
     
-    user = await User.find_one(User.username == username)
+    user = await _find_staff_by_username(username)
     
     if not user:
         print(f"   ❌ User not found with username: {username}")

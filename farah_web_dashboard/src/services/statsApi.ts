@@ -47,8 +47,8 @@ function resolveBranch(baseUrl: string): BranchKey {
 
 export async function loginStaff(username: string, password: string): Promise<TokenResponse> {
   const form = new URLSearchParams();
-  form.append('username', username);
-  form.append('password', password);
+  form.append('username', username.trim());
+  form.append('password', password.replace(/[\u061C\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g, ''));
   const { data } = await http.post<TokenResponse>('/auth/staff-login', form, { headers: authHeaders });
   return data;
 }
@@ -294,24 +294,6 @@ export async function fetchCallCenterAppointmentsFromBoth(params: { created_by_u
   return merged;
 }
 
-async function fetchCallCenterAppointmentsPageByBase(
-  baseUrl: string,
-  params: {
-    search?: string;
-    date_from?: string;
-    date_to?: string;
-    skip?: number;
-    limit?: number;
-  },
-): Promise<CallCenterAppointmentListItem[]> {
-  const branch = resolveBranch(baseUrl);
-  const response = await axios.get<CallCenterAppointmentListItem[]>(`${baseUrl}/call-center/appointments`, {
-    params,
-    headers: buildAuthHeader(),
-  });
-  return (response.data ?? []).map((item) => ({ ...item, branch }));
-}
-
 export async function fetchCallCenterMyAppointmentsFromBoth(params?: {
   search?: string;
   date_from?: string;
@@ -344,43 +326,24 @@ export async function fetchCallCenterMyAppointmentsPageFromBoth(params?: {
   search?: string;
   date_from?: string;
   date_to?: string;
-  najaf_skip?: number;
-  kendy_skip?: number;
-  per_branch_limit?: number;
+  global_skip?: number;
+  page_limit?: number;
 }) {
-  const najafSkip = Math.max(0, params?.najaf_skip ?? 0);
-  const kendySkip = Math.max(0, params?.kendy_skip ?? 0);
-  const perBranchLimit = Math.max(1, params?.per_branch_limit ?? 10);
-
-  const [najaf, kendy] = await Promise.allSettled([
-    fetchCallCenterAppointmentsPageByBase(appConfig.apiBaseUrl, {
-      search: params?.search,
-      date_from: params?.date_from,
-      date_to: params?.date_to,
-      skip: najafSkip,
-      limit: perBranchLimit,
-    }),
-    fetchCallCenterAppointmentsPageByBase(appConfig.apiKendyBaseUrl, {
-      search: params?.search,
-      date_from: params?.date_from,
-      date_to: params?.date_to,
-      skip: kendySkip,
-      limit: perBranchLimit,
-    }),
-  ]);
-
-  const najafItems = najaf.status === 'fulfilled' ? najaf.value : [];
-  const kendyItems = kendy.status === 'fulfilled' ? kendy.value : [];
-
-  const items = [...najafItems, ...kendyItems].sort(
-    (a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime(),
-  );
+  const globalSkip = Math.max(0, params?.global_skip ?? 0);
+  const pageLimit = Math.max(1, params?.page_limit ?? 12);
+  const allItems = await fetchCallCenterMyAppointmentsFromBoth({
+    search: params?.search,
+    date_from: params?.date_from,
+    date_to: params?.date_to,
+  });
+  const items = allItems.slice(globalSkip, globalSkip + pageLimit);
+  const nextGlobalSkip = globalSkip + items.length;
 
   return {
     items,
-    next_najaf_skip: najafSkip + najafItems.length,
-    next_kendy_skip: kendySkip + kendyItems.length,
-    has_more: najafItems.length === perBranchLimit || kendyItems.length === perBranchLimit,
+    next_global_skip: nextGlobalSkip,
+    has_more: nextGlobalSkip < allItems.length,
+    total: allItems.length,
   };
 }
 

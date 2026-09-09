@@ -141,7 +141,17 @@ class CallCenterService {
     }
 
     merged.sort((a, b) => b.scheduledAt.compareTo(a.scheduledAt));
-    return merged;
+
+    // إزالة التكرار الناتج عن تداخل صفحات skip/limit عند إعادة الجلب بعد إضافة موعد.
+    final seen = <String>{};
+    final unique = <CallCenterAppointmentModel>[];
+    for (final item in merged) {
+      final key = '${item.branch}|${item.id}';
+      if (seen.add(key)) {
+        unique.add(item);
+      }
+    }
+    return unique;
   }
 
   /// جلب جميع مواعيد مركز الاتصالات (لموظف الاستقبال - من جميع الموظفين).

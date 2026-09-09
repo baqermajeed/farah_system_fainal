@@ -194,7 +194,11 @@ async def list_call_center_appointments(
             }
         )
 
-    items = await query.sort("-created_at").skip(skip).limit(limit).to_list()
+    # مهم: الترتيب يجب أن يكون مستقراً لصفحات skip/limit.
+    # المواعيد تُسجَّل بساعات كاملة فيتشابه scheduled_at كثيراً؛ الترتيب بـ scheduled_at وحده
+    # يجعل الصفحات غير حتمية فتضيع/تتكرر مواعيد مقبولة عند إعادة الجلب بعد الإضافة.
+    # الواجهات تعيد الترتيب حسب scheduled_at للعرض.
+    items = await query.sort("-created_at", "-_id").skip(skip).limit(limit).to_list()
 
     return [
         CallCenterAppointmentOut(
@@ -245,45 +249,67 @@ async def call_center_appointments_stats(
     else:
         next_month_start = month_start.replace(month=month_start.month + 1)
 
-    base = CallCenterAppointment.find()
-    if uid:
-        base = base.find(CallCenterAppointment.created_by_user_id == uid)
+    # Beanie FindMany.find() يعدّل نفس الكائن (find_expressions += args).
+    # لذلك كل عدّاد يجب أن يبدأ من استعلام جديد وإلا تتراكم الفلاتر وتفسد الأرقام.
+    def _base_filters():
+        filters = []
+        if uid:
+            filters.append(CallCenterAppointment.created_by_user_id == uid)
+        return filters
 
-    today = await base.find(
+    today = await CallCenterAppointment.find(
+        *_base_filters(),
         CallCenterAppointment.created_at >= today_start,
         CallCenterAppointment.created_at < tomorrow_start,
     ).count()
 
-    this_month = await base.find(
+    this_month = await CallCenterAppointment.find(
+        *_base_filters(),
         CallCenterAppointment.created_at >= month_start,
         CallCenterAppointment.created_at < next_month_start,
     ).count()
 
     df, dt = parse_dates(date_from, date_to)
-    range_query = base
+    range_filters = _base_filters()
     if df:
-        range_query = range_query.find(CallCenterAppointment.created_at >= df)
+        range_filters.append(CallCenterAppointment.created_at >= df)
     if dt:
-        range_query = range_query.find(CallCenterAppointment.created_at < dt)
-    range_count = await range_query.count()
+        range_filters.append(CallCenterAppointment.created_at < dt)
+    range_count = await CallCenterAppointment.find(*range_filters).count() if range_filters else await CallCenterAppointment.find_all().count()
 
-    accepted_count = await base.find(CallCenterAppointment.status == "accepted").count()
+    accepted_count = await CallCenterAppointment.find(
+        *_base_filters(),
+        CallCenterAppointment.status == "accepted",
+    ).count()
 
-    accepted_this_month = await base.find(
+    accepted_this_month = await CallCenterAppointment.find(
+        *_base_filters(),
         CallCenterAppointment.status == "accepted",
         CallCenterAppointment.accepted_at >= month_start,
         CallCenterAppointment.accepted_at < next_month_start,
     ).count()
 
     adf, adt = parse_dates(accepted_date_from, accepted_date_to)
-    accepted_range_query = base.find(CallCenterAppointment.status == "accepted")
+    accepted_range_filters = [
+        *_base_filters(),
+        CallCenterAppointment.status == "accepted",
+    ]
     if adf:
-        accepted_range_query = accepted_range_query.find(CallCenterAppointment.accepted_at >= adf)
+        accepted_range_filters.append(CallCenterAppointment.accepted_at >= adf)
     if adt:
-        accepted_range_query = accepted_range_query.find(CallCenterAppointment.accepted_at < adt)
-    accepted_range_count = await accepted_range_query.count() if (adf or adt) else 0
+        accepted_range_filters.append(CallCenterAppointment.accepted_at < adt)
+    accepted_range_count = (
+        await CallCenterAppointment.find(*accepted_range_filters).count()
+        if (adf or adt)
+        else 0
+    )
 
-    total_count = await base.count()
+    total_filters = _base_filters()
+    total_count = (
+        await CallCenterAppointment.find(*total_filters).count()
+        if total_filters
+        else await CallCenterAppointment.find_all().count()
+    )
     not_accepted_count = max(0, total_count - accepted_count)
 
     return {

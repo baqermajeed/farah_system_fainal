@@ -35,6 +35,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AdaptiveDateRangePicker, AdaptiveDateTimePicker } from '../components/AdaptiveDateInputs';
 import { KpiCard } from '../components/KpiCard';
@@ -64,6 +65,8 @@ type AppointmentFormValues = {
   scheduled_at: Dayjs;
 };
 
+dayjs.extend(utc);
+
 const IRAQ_GOVERNORATES = [
   'بغداد',
   'البصرة',
@@ -92,6 +95,48 @@ const BRANCH_OPTIONS: Array<{ value: BranchKey; label: string }> = [
   { value: 'kendy_baghdad', label: 'الكندي بغداد' },
 ];
 
+function hasExplicitTimezone(value: string) {
+  return /(?:Z|[+-]\d{2}:\d{2})$/i.test(value.trim());
+}
+
+function parseCallCenterDate(value: string) {
+  const parsed = dayjs(value);
+  if (!parsed.isValid()) return parsed;
+  // نطابق سلوك تطبيق desktop:
+  // إذا النص يحوي timezone صريحًا نعرضه كـ UTC ساعة خامة (بدون تحويل محلي).
+  if (hasExplicitTimezone(value)) return parsed.utc();
+  return parsed;
+}
+
+function formatCallCenterDateTime(value: string, format: string) {
+  const parsed = parseCallCenterDate(value);
+  return parsed.isValid() ? parsed.format(format) : '-';
+}
+
+function scheduledDisplaySortKey(value: string) {
+  const parsed = parseCallCenterDate(value);
+  return parsed.isValid() ? parsed.format('YYYYMMDDHHmmss') : '';
+}
+
+function compareByScheduledDisplayDesc(a: CallCenterAppointmentListItem, b: CallCenterAppointmentListItem) {
+  const keyA = scheduledDisplaySortKey(a.scheduled_at);
+  const keyB = scheduledDisplaySortKey(b.scheduled_at);
+  if (keyA === keyB) {
+    return (b.created_at ?? '').localeCompare(a.created_at ?? '');
+  }
+  return keyB.localeCompare(keyA);
+}
+
+function toCallCenterFormDate(value: string) {
+  if (hasExplicitTimezone(value)) {
+    const parsed = dayjs(value).utc();
+    if (!parsed.isValid()) return parsed;
+    // نحوّلها إلى قيمة محلية بنفس "ساعة العرض" الظاهرة في الجدول.
+    return dayjs(parsed.format('YYYY-MM-DDTHH:mm:ss'));
+  }
+  return dayjs(value);
+}
+
 function normalizeDigits(value: string) {
   return (value ?? '')
     .replace(/[٠-٩]/g, (digit) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit)))
@@ -111,6 +156,10 @@ function sanitizePhone(value: string) {
 
 
 
+function isAcceptedAppointment(item: CallCenterAppointmentListItem) {
+  return (item.status ?? '').toLowerCase() === 'accepted';
+}
+
 function parseDate(value?: string | null) {
   if (!value) return null;
   const dt = new Date(value);
@@ -125,10 +174,6 @@ function baseDateOf(item: CallCenterAppointmentListItem) {
 /** نفس منطق التطبيق للمقبول: acceptedAt ?? createdAt ?? scheduledAt */
 function acceptedDateOf(item: CallCenterAppointmentListItem) {
   return parseDate(item.accepted_at) ?? parseDate(item.created_at) ?? parseDate(item.scheduled_at);
-}
-
-function isAcceptedAppointment(item: CallCenterAppointmentListItem) {
-  return (item.status ?? '').toLowerCase() === 'accepted';
 }
 
 /** مطابق لـ _countToday في frontend_desktop */
@@ -212,7 +257,7 @@ export function CallCenterWorkspacePage() {
   const [statsList, setStatsList] = useState<CallCenterAppointmentListItem[]>([]);
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [branchSkips, setBranchSkips] = useState({ najaf: 0, kendy: 0 });
+  const [globalSkip, setGlobalSkip] = useState(0);
   const [tableFilterRange, setTableFilterRange] = useState<DateRange>([null, null]);
   const [statsRange, setStatsRange] = useState<DateRange>([null, null]);
   const [tableRangeModalOpen, setTableRangeModalOpen] = useState(false);
@@ -263,31 +308,22 @@ export function CallCenterWorkspacePage() {
       } else {
         setLoadingMore(true);
       }
-
-      const skipState = reset ? { najaf: 0, kendy: 0 } : branchSkips;
+      const skip = reset ? 0 : globalSkip;
       const result = await fetchCallCenterMyAppointmentsPageFromBoth({
         search: searchQuery || undefined,
-        najaf_skip: skipState.najaf,
-        kendy_skip: skipState.kendy,
-        per_branch_limit: isMobile ? 8 : 15,
+        global_skip: skip,
+        page_limit: isMobile ? 8 : 15,
       });
-
-      setBranchSkips({
-        najaf: result.next_najaf_skip,
-        kendy: result.next_kendy_skip,
-      });
+      setGlobalSkip(result.next_global_skip);
       setHasMoreAppointments(result.has_more);
-
       setAppointments((prev) => {
         const base = reset ? [] : prev;
         const merged = [...base, ...result.items];
-        const map = new Map<string, CallCenterAppointmentListItem>();
+        const byId = new Map<string, CallCenterAppointmentListItem>();
         for (const item of merged) {
-          map.set(`${item.branch ?? ''}|${item.id}`, item);
+          byId.set(`${item.branch ?? ''}|${item.id}`, item);
         }
-        return Array.from(map.values()).sort(
-          (a, b) => new Date(b.scheduled_at).getTime() - new Date(a.scheduled_at).getTime(),
-        );
+        return Array.from(byId.values()).sort(compareByScheduledDisplayDesc);
       });
     } catch (error) {
       console.error('Failed to load call center appointments', error);
@@ -302,36 +338,30 @@ export function CallCenterWorkspacePage() {
   };
 
   useEffect(() => {
-    setBranchSkips({ najaf: 0, kendy: 0 });
+    setGlobalSkip(0);
     setHasMoreAppointments(true);
     void loadAppointments(true);
   }, [searchQuery, isMobile]);
 
   const handleLoadMore = () => {
-    if (loadingMore || !hasMoreAppointments || loading) return;
+    if (loading || loadingMore || !hasMoreAppointments) return;
     void loadAppointments(false);
   };
 
   useEffect(() => {
     const node = loadMoreRef.current;
     if (!node) return;
-
     const observer = new IntersectionObserver(
       (entries) => {
         const entry = entries[0];
         if (!entry?.isIntersecting) return;
         handleLoadMore();
       },
-      {
-        root: null,
-        rootMargin: '240px 0px',
-        threshold: 0,
-      },
+      { root: null, rootMargin: '240px 0px', threshold: 0 },
     );
-
     observer.observe(node);
     return () => observer.disconnect();
-  }, [hasMoreAppointments, loadingMore, loading, appointments.length, searchQuery, isMobile]);
+  }, [loading, loadingMore, hasMoreAppointments, appointments.length, searchQuery, isMobile]);
 
   const loadStats = async () => {
     try {
@@ -354,7 +384,6 @@ export function CallCenterWorkspacePage() {
     void loadStats();
   }, [searchQuery]);
 
-  // نفس _buildStatsPanel في frontend_desktop/call_center_home_screen.dart
   const stats = useMemo(() => {
     const rangeCount =
       statsRange[0] && statsRange[1]
@@ -375,7 +404,6 @@ export function CallCenterWorkspacePage() {
       acceptedInRange,
     };
   }, [statsList, statsRange, acceptedRange]);
-
   const rangeLabel =
     statsRange[0] && statsRange[1]
       ? `${statsRange[0].format('YYYY/MM/DD')} → ${statsRange[1].format('YYYY/MM/DD')}`
@@ -409,7 +437,7 @@ export function CallCenterWorkspacePage() {
     if (isMobile && mobileTimeFilter !== 'all') {
       const now = dayjs();
       filtered = filtered.filter((item) => {
-        const dt = dayjs(item.scheduled_at);
+        const dt = parseCallCenterDate(item.scheduled_at);
         if (!dt.isValid()) return false;
         if (mobileTimeFilter === 'today') return dt.isSame(now, 'day');
         if (mobileTimeFilter === 'week') return dt.isSame(now, 'week');
@@ -418,7 +446,7 @@ export function CallCenterWorkspacePage() {
       });
     }
 
-    return filtered;
+    return [...filtered].sort(compareByScheduledDisplayDesc);
   }, [appointments, tableFilterRange, isMobile, mobileTimeFilter]);
 
   const openEdit = (item: CallCenterAppointmentListItem) => {
@@ -430,7 +458,7 @@ export function CallCenterWorkspacePage() {
       governorate: item.governorate || undefined,
       platform: item.platform || undefined,
       note: item.note || undefined,
-      scheduled_at: dayjs(item.scheduled_at),
+      scheduled_at: toCallCenterFormDate(item.scheduled_at),
       branch: item.branch,
     });
     setEditModalOpen(true);
@@ -499,7 +527,8 @@ export function CallCenterWorkspacePage() {
     return {
       patient_name: values.patient_name.trim(),
       patient_phone: phone,
-      scheduled_at: values.scheduled_at.toISOString(),
+      // نرسل بدون timezone لتتطابق القراءة مع تطبيق desktop الحالي.
+      scheduled_at: values.scheduled_at.format('YYYY-MM-DDTHH:mm:ss'),
       governorate: values.governorate ?? '',
       platform: values.platform ?? '',
       note: values.note?.trim() ?? '',
@@ -585,12 +614,12 @@ export function CallCenterWorkspacePage() {
     {
       title: 'اليوم والوقت',
       dataIndex: 'scheduled_at',
-      render: (value: string) => dayjs(value).format('dddd - hh:mm A'),
+      render: (value: string) => formatCallCenterDateTime(value, 'dddd - hh:mm A'),
     },
     {
       title: 'التاريخ',
       dataIndex: 'scheduled_at',
-      render: (value: string) => dayjs(value).format('YYYY-MM-DD'),
+      render: (value: string) => formatCallCenterDateTime(value, 'YYYY-MM-DD'),
     },
     {
       title: 'رقم الهاتف',
@@ -677,7 +706,7 @@ export function CallCenterWorkspacePage() {
     {
       title: 'اليوم والوقت',
       dataIndex: 'scheduled_at',
-      render: (value: string) => dayjs(value).format('YYYY-MM-DD hh:mm A'),
+      render: (value: string) => formatCallCenterDateTime(value, 'YYYY-MM-DD hh:mm A'),
     },
     {
       title: 'الحالة',
@@ -861,8 +890,8 @@ export function CallCenterWorkspacePage() {
                           <MoreOutlined />
                         </button>
                       </Dropdown>
-                      <div className="cc-booking-time">{dayjs(item.scheduled_at).format('h:mm A')}</div>
-                      <div className="cc-booking-date">{dayjs(item.scheduled_at).format('YYYY/MM/DD')}</div>
+                      <div className="cc-booking-time">{formatCallCenterDateTime(item.scheduled_at, 'h:mm A')}</div>
+                      <div className="cc-booking-date">{formatCallCenterDateTime(item.scheduled_at, 'YYYY/MM/DD')}</div>
                     </div>
                   </div>
                 );
@@ -873,6 +902,7 @@ export function CallCenterWorkspacePage() {
           <div ref={loadMoreRef} className="cc-infinite-sentinel" aria-hidden={!loadingMore}>
             {loadingMore ? <Spin size="small" /> : null}
           </div>
+
         </div>
       ) : (
         <>
@@ -976,6 +1006,7 @@ export function CallCenterWorkspacePage() {
               <div ref={loadMoreRef} className="cc-infinite-sentinel" aria-hidden={!loadingMore}>
                 {loadingMore ? <Spin size="small" /> : null}
               </div>
+
             </div>
           </Card>
         </>
@@ -1116,7 +1147,7 @@ export function CallCenterWorkspacePage() {
                     </div>
                     <div className="mobile-appointment-detail-item">
                       <span className="mobile-appointment-detail-label">التاريخ والوقت</span>
-                      <span className="mobile-appointment-detail-value">{dayjs(item.scheduled_at).format('YYYY-MM-DD hh:mm A')}</span>
+                      <span className="mobile-appointment-detail-value">{formatCallCenterDateTime(item.scheduled_at, 'YYYY-MM-DD hh:mm A')}</span>
                     </div>
                     <div className="mobile-appointment-detail-item">
                       <span className="mobile-appointment-detail-label">الفرع</span>
